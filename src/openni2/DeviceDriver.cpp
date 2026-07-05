@@ -503,10 +503,16 @@ namespace Freenect2Driver
           {
             WriteMessage("Opening device " + std::string(uri));
             int id = uri_to_devid(iter->first.uri);
-            DeviceImpl* device = new DeviceImpl(id);
             // The LIBFREENECT2_PIPELINE variable allows to select
             // the non-default pipeline
-            device->setFreenect2Device(freenect2.openDevice(id));
+            libfreenect2::Freenect2Device* freenect2_device = freenect2.openDevice(id);
+            if (!freenect2_device)
+            {
+              LogError("Could not open device " + std::string(uri));
+              return NULL;
+            }
+            DeviceImpl* device = new DeviceImpl(id);
+            device->setFreenect2Device(freenect2_device);
             device->setConfigStrings(config);
             iter->second = device;
             return device;

@@ -201,11 +201,16 @@ Use your favorite package managers (brew, ports, etc.) to install most if not al
     ```
 * Install CUDA (optional): TODO
 * Install OpenNI2 (optional)
+
+    The old `brewsci/science` Homebrew bottle is no longer downloadable
+    (the hosted archive returns 404), so build OpenNI2 from source:
     ```
-    brew tap brewsci/science
-    brew install openni2
-    export OPENNI2_REDIST=/usr/local/lib/ni2
-    export OPENNI2_INCLUDE=/usr/local/include/ni2
+    git clone https://github.com/structureio/OpenNI2.git
+    cd OpenNI2
+    make release
+    # then point libfreenect2 at the build output, e.g.:
+    export OPENNI2_REDIST=$PWD/Bin/x64-Release
+    export OPENNI2_INCLUDE=$PWD/Include
     ```
 * Build
     ```
