@@ -98,10 +98,13 @@ private:
   size_t buffer_size_;
 
   bool enable_submit_;
+  size_t stalled_transfers_;
+  bool stall_logged_;
 
   static void onTransferCompleteStatic(libusb_transfer *transfer);
 
   void onTransferComplete(Transfer *transfer);
+  void logStallIfComplete();
 };
 
 class BulkTransferPool : public TransferPool
