@@ -37,6 +37,7 @@
 
 #include <string>
 #include <cstring>
+#include <atomic>
 
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -163,6 +164,14 @@ static void fillParamsBuffer(MetalDepthParamsBuffer &dst,
   dst.padding4[0] = dst.padding4[1] = 0.0f;
 }
 
+/** Log-safe NSError description: some APIs return failure without populating
+ *  the error out-parameter, and streaming a NULL C string is undefined. */
+static const char *errorText(NSError *error)
+{
+  const char *desc = error ? [[error localizedDescription] UTF8String] : NULL;
+  return desc ? desc : "unknown error";
+}
+
 /** PIMPL implementation struct holding all Metal objects. */
 class MetalDepthPacketProcessorImpl
 {
@@ -209,6 +218,11 @@ public:
   bool device_initialized;
   bool runtime_ok;
 
+  /* Set by setConfiguration() (caller thread), consumed by run() (processing
+   * thread) so the GPU params buffer is never written while a command buffer
+   * that reads it is in flight. */
+  std::atomic<bool> params_need_upload;
+
   MetalDepthPacketProcessorImpl(const int deviceIndex)
     : device(nil)
     , command_queue(nil)
@@ -236,6 +250,7 @@ public:
     , depth_frame(NULL)
     , device_initialized(false)
     , runtime_ok(true)
+    , params_need_upload(false)
   {
     device_initialized = init(deviceIndex);
     if(device_initialized)
@@ -322,7 +337,7 @@ public:
       if(lib)
         return lib;
       LOG_ERROR << "MetalDepthPacketProcessor: failed to load embedded Metal library: "
-                << [[error localizedDescription] UTF8String];
+                << errorText(error);
     }
     else
     {
@@ -388,8 +403,8 @@ public:
       if(!allocateBuffers())
         return false;
 
-      /* Parameters only change via setConfiguration(), which re-uploads;
-       * no need to touch buf_params per frame. */
+      /* Parameters only change via setConfiguration(), which flags run() to
+       * re-upload; no need to touch buf_params per frame. */
       uploadParams();
 
       return true;
@@ -411,7 +426,7 @@ public:
     if(!pipeline_stage1)
     {
       LOG_ERROR << "MetalDepthPacketProcessor: failed to build processPixelStage1 pipeline: "
-                << [[error localizedDescription] UTF8String];
+                << errorText(error);
       return false;
     }
 
@@ -425,7 +440,7 @@ public:
     if(!pipeline_filter_stage1)
     {
       LOG_ERROR << "MetalDepthPacketProcessor: failed to build filterPixelStage1 pipeline: "
-                << [[error localizedDescription] UTF8String];
+                << errorText(error);
       return false;
     }
 
@@ -439,7 +454,7 @@ public:
     if(!pipeline_stage2)
     {
       LOG_ERROR << "MetalDepthPacketProcessor: failed to build processPixelStage2 pipeline: "
-                << [[error localizedDescription] UTF8String];
+                << errorText(error);
       return false;
     }
 
@@ -453,7 +468,7 @@ public:
     if(!pipeline_filter_stage2)
     {
       LOG_ERROR << "MetalDepthPacketProcessor: failed to build filterPixelStage2 pipeline: "
-                << [[error localizedDescription] UTF8String];
+                << errorText(error);
       return false;
     }
 
@@ -513,13 +528,18 @@ public:
   }
 
   /** Dispatch one compute pass, one thread per pixel over the 512x424 image. */
-  void dispatchKernel(id<MTLComputeCommandEncoder> enc)
+  void dispatchKernel(id<MTLComputeCommandEncoder> enc,
+                      id<MTLComputePipelineState> pso)
   {
-    /* IMAGE_SIZE is divisible by 64, so a uniform threadgroup dispatch covers
-     * the grid exactly. Every Metal GPU supports at least 64 threads per
-     * threadgroup, and unlike dispatchThreads: this does not require
-     * non-uniform threadgroup support. */
-    const NSUInteger tg_size = 64;
+    /* Uniform threadgroup dispatch (unlike dispatchThreads: this does not
+     * require non-uniform threadgroup support). The per-pipeline
+     * maxTotalThreadsPerThreadgroup can drop below the device limit under
+     * register pressure, so clamp to it, keeping a power of two: IMAGE_SIZE
+     * (2^12 * 53) divides evenly by any power of two up to 4096. */
+    NSUInteger tg_size = 64;
+    const NSUInteger max_tg = [pso maxTotalThreadsPerThreadgroup];
+    while(tg_size > 1 && tg_size > max_tg)
+      tg_size /= 2;
     MTLSize threads_per_tg = MTLSizeMake(tg_size, 1, 1);
     MTLSize threadgroups = MTLSizeMake(IMAGE_SIZE / tg_size, 1, 1);
     [enc dispatchThreadgroups:threadgroups threadsPerThreadgroup:threads_per_tg];
@@ -539,6 +559,18 @@ public:
   {
     @autoreleasepool
     {
+      /* Apply a pending setConfiguration() here, on the processing thread,
+       * where no command buffer reading these buffers is in flight. */
+      if(params_need_upload.exchange(false))
+      {
+        uploadParams();
+        /* filterPixelStage1 is edge_test's only writer; when the bilateral
+         * filter is off it no longer runs, so restore the pass-through mask
+         * instead of leaving the last bilateral frame's edge flags behind. */
+        if(!config.EnableBilateralFilter)
+          memset([buf_edge_test contents], 1, IMAGE_SIZE);
+      }
+
       /* Upload raw packet data (zero-copy on unified memory). */
       memcpy([buf_packet contents], packet.buffer, MIN(packet.buffer_length, [buf_packet length]));
 
@@ -564,7 +596,7 @@ public:
         [enc setBuffer:buf_n         offset:0 atIndex:6];
         [enc setBuffer:buf_ir        offset:0 atIndex:7];
         [enc setBuffer:buf_params    offset:0 atIndex:8];
-        dispatchKernel(enc);
+        dispatchKernel(enc, pipeline_stage1);
         [enc endEncoding];
       }
 
@@ -582,7 +614,7 @@ public:
         [enc setBuffer:buf_b_filtered  offset:0 atIndex:4];
         [enc setBuffer:buf_edge_test   offset:0 atIndex:5];
         [enc setBuffer:buf_params      offset:0 atIndex:6];
-        dispatchKernel(enc);
+        dispatchKernel(enc, pipeline_filter_stage1);
         [enc endEncoding];
       }
 
@@ -602,7 +634,7 @@ public:
         [enc setBuffer:buf_depth   offset:0 atIndex:4];
         [enc setBuffer:buf_ir_sum  offset:0 atIndex:5];
         [enc setBuffer:buf_params  offset:0 atIndex:6];
-        dispatchKernel(enc);
+        dispatchKernel(enc, pipeline_stage2);
         [enc endEncoding];
       }
 
@@ -618,7 +650,7 @@ public:
         [enc setBuffer:buf_edge_test  offset:0 atIndex:2];
         [enc setBuffer:buf_filtered   offset:0 atIndex:3];
         [enc setBuffer:buf_params     offset:0 atIndex:4];
-        dispatchKernel(enc);
+        dispatchKernel(enc, pipeline_filter_stage2);
         [enc endEncoding];
       }
 
@@ -629,7 +661,7 @@ public:
       if([cmd status] == MTLCommandBufferStatusError)
       {
         LOG_ERROR << "MetalDepthPacketProcessor: command buffer execution error: "
-                  << [[[cmd error] localizedDescription] UTF8String];
+                  << errorText([cmd error]);
         return false;
       }
 
@@ -665,8 +697,9 @@ void MetalDepthPacketProcessor::setConfiguration(const libfreenect2::DepthPacket
 {
   DepthPacketProcessor::setConfiguration(config);
   impl_->config = config;
-  if(impl_->device_initialized)
-    impl_->uploadParams();
+  /* Defer the GPU upload to run() on the processing thread — writing
+   * buf_params here would race with an in-flight command buffer. */
+  impl_->params_need_upload = true;
 }
 
 void MetalDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char *buffer,
