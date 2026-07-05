@@ -36,6 +36,10 @@ Watch the [libfreenect2 wiki](https://github.com/OpenKinect/libfreenect2/wiki) a
 
 The API reference documentation is provided here https://openkinect.github.io/libfreenect2/.
 
+Additional guides in this repository:
+
+* [Depth accuracy and calibration](doc/depth_accuracy.md)
+
 ## Requirements
 
 ### Hardware requirements
