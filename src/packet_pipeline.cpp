@@ -93,12 +93,14 @@ void PacketPipelineComponents::initialize(RgbPacketProcessor *rgb, DepthPacketPr
 
 PacketPipelineComponents::~PacketPipelineComponents()
 {
+  // Parsers first: their destructors return held buffers to the async
+  // processors' allocators, so those must still be alive.
+  delete rgb_parser_;
+  delete depth_parser_;
   delete async_rgb_processor_;
   delete async_depth_processor_;
   delete rgb_processor_;
   delete depth_processor_;
-  delete rgb_parser_;
-  delete depth_parser_;
 }
 
 PacketPipeline::PacketPipeline(): comp_(new PacketPipelineComponents()) {}

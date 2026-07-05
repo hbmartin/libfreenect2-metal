@@ -76,6 +76,7 @@ private:
   uint32_t processed_packets_;
   uint32_t current_sequence_;
   uint32_t current_subsequence_;
+  bool null_buffer_logged_;
 };
 
 } /* namespace libfreenect2 */

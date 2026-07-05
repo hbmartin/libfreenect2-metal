@@ -70,6 +70,11 @@ IF(ENABLE_OPENGL)
       ${OPENGL_gl_LIBRARY}
     )
     ADD_DEFINITIONS(-DEXAMPLES_WITH_OPENGL_SUPPORT=1)
+  ELSE()
+    MESSAGE(WARNING
+      "GLFW3 or OpenGL was not found: Protonect will be built WITHOUT the "
+      "viewer and will only log received frames. Install GLFW (e.g. 'brew "
+      "install glfw' on macOS) and re-run cmake to get the display window.")
   ENDIF()
 ENDIF(ENABLE_OPENGL)
 

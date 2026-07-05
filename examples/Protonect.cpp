@@ -351,6 +351,11 @@ int main(int argc, char *argv[])
   if (viewer_enabled)
     viewer.initialize();
 #else
+  if (viewer_enabled)
+    std::cout << "Protonect was built without the viewer (GLFW/OpenGL was "
+                 "not found at build time); frames will only be counted. "
+                 "Install GLFW and rebuild to get the display window."
+              << std::endl;
   viewer_enabled = false;
 #endif
 

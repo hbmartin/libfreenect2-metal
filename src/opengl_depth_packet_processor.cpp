@@ -866,16 +866,13 @@ OpenGLDepthPacketProcessor::OpenGLDepthPacketProcessor(void *parent_opengl_conte
   }
   
   // setup context
+  // Request 3.3 core on all platforms: the example viewer's shaders need
+  // GLSL 3.30, which a 3.1 context does not guarantee (e.g. Mesa llvmpipe).
   glfwDefaultWindowHints();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-#ifdef __APPLE__
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-#else
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
-#endif
   glfwWindowHint(GLFW_VISIBLE, debug ? GL_TRUE : GL_FALSE);
 
   GLFWwindow* window = glfwCreateWindow(1024, 848, "OpenGLDepthPacketProcessor", 0, parent_window);

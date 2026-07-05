@@ -70,6 +70,7 @@ RgbPacketStreamParser::RgbPacketStreamParser() :
 
 RgbPacketStreamParser::~RgbPacketStreamParser()
 {
+  processor_->releaseBuffer(packet_);
 }
 
 void RgbPacketStreamParser::setPacketProcessor(BaseRgbPacketProcessor *processor)

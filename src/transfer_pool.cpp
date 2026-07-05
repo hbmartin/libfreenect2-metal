@@ -42,7 +42,9 @@ TransferPool::TransferPool(libusb_device_handle* device_handle, unsigned char de
     device_endpoint_(device_endpoint),
     buffer_(0),
     buffer_size_(0),
-    enable_submit_(false)
+    enable_submit_(false),
+    stalled_transfers_(0),
+    stall_logged_(false)
 {
 }
 
@@ -89,6 +91,9 @@ bool TransferPool::submit()
     LOG_WARNING << "transfer submission disabled!";
     return false;
   }
+
+  stalled_transfers_ = 0;
+  stall_logged_ = false;
 
   size_t failcount = 0;
   for(size_t i = 0; i < transfers_.size(); ++i)
@@ -186,6 +191,24 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
     return;
   }
 
+  if(t->transfer->status == LIBUSB_TRANSFER_NO_DEVICE)
+  {
+    // the device is gone; resubmitting can never succeed
+    if(stalled_transfers_ == 0)
+      LOG_ERROR << "usb transfer failed: device disconnected";
+    t->setStopped(true);
+    stalled_transfers_++;
+    logStallIfComplete();
+    return;
+  }
+
+  if(t->transfer->status != LIBUSB_TRANSFER_COMPLETED)
+  {
+    // transient errors (timeout, io, overflow) happen under bus pressure;
+    // the transfer is resubmitted below, so only note it at debug level
+    LOG_DEBUG << "usb transfer status " << t->transfer->status << ", resubmitting";
+  }
+
   // process data
   processTransfer(t->transfer);
 
@@ -195,13 +218,39 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
     return;
   }
 
-  // resubmit self
-  int r = libusb_submit_transfer(t->transfer);
+  // resubmit self, retrying transient failures a few times before giving
+  // up on this transfer
+  int r = LIBUSB_SUCCESS;
+  for(int attempt = 0; attempt < 3; ++attempt)
+  {
+    r = libusb_submit_transfer(t->transfer);
+    if(r == LIBUSB_SUCCESS)
+      break;
+    if(r == LIBUSB_ERROR_NO_DEVICE || r == LIBUSB_ERROR_NOT_FOUND)
+      break;
+  }
 
   if(r != LIBUSB_SUCCESS)
   {
     LOG_ERROR << "failed to submit transfer: " << WRITE_LIBUSB_ERROR(r);
     t->setStopped(true);
+    stalled_transfers_++;
+    logStallIfComplete();
+  }
+}
+
+void TransferPool::logStallIfComplete()
+{
+  if(!stall_logged_ && enable_submit_ && stalled_transfers_ >= transfers_.size())
+  {
+    stall_logged_ = true;
+    LOG_ERROR << "all usb transfers on endpoint 0x" << std::hex
+              << int(device_endpoint_) << std::dec
+              << " have stopped; the stream is stalled. Stop and close the "
+                 "device, then reopen it (replug or reset the Kinect if "
+                 "reopening fails). Common causes: USB3 bandwidth "
+                 "or power limits, flaky cables/adapters, or VM USB "
+                 "passthrough.";
   }
 }
 

@@ -59,7 +59,13 @@ public:
 
   virtual ~AsyncPacketProcessor()
   {
-    shutdown_ = true;
+    {
+      // Hold the mutex so the worker cannot miss the notification between
+      // checking shutdown_ and blocking on the condition variable, which
+      // would deadlock thread_.join().
+      libfreenect2::lock_guard l(packet_mutex_);
+      shutdown_ = true;
+    }
     packet_condition_.notify_one();
 
     thread_.join();
@@ -149,6 +155,13 @@ private:
 
         current_packet_available_ = false;
       }
+    }
+
+    // return a packet that was queued but never processed before shutdown
+    if(current_packet_available_)
+    {
+      releaseBuffer(current_packet_);
+      current_packet_available_ = false;
     }
   }
 };

@@ -37,7 +37,8 @@ DepthPacketStreamParser::DepthPacketStreamParser() :
     processor_(noopProcessor<DepthPacket>()),
     processed_packets_(-1),
     current_sequence_(0),
-    current_subsequence_(0)
+    current_subsequence_(0),
+    null_buffer_logged_(false)
 {
   size_t single_image = 512*424*11/8;
   buffer_size_ = 10 * single_image;
@@ -51,6 +52,7 @@ DepthPacketStreamParser::DepthPacketStreamParser() :
 
 DepthPacketStreamParser::~DepthPacketStreamParser()
 {
+  processor_->releaseBuffer(packet_);
   delete[] work_buffer_.data;
 }
 
@@ -59,13 +61,22 @@ void DepthPacketStreamParser::setPacketProcessor(libfreenect2::BaseDepthPacketPr
   processor_->releaseBuffer(packet_);
   processor_ = (processor != 0) ? processor : noopProcessor<DepthPacket>();
   processor_->allocateBuffer(packet_, buffer_size_);
+  null_buffer_logged_ = false;
 }
 
 void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_length)
 {
   if (packet_.memory == NULL || packet_.memory->data == NULL)
   {
-    LOG_ERROR << "Packet buffer is NULL";
+    // Log the diagnosis once instead of spamming at USB transfer rate.
+    if (!null_buffer_logged_)
+    {
+      LOG_ERROR << "Packet buffer is NULL. The depth packet processor could "
+                   "not provide a buffer, usually because the selected "
+                   "pipeline failed to initialize; check errors above and "
+                   "try another pipeline (e.g. LIBFREENECT2_PIPELINE=cpu).";
+      null_buffer_logged_ = true;
+    }
     return;
   }
   Buffer &wb = work_buffer_;
@@ -102,6 +113,13 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
       if(footer->length != wb.length)
       {
         LOG_DEBUG << "image data too short!";
+      }
+      else if(footer->subsequence >= 10)
+      {
+        // A packet has exactly 10 subsequences (see the 0x3ff completeness
+        // mask). A corrupted footer with a larger value would shift out of
+        // the mask and index far outside the front buffer.
+        LOG_DEBUG << "invalid subsequence number " << footer->subsequence;
       }
       else
       {
@@ -150,13 +168,17 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
         // set the bit corresponding to the subsequence number to 1
         current_subsequence_ |= 1 << footer->subsequence;
 
-        if(footer->subsequence * footer->length > fb.capacity)
+        // 64-bit arithmetic: subsequence * length can overflow 32 bits with
+        // a corrupted footer, and the copied range must end inside the
+        // front buffer.
+        uint64_t offset = static_cast<uint64_t>(footer->subsequence) * footer->length;
+        if(offset + footer->length > fb.capacity)
         {
           LOG_DEBUG << "front buffer too short! subsequence number is " << footer->subsequence;
         }
         else
         {
-          memcpy(fb.data + (footer->subsequence * footer->length), wb.data + (wb.length - footer->length), footer->length);
+          memcpy(fb.data + offset, wb.data + (wb.length - footer->length), footer->length);
         }
       }
 

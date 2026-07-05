@@ -32,9 +32,19 @@ This driver supports:
 Missing features:
 * firmware updates (see [issue #460](https://github.com/OpenKinect/libfreenect2/issues/460) for WiP)
 
-Watch the OpenKinect wiki at www.openkinect.org and the mailing list at https://groups.google.com/forum/#!forum/openkinect for the latest developments and more information about the K4W2 USB protocol.
+Watch the [libfreenect2 wiki](https://github.com/OpenKinect/libfreenect2/wiki) and the mailing list at https://groups.google.com/forum/#!forum/openkinect for the latest developments and more information about the K4W2 USB protocol. (The former openkinect.org domain has lapsed and now serves unrelated ads — do not use it.)
 
 The API reference documentation is provided here https://openkinect.github.io/libfreenect2/.
+
+Additional guides in this repository:
+
+* [Depth accuracy and calibration](doc/depth_accuracy.md)
+* [Using the Kinect v2 as a webcam](doc/webcam.md)
+* [Using libfreenect2 from Python](doc/python.md)
+* [Registration and coordinate mapping recipes](doc/registration.md)
+* [FAQ](doc/faq.md)
+* [Recording, replay, and multiple Kinects](doc/recording_replay.md)
+* [Runtime configuration reference](doc/configuration.md)
 
 ## Requirements
 
@@ -131,7 +141,7 @@ When you report USB issues, please attach relevant debug log from running the pr
     1. Download CUDA Toolkit and install it. You MUST install the samples too.
 * Install OpenNI2 (optional)
 
-    Download OpenNI 2.2.0.33 (x64) from http://structure.io/openni, install it to default locations (`C:\Program Files...`).
+    Download OpenNI 2.2.0.33 (x64) from https://github.com/structureio/OpenNI2/releases (the former structure.io/openni download page is gone), install it to default locations (`C:\Program Files...`).
 * Build
 
     The default installation path is `install`, you may change it by editing `CMAKE_INSTALL_PREFIX`.
@@ -160,6 +170,27 @@ The libfreenect2 port in vcpkg is kept up to date by Microsoft team members and 
 
 ### MacOS
 
+#### Apple Silicon (M1 and later)
+
+Native arm64 builds are supported. The most common failure mode is an
+architecture mismatch between the build and the installed libraries
+("building for macOS-x86_64 but attempting to link with file built for
+macOS-arm64", or many missing libusb/GLFW symbols at link time). CMake now
+detects this at configure time and stops with instructions. To avoid it:
+
+* Use a native arm64 terminal (run `arch`; it must print `arm64`, not
+  `i386`). A shell, IDE, or CMake launched under Rosetta produces x86_64
+  builds that cannot link Homebrew's arm64 libraries in `/opt/homebrew`.
+* Use the matching Homebrew prefix: `/opt/homebrew` on Apple Silicon,
+  `/usr/local` on Intel. If CMake picks the wrong one, pass
+  `-DCMAKE_PREFIX_PATH=/opt/homebrew`.
+* Do not force `-DCMAKE_OSX_ARCHITECTURES=x86_64` unless all dependencies
+  are also x86_64.
+
+On Apple Silicon the `metal` pipeline is available for GPU depth processing,
+and RGB decoding uses TurboJPEG by default (VideoToolbox is disabled there,
+see `ENABLE_VIDEOTOOLBOX` in CMakeLists.txt).
+
 Use your favorite package managers (brew, ports, etc.) to install most if not all dependencies:
 
 * Make sure these build tools are available: wget, git, cmake, pkg-config. Xcode may provide some of them. Install the rest via package managers.
@@ -180,11 +211,16 @@ Use your favorite package managers (brew, ports, etc.) to install most if not al
     ```
 * Install CUDA (optional): TODO
 * Install OpenNI2 (optional)
+
+    The old `brewsci/science` Homebrew bottle is no longer downloadable
+    (the hosted archive returns 404), so build OpenNI2 from source:
     ```
-    brew tap brewsci/science
-    brew install openni2
-    export OPENNI2_REDIST=/usr/local/lib/ni2
-    export OPENNI2_INCLUDE=/usr/local/include/ni2
+    git clone https://github.com/structureio/OpenNI2.git
+    cd OpenNI2
+    make release
+    # then point libfreenect2 at the build output, e.g.:
+    export OPENNI2_REDIST=$PWD/Bin/x64-Release
+    export OPENNI2_INCLUDE=$PWD/Include
     ```
 * Build
     ```

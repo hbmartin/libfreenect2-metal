@@ -29,6 +29,7 @@
 #include <libfreenect2/rgb_packet_processor.h>
 #include <libfreenect2/logging.h>
 #include <turbojpeg.h>
+#include <cstdlib>
 
 namespace libfreenect2
 {
@@ -42,12 +43,27 @@ public:
 
   Frame *frame;
 
+  int flags;
+
   TurboJpegRgbPacketProcessorImpl()
   {
     decompressor = tjInitDecompress();
     if(decompressor == 0)
     {
       LOG_ERROR << "Failed to initialize TurboJPEG decompressor! TurboJPEG error: '" << tjGetErrorStr() << "'";
+    }
+
+    // Optional fast decoding paths. TJFLAG_FASTDCT and TJFLAG_FASTUPSAMPLE
+    // trade a slight (typically invisible) quality loss for a measurably
+    // faster decode, which matters on machines where TurboJPEG is the
+    // default full-rate 1080p RGB decoder (e.g. Apple Silicon, where
+    // VideoToolbox is disabled).
+    flags = 0;
+    const char *fast = std::getenv("LIBFREENECT2_TJ_FAST");
+    if(fast && *fast != '0')
+    {
+      flags |= TJFLAG_FASTDCT | TJFLAG_FASTUPSAMPLE;
+      LOG_INFO << "TurboJPEG fast decoding enabled (LIBFREENECT2_TJ_FAST)";
     }
 
     newFrame();
@@ -95,7 +111,7 @@ void TurboJpegRgbPacketProcessor::process(const RgbPacket &packet)
     impl_->frame->gain = packet.gain;
     impl_->frame->gamma = packet.gamma;
 
-    int r = tjDecompress2(impl_->decompressor, packet.jpeg_buffer, packet.jpeg_buffer_length, impl_->frame->data, 1920, 1920 * tjPixelSize[TJPF_BGRX], 1080, TJPF_BGRX, 0);
+    int r = tjDecompress2(impl_->decompressor, packet.jpeg_buffer, packet.jpeg_buffer_length, impl_->frame->data, 1920, 1920 * tjPixelSize[TJPF_BGRX], 1080, TJPF_BGRX, impl_->flags);
 
     impl_->stopTiming(LOG_INFO);
 

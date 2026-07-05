@@ -23,16 +23,13 @@ void Viewer::initialize()
       glfwSetErrorCallback(prev_func);
 
     // setup context
+    // The shaders below need GLSL 3.30, so request an OpenGL 3.3 core
+    // profile on all platforms instead of 3.1 any-profile.
     glfwDefaultWindowHints();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-#ifdef __APPLE__
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-#else
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
-#endif
     //glfwWindowHint(GLFW_VISIBLE, debug ? GL_TRUE : GL_FALSE);
 
     window = glfwCreateWindow(win_width*2, win_height*2, "Viewer (press ESC to exit)", 0, NULL);

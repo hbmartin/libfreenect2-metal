@@ -533,8 +533,6 @@ public:
             {
               unsigned char buffer[1024];
               r = libusb_get_string_descriptor_ascii(dev_handle, dev_desc.iSerialNumber, buffer, sizeof(buffer));
-              // keep the ref until determined not kinect
-              libusb_ref_device(dev);
               libusb_close(dev_handle);
 
               if(r > LIBUSB_SUCCESS)
@@ -545,12 +543,13 @@ public:
 
                 LOG_INFO << "found valid Kinect v2 " << PrintBusAndDevice(dev) << " with serial " << dev_with_serial.serial;
                 // valid Kinect v2
+                // The device list reference is transferred to enumerated_devices_
+                // and released in clearDeviceEnumeration().
                 enumerated_devices_.push_back(dev_with_serial);
                 continue;
               }
               else
               {
-                libusb_unref_device(dev);
                 LOG_ERROR << "failed to get serial number of Kinect v2: " << PrintBusAndDevice(dev, r);
               }
             }
@@ -1123,12 +1122,14 @@ PacketPipeline *createDefaultPacketPipeline()
       LOG_WARNING << "`" << pipeline_env << "' pipeline is not available.";
   }
 
-#if defined(LIBFREENECT2_WITH_OPENGL_SUPPORT)
+#if defined(LIBFREENECT2_WITH_METAL_SUPPORT)
+  // Metal is the native GPU API on Apple platforms, where OpenGL is
+  // deprecated; prefer it when built in.
+  return new MetalPacketPipeline();
+#elif defined(LIBFREENECT2_WITH_OPENGL_SUPPORT)
   return new OpenGLPacketPipeline();
 #elif defined(LIBFREENECT2_WITH_CUDA_SUPPORT)
   return new CudaPacketPipeline();
-#elif defined(LIBFREENECT2_WITH_METAL_SUPPORT)
-  return new MetalPacketPipeline();
 #elif defined(LIBFREENECT2_WITH_OPENCL_SUPPORT)
   return new OpenCLPacketPipeline();
 #else
