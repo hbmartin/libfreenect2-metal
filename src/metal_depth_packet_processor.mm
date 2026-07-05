@@ -28,13 +28,14 @@
 
 #include <libfreenect2/depth_packet_processor.h>
 #include <libfreenect2/protocol/response.h>
+#include <libfreenect2/resource.h>
 #include <libfreenect2/logging.h>
 
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
+#include <dispatch/dispatch.h>
 
 #include <string>
-#include <dlfcn.h>
 #include <cstring>
 
 #define _USE_MATH_DEFINES
@@ -208,7 +209,7 @@ public:
   bool device_initialized;
   bool runtime_ok;
 
-  MetalDepthPacketProcessorImpl()
+  MetalDepthPacketProcessorImpl(const int deviceIndex)
     : device(nil)
     , command_queue(nil)
     , pipeline_stage1(nil)
@@ -236,7 +237,7 @@ public:
     , device_initialized(false)
     , runtime_ok(true)
   {
-    device_initialized = init();
+    device_initialized = init(deviceIndex);
     if(device_initialized)
     {
       newIrFrame();
@@ -302,42 +303,34 @@ public:
     return buf;
   }
 
-  /** Locate the compiled Metal library alongside the running dylib.
+  /** Load the compiled Metal library.
    *
-   *  Strategy: walk up the dylib path to find the build/install directory,
-   *  then look for default.metallib next to it or in a known relative path.
-   *  Falls back to the executable's bundle or current working directory. */
+   *  The metallib is embedded into the binary at build time (like the OpenCL
+   *  and OpenGL kernels), so it is available regardless of where the library
+   *  is installed or how it is linked. */
   id<MTLLibrary> loadMetalLibrary()
   {
     NSError *error = nil;
     id<MTLLibrary> lib = nil;
 
-    /* 1. Try to load from the same directory as this dylib. */
-    Dl_info info;
-    if(dladdr((void *)&loadMetalLibrary_stub, &info) && info.dli_fname)
+    const unsigned char *data = NULL;
+    size_t length = 0;
+    if(loadResource("metal_depth_packet_processor.metallib", &data, &length))
     {
-      NSString *dylib_path = [NSString stringWithUTF8String:info.dli_fname];
-      NSString *dylib_dir = [dylib_path stringByDeletingLastPathComponent];
-      NSString *metallib_path = [dylib_dir stringByAppendingPathComponent:@"default.metallib"];
-
-      lib = [device newLibraryWithURL:[NSURL fileURLWithPath:metallib_path] error:&error];
+      dispatch_data_t ddata = dispatch_data_create(data, length, NULL, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+      lib = [device newLibraryWithData:ddata error:&error];
       if(lib)
-      {
-        LOG_INFO << "MetalDepthPacketProcessor: loaded Metal library from " << [metallib_path UTF8String];
         return lib;
-      }
+      LOG_ERROR << "MetalDepthPacketProcessor: failed to load embedded Metal library: "
+                << [[error localizedDescription] UTF8String];
     }
-
-    /* 2. Try the main bundle (useful when linked into an app). */
-    lib = [device newDefaultLibraryWithBundle:[NSBundle mainBundle] error:&error];
-    if(lib)
+    else
     {
-      LOG_INFO << "MetalDepthPacketProcessor: loaded Metal library from main bundle";
-      return lib;
+      LOG_ERROR << "MetalDepthPacketProcessor: embedded Metal library resource not found.";
     }
 
-    /* 3. Try the default library of the device (works if the .metal was compiled
-     *    into the app target itself). */
+    /* Fallback: the default library of the app bundle (works if the .metal was
+     * compiled into the app target itself). */
     lib = [device newDefaultLibrary];
     if(lib)
     {
@@ -345,20 +338,31 @@ public:
       return lib;
     }
 
-    LOG_ERROR << "MetalDepthPacketProcessor: could not find default.metallib. "
-              << "Make sure it is installed alongside libfreenect2.dylib.";
     return nil;
   }
 
-  /** Dummy static function whose address is used for dladdr dylib path lookup. */
-  static void loadMetalLibrary_stub() {}
-
   /** Initialise the Metal device, command queue, pipelines, and buffers. */
-  bool init()
+  bool init(const int deviceIndex)
   {
     @autoreleasepool
     {
-      device = MTLCreateSystemDefaultDevice();
+      /* A non-negative index selects among all Metal devices (Protonect -gpu=<id>). */
+      if(deviceIndex >= 0)
+      {
+        NSArray<id<MTLDevice>> *devices = MTLCopyAllDevices();
+        if((NSUInteger)deviceIndex < [devices count])
+        {
+          device = devices[deviceIndex];
+        }
+        else
+        {
+          LOG_WARNING << "MetalDepthPacketProcessor: device index " << deviceIndex
+                      << " out of range (" << (unsigned long)[devices count]
+                      << " devices), using default device.";
+        }
+      }
+      if(!device)
+        device = MTLCreateSystemDefaultDevice();
       if(!device)
       {
         LOG_ERROR << "MetalDepthPacketProcessor: no Metal device available.";
@@ -383,6 +387,10 @@ public:
 
       if(!allocateBuffers())
         return false;
+
+      /* Parameters only change via setConfiguration(), which re-uploads;
+       * no need to touch buf_params per frame. */
+      uploadParams();
 
       return true;
     }
@@ -488,6 +496,12 @@ public:
       return false;
     }
 
+    /* filterPixelStage2 reads edge_test even when filterPixelStage1 (its only
+     * writer) is skipped because EnableBilateralFilter is false. Pre-fill with
+     * 1 ("passes edge test") so that configuration sees pass-through behaviour
+     * instead of uninitialized data. */
+    memset([buf_edge_test contents], 1, IMAGE_SIZE);
+
     return true;
   }
 
@@ -498,17 +512,17 @@ public:
     fillParamsBuffer(*dst, params, config);
   }
 
-  /** Dispatch one compute pass using threadgroupsWithRemainder (non-uniform). */
-  void dispatchKernel(id<MTLComputeCommandEncoder> enc,
-                      id<MTLComputePipelineState> pso)
+  /** Dispatch one compute pass, one thread per pixel over the 512x424 image. */
+  void dispatchKernel(id<MTLComputeCommandEncoder> enc)
   {
-    /* One thread per pixel over the 512x424 image. */
-    MTLSize threads_per_grid = MTLSizeMake(IMAGE_SIZE, 1, 1);
-    /* 64-thread threadgroups work well on all Apple GPU generations. */
-    NSUInteger tg_size = MIN(64u, [pso maxTotalThreadsPerThreadgroup]);
+    /* IMAGE_SIZE is divisible by 64, so a uniform threadgroup dispatch covers
+     * the grid exactly. Every Metal GPU supports at least 64 threads per
+     * threadgroup, and unlike dispatchThreads: this does not require
+     * non-uniform threadgroup support. */
+    const NSUInteger tg_size = 64;
     MTLSize threads_per_tg = MTLSizeMake(tg_size, 1, 1);
-    /* Non-uniform dispatch: handles IMAGE_SIZE not divisible by tg_size. */
-    [enc dispatchThreads:threads_per_grid threadsPerThreadgroup:threads_per_tg];
+    MTLSize threadgroups = MTLSizeMake(IMAGE_SIZE / tg_size, 1, 1);
+    [enc dispatchThreadgroups:threadgroups threadsPerThreadgroup:threads_per_tg];
   }
 
   /** Run the full depth processing pipeline for one packet.
@@ -527,9 +541,6 @@ public:
     {
       /* Upload raw packet data (zero-copy on unified memory). */
       memcpy([buf_packet contents], packet.buffer, MIN(packet.buffer_length, [buf_packet length]));
-
-      /* Upload current parameters. */
-      uploadParams();
 
       id<MTLCommandBuffer> cmd = [command_queue commandBuffer];
       if(!cmd)
@@ -553,7 +564,7 @@ public:
         [enc setBuffer:buf_n         offset:0 atIndex:6];
         [enc setBuffer:buf_ir        offset:0 atIndex:7];
         [enc setBuffer:buf_params    offset:0 atIndex:8];
-        dispatchKernel(enc, pipeline_stage1);
+        dispatchKernel(enc);
         [enc endEncoding];
       }
 
@@ -571,7 +582,7 @@ public:
         [enc setBuffer:buf_b_filtered  offset:0 atIndex:4];
         [enc setBuffer:buf_edge_test   offset:0 atIndex:5];
         [enc setBuffer:buf_params      offset:0 atIndex:6];
-        dispatchKernel(enc, pipeline_filter_stage1);
+        dispatchKernel(enc);
         [enc endEncoding];
       }
 
@@ -591,7 +602,7 @@ public:
         [enc setBuffer:buf_depth   offset:0 atIndex:4];
         [enc setBuffer:buf_ir_sum  offset:0 atIndex:5];
         [enc setBuffer:buf_params  offset:0 atIndex:6];
-        dispatchKernel(enc, pipeline_stage2);
+        dispatchKernel(enc);
         [enc endEncoding];
       }
 
@@ -607,7 +618,7 @@ public:
         [enc setBuffer:buf_edge_test  offset:0 atIndex:2];
         [enc setBuffer:buf_filtered   offset:0 atIndex:3];
         [enc setBuffer:buf_params     offset:0 atIndex:4];
-        dispatchKernel(enc, pipeline_filter_stage2);
+        dispatchKernel(enc);
         [enc endEncoding];
       }
 
@@ -640,8 +651,8 @@ public:
 /* MetalDepthPacketProcessor public interface                                  */
 /* -------------------------------------------------------------------------- */
 
-MetalDepthPacketProcessor::MetalDepthPacketProcessor(const int /*deviceIndex*/)
-  : impl_(new MetalDepthPacketProcessorImpl())
+MetalDepthPacketProcessor::MetalDepthPacketProcessor(const int deviceIndex)
+  : impl_(new MetalDepthPacketProcessorImpl(deviceIndex))
 {
 }
 
@@ -654,7 +665,8 @@ void MetalDepthPacketProcessor::setConfiguration(const libfreenect2::DepthPacket
 {
   DepthPacketProcessor::setConfiguration(config);
   impl_->config = config;
-  /* Re-upload parameters on next process() call via uploadParams(). */
+  if(impl_->device_initialized)
+    impl_->uploadParams();
 }
 
 void MetalDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char *buffer,
