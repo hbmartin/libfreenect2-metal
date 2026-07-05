@@ -44,6 +44,7 @@ Additional guides in this repository:
 * [Registration and coordinate mapping recipes](doc/registration.md)
 * [FAQ](doc/faq.md)
 * [Recording, replay, and multiple Kinects](doc/recording_replay.md)
+* [Runtime configuration reference](doc/configuration.md)
 
 ## Requirements
 

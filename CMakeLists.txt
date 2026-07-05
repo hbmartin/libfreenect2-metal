@@ -648,6 +648,16 @@ INSTALL(DIRECTORY "${PROJECT_BINARY_DIR}/${PROJECT_NAME}" DESTINATION include)
 INSTALL(FILES "${PROJECT_BINARY_DIR}/freenect2Config.cmake" DESTINATION lib/cmake/freenect2/)
 INSTALL(FILES "${PROJECT_BINARY_DIR}/freenect2ConfigVersion.cmake" DESTINATION lib/cmake/freenect2/)
 INSTALL(FILES "${PROJECT_BINARY_DIR}/freenect2.pc" DESTINATION lib/pkgconfig/)
+INSTALL(FILES
+  "${MY_DIR}/README.md"
+  "${MY_DIR}/doc/configuration.md"
+  "${MY_DIR}/doc/depth_accuracy.md"
+  "${MY_DIR}/doc/faq.md"
+  "${MY_DIR}/doc/python.md"
+  "${MY_DIR}/doc/recording_replay.md"
+  "${MY_DIR}/doc/registration.md"
+  "${MY_DIR}/doc/webcam.md"
+  DESTINATION share/doc/${PROJECT_NAME})
 
 ADD_SUBDIRECTORY(${MY_DIR}/doc)
 
