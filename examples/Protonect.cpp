@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
   std::string program_path(argv[0]);
   std::cerr << "Version: " << LIBFREENECT2_VERSION << std::endl;
   std::cerr << "Environment variables: LOGFILE=<protonect.log>" << std::endl;
-  std::cerr << "Usage: " << program_path << " [-gpu=<id>] [gl | cl | clkde | cuda | cudakde | cpu] [<device serial>]" << std::endl;
+  std::cerr << "Usage: " << program_path << " [-gpu=<id>] [gl | cl | clkde | cuda | cudakde | metal | cpu] [<device serial>]" << std::endl;
   std::cerr << "        [-noviewer] [-norgb | -nodepth] [-help] [-version]" << std::endl;
   std::cerr << "        [-frames <number of frames to process>]" << std::endl;
   std::cerr << "To pause and unpause: pkill -USR1 Protonect" << std::endl;
@@ -225,6 +225,15 @@ int main(int argc, char *argv[])
         pipeline = new libfreenect2::CudaKdePacketPipeline(deviceId);
 #else
       std::cout << "CUDA pipeline is not supported!" << std::endl;
+#endif
+    }
+    else if(arg == "metal")
+    {
+#ifdef LIBFREENECT2_WITH_METAL_SUPPORT
+      if(!pipeline)
+        pipeline = new libfreenect2::MetalPacketPipeline(deviceId);
+#else
+      std::cout << "Metal pipeline is not supported!" << std::endl;
 #endif
     }
     else if(arg.find_first_not_of("0123456789") == std::string::npos) //check if parameter could be a serial number

@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8.12.1)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.5)
 
 SET(PROJECT_VER_MAJOR 0)
 SET(PROJECT_VER_MINOR 2)
@@ -41,6 +41,11 @@ OPTION(ENABLE_OPENGL "Enable OpenGL support" ON)
 OPTION(ENABLE_VAAPI "Enable VA-API support" ON)
 OPTION(ENABLE_TEGRAJPEG "Enable Tegra HW JPEG support" ON)
 OPTION(ENABLE_PROFILING "Collect profiling stats (memory consuming)" OFF)
+IF(APPLE)
+  OPTION(ENABLE_METAL "Enable Metal GPU depth processing (Apple platforms)" ON)
+ELSE()
+  OPTION(ENABLE_METAL "Enable Metal GPU depth processing (Apple platforms)" OFF)
+ENDIF()
 
 IF(ENABLE_PROFILING)
   SET(LIBFREENECT2_WITH_PROFILING 1)
@@ -165,9 +170,22 @@ SET(LIBFREENECT2_DLLS
   ${LibUSB_DLL}
 )
 
+# VideoToolbox's VTRgbPacketProcessor causes a hard crash (heap corruption in the
+# threading model) on Apple Silicon, so default it OFF there and fall back to
+# TurboJPEG for RGB decoding. It remains ON for Intel Macs where it works.
+IF(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+  OPTION(ENABLE_VIDEOTOOLBOX "Enable VideoToolbox RGB decoder (crashes on Apple Silicon / M1+, use OFF to force TurboJPEG)" OFF)
+ELSE()
+  OPTION(ENABLE_VIDEOTOOLBOX "Enable VideoToolbox RGB decoder (crashes on Apple Silicon / M1+, use OFF to force TurboJPEG)" ON)
+ENDIF()
+
 SET(HAVE_VideoToolbox "no (Apple only)")
 IF(APPLE)
-  FIND_LIBRARY(VIDEOTOOLBOX_LIBRARY VideoToolbox)
+  IF(ENABLE_VIDEOTOOLBOX)
+    FIND_LIBRARY(VIDEOTOOLBOX_LIBRARY VideoToolbox)
+  ELSE()
+    MESSAGE(STATUS "VideoToolbox disabled by ENABLE_VIDEOTOOLBOX=OFF — using TurboJPEG for RGB (required on Apple Silicon / M1+)")
+  ENDIF()
 
   SET(HAVE_VideoToolbox no)
   IF(VIDEOTOOLBOX_LIBRARY)
@@ -337,6 +355,57 @@ IF(ENABLE_OPENCL)
   ENDIF(OpenCL_FOUND)
 ENDIF(ENABLE_OPENCL)
 
+SET(HAVE_Metal "disabled (non-Apple)")
+IF(APPLE AND ENABLE_METAL)
+  SET(HAVE_Metal no)
+
+  SET(METAL_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/metal_depth_packet_processor.metal")
+  SET(METAL_AIR    "${CMAKE_CURRENT_BINARY_DIR}/metal_depth_packet_processor.air")
+  # Emit the metallib into the library output dir so it sits next to
+  # libfreenect2.dylib — the runtime loader locates it relative to the dylib
+  # (via dladdr), so this makes both the build tree and the install work.
+  SET(METAL_LIB    "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/default.metallib")
+
+  ADD_CUSTOM_COMMAND(
+    OUTPUT ${METAL_AIR}
+    COMMAND xcrun -sdk macosx metal -c ${METAL_SOURCE} -o ${METAL_AIR}
+    DEPENDS ${METAL_SOURCE}
+    COMMENT "Compiling Metal shader to AIR"
+    VERBATIM
+  )
+
+  ADD_CUSTOM_COMMAND(
+    OUTPUT ${METAL_LIB}
+    COMMAND xcrun -sdk macosx metallib ${METAL_AIR} -o ${METAL_LIB}
+    DEPENDS ${METAL_AIR}
+    COMMENT "Linking Metal library"
+    VERBATIM
+  )
+
+  ADD_CUSTOM_TARGET(MetalShaders ALL DEPENDS ${METAL_LIB})
+
+  SET(LIBFREENECT2_WITH_METAL_SUPPORT 1)
+  SET(HAVE_Metal yes)
+
+  LIST(APPEND SOURCES
+    src/metal_depth_packet_processor.mm
+  )
+
+  LIST(APPEND LIBRARIES
+    "-framework Metal"
+    "-framework Foundation"
+  )
+
+  # Mark the .mm file for Objective-C++ compilation (CMake handles this via the
+  # extension, but the explicit property guards against edge cases).
+  SET_SOURCE_FILES_PROPERTIES(src/metal_depth_packet_processor.mm
+    PROPERTIES COMPILE_FLAGS "-x objective-c++"
+  )
+
+  # Install the compiled metallib alongside the dylib.
+  INSTALL(FILES ${METAL_LIB} DESTINATION lib)
+ENDIF(APPLE AND ENABLE_METAL)
+
 SET(HAVE_CUDA disabled)
 IF(ENABLE_CUDA)
   FIND_PACKAGE(CUDA)
@@ -417,6 +486,11 @@ GENERATE_RESOURCES(${RESOURCES_INC_FILE} ${MY_DIR} ${RESOURCES})
 
 ADD_DEFINITIONS(-DRESOURCES_INC)
 ADD_LIBRARY(freenect2 ${SOURCES})
+
+IF(APPLE AND ENABLE_METAL AND LIBFREENECT2_WITH_METAL_SUPPORT)
+  ADD_DEPENDENCIES(freenect2 MetalShaders)
+ENDIF()
+
 SET_TARGET_PROPERTIES(freenect2 PROPERTIES
   CXX_VISIBILITY_PRESET hidden
   VISIBILITY_INLINES_HIDDEN 1

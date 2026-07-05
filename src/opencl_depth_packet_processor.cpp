@@ -251,7 +251,9 @@ public:
     newIrFrame();
     newDepthFrame();
 
+#if !defined(CL_ICDL_VERSION)
     const int CL_ICDL_VERSION = 2;
+#endif
     typedef cl_int (*icdloader_func)(int, size_t, void*, size_t*);
 #ifdef _MSC_VER
 #pragma warning(push)
