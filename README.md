@@ -160,6 +160,27 @@ The libfreenect2 port in vcpkg is kept up to date by Microsoft team members and 
 
 ### MacOS
 
+#### Apple Silicon (M1 and later)
+
+Native arm64 builds are supported. The most common failure mode is an
+architecture mismatch between the build and the installed libraries
+("building for macOS-x86_64 but attempting to link with file built for
+macOS-arm64", or many missing libusb/GLFW symbols at link time). CMake now
+detects this at configure time and stops with instructions. To avoid it:
+
+* Use a native arm64 terminal (run `arch`; it must print `arm64`, not
+  `i386`). A shell, IDE, or CMake launched under Rosetta produces x86_64
+  builds that cannot link Homebrew's arm64 libraries in `/opt/homebrew`.
+* Use the matching Homebrew prefix: `/opt/homebrew` on Apple Silicon,
+  `/usr/local` on Intel. If CMake picks the wrong one, pass
+  `-DCMAKE_PREFIX_PATH=/opt/homebrew`.
+* Do not force `-DCMAKE_OSX_ARCHITECTURES=x86_64` unless all dependencies
+  are also x86_64.
+
+On Apple Silicon the `metal` pipeline is available for GPU depth processing,
+and RGB decoding uses TurboJPEG by default (VideoToolbox is disabled there,
+see `ENABLE_VIDEOTOOLBOX` in CMakeLists.txt).
+
 Use your favorite package managers (brew, ports, etc.) to install most if not all dependencies:
 
 * Make sure these build tools are available: wget, git, cmake, pkg-config. Xcode may provide some of them. Install the rest via package managers.

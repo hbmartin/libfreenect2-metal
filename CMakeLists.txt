@@ -98,6 +98,55 @@ SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 FIND_PACKAGE(PkgConfig)    # try find PKGConfig as it will be used if found
 FIND_PACKAGE(LibUSB REQUIRED)
 
+IF(APPLE)
+  # On Apple Silicon a mismatched toolchain silently configures an x86_64
+  # build against Homebrew's arm64 dylibs in /opt/homebrew (or an arm64 build
+  # against x86_64 dylibs in /usr/local), which only fails deep into the link
+  # step with "building for macOS-x86_64 but attempting to link with file
+  # built for macOS-arm64". Detect that at configure time and fail with an
+  # actionable message instead.
+  FUNCTION(CHECK_APPLE_LIBRARY_ARCH _lib _name)
+    IF(NOT _lib OR NOT EXISTS "${_lib}" OR "${_lib}" MATCHES "\\.(tbd|framework)")
+      RETURN()
+    ENDIF()
+    IF(CMAKE_OSX_ARCHITECTURES)
+      SET(_target_archs ${CMAKE_OSX_ARCHITECTURES})
+    ELSE()
+      SET(_target_archs ${CMAKE_SYSTEM_PROCESSOR})
+    ENDIF()
+    FIND_PROGRAM(LIPO_EXECUTABLE lipo)
+    IF(NOT LIPO_EXECUTABLE)
+      RETURN()
+    ENDIF()
+    EXECUTE_PROCESS(COMMAND ${LIPO_EXECUTABLE} -archs "${_lib}"
+      OUTPUT_VARIABLE _lib_archs OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET RESULT_VARIABLE _lipo_result)
+    IF(NOT _lipo_result EQUAL 0)
+      RETURN()
+    ENDIF()
+    STRING(REPLACE " " ";" _lib_archs "${_lib_archs}")
+    FOREACH(_arch ${_target_archs})
+      IF(_arch STREQUAL "aarch64")
+        SET(_arch arm64)
+      ENDIF()
+      IF(NOT _arch IN_LIST _lib_archs)
+        MESSAGE(FATAL_ERROR
+          "Architecture mismatch: this build targets '${_arch}' but ${_name} "
+          "(${_lib}) only contains '${_lib_archs}'.\n"
+          "On Apple Silicon, Homebrew installs arm64 libraries under "
+          "/opt/homebrew; Intel builds use /usr/local. Fix one of:\n"
+          "  * Use the native toolchain: run cmake from a native (arm64) "
+          "shell, not one launched under Rosetta ('arch' prints the mode).\n"
+          "  * Point CMake at libraries matching your target, e.g. "
+          "-DCMAKE_PREFIX_PATH=/opt/homebrew for arm64.\n"
+          "  * Or cross-build explicitly with -DCMAKE_OSX_ARCHITECTURES=arm64 "
+          "(or x86_64) and matching libraries.")
+      ENDIF()
+    ENDFOREACH()
+  ENDFUNCTION()
+  CHECK_APPLE_LIBRARY_ARCH("${LibUSB_LIBRARIES}" "libusb")
+ENDIF()
+
 # Add includes
 INCLUDE_DIRECTORIES(
   "${MY_DIR}/include"
