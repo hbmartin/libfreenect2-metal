@@ -408,48 +408,104 @@ ENDIF(APPLE AND ENABLE_METAL)
 
 SET(HAVE_CUDA disabled)
 IF(ENABLE_CUDA)
-  FIND_PACKAGE(CUDA)
   SET(HAVE_CUDA no)
-  IF(CUDA_FOUND AND MSVC14 AND CUDA_VERSION VERSION_LESS 8.0)
-    SET(HAVE_CUDA "no (VS2015 not supported)")
-  ELSEIF(CUDA_FOUND)
-    SET(LIBFREENECT2_WITH_CUDA_SUPPORT 1)
-    SET(HAVE_CUDA yes)
 
-    STRING(REPLACE "\\" "/" NVCUDASAMPLES_ROOT "$ENV{NVCUDASAMPLES_ROOT}")
-    STRING(REPLACE "\\" "/" NVCUDASAMPLES8_0_ROOT "$ENV{NVCUDASAMPLES8_0_ROOT}")
-    CUDA_INCLUDE_DIRECTORIES(
-      "${MY_DIR}/include/"
-      "${CUDA_TOOLKIT_ROOT_DIR}/samples/common/inc"
-      "${NVCUDASAMPLES_ROOT}/common/inc"
-      "${NVCUDASAMPLES8_0_ROOT}/common/inc"
-    )
-    SET(CUDA_FLAGS -use_fast_math)
-    IF(NOT MSVC)
-      SET(CUDA_FLAGS "${CUDA_FLAGS} -Xcompiler -fPIC")
+  # NOTE: The CUDA depth processors #include <helper_math.h>, which used to ship
+  # with the CUDA Toolkit under samples/common/inc but is NOT bundled by modern
+  # toolkits (CUDA >= 11). If detection succeeds but the build fails on a missing
+  # helper_math.h, vendor the CUDA samples' Common dir into
+  # depends/cuda-samples/Common (from https://github.com/NVIDIA/cuda-samples) —
+  # both detection paths below add it to the include search.
+
+  # Modern path: first-class CMake CUDA language support (CMake >= 3.18).
+  # Avoids the deprecated FindCUDA module / CUDA_COMPILE machinery and works with
+  # current CUDA toolkits and host compilers. Falls back to legacy FindCUDA below.
+  IF(NOT CMAKE_VERSION VERSION_LESS 3.18)
+    INCLUDE(CheckLanguage)
+    CHECK_LANGUAGE(CUDA)
+    IF(CMAKE_CUDA_COMPILER)
+      ENABLE_LANGUAGE(CUDA)
+      FIND_PACKAGE(CUDAToolkit QUIET)
+      IF(CUDAToolkit_FOUND)
+        SET(LIBFREENECT2_WITH_CUDA_SUPPORT 1)
+        SET(HAVE_CUDA yes)
+        SET(CUDA_VERSION ${CUDAToolkit_VERSION})
+
+        # Broad default architecture set if the user did not pick one.
+        IF(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+          SET(CMAKE_CUDA_ARCHITECTURES 52 60 61 70 75 80 86 89 90)
+        ENDIF()
+
+        INCLUDE_DIRECTORIES(
+          "${MY_DIR}/include/"
+          "${CUDAToolkit_INCLUDE_DIRS}"
+          "${CUDAToolkit_TARGET_DIR}/samples/common/inc"
+          "${DEPENDS_DIR}/cuda-samples/Common"
+        )
+
+        SET_SOURCE_FILES_PROPERTIES(
+          src/cuda_depth_packet_processor.cu
+          src/cuda_kde_depth_packet_processor.cu
+          PROPERTIES COMPILE_OPTIONS "--use_fast_math"
+        )
+
+        LIST(APPEND SOURCES
+          src/cuda_depth_packet_processor.cu
+          src/cuda_kde_depth_packet_processor.cu
+        )
+
+        LIST(APPEND LIBRARIES CUDA::cudart)
+
+        MESSAGE(STATUS "Using native CMake CUDA ${CUDA_VERSION} support")
+      ENDIF()
     ENDIF()
-    IF(HAVE_CXX11 STREQUAL yes AND CUDA_VERSION VERSION_GREATER 7.0)
-      SET(CUDA_FLAGS "${CUDA_FLAGS} -std=c++11")
+  ENDIF()
+
+  # Legacy path: FindCUDA module (CMake < 3.18, or if native detection failed).
+  IF(NOT HAVE_CUDA STREQUAL yes)
+    FIND_PACKAGE(CUDA)
+    IF(CUDA_FOUND AND MSVC14 AND CUDA_VERSION VERSION_LESS 8.0)
+      SET(HAVE_CUDA "no (VS2015 not supported)")
+    ELSEIF(CUDA_FOUND)
+      SET(LIBFREENECT2_WITH_CUDA_SUPPORT 1)
+      SET(HAVE_CUDA yes)
+
+      STRING(REPLACE "\\" "/" NVCUDASAMPLES_ROOT "$ENV{NVCUDASAMPLES_ROOT}")
+      STRING(REPLACE "\\" "/" NVCUDASAMPLES8_0_ROOT "$ENV{NVCUDASAMPLES8_0_ROOT}")
+      CUDA_INCLUDE_DIRECTORIES(
+        "${MY_DIR}/include/"
+        "${CUDA_TOOLKIT_ROOT_DIR}/samples/common/inc"
+        "${NVCUDASAMPLES_ROOT}/common/inc"
+        "${NVCUDASAMPLES8_0_ROOT}/common/inc"
+        "${DEPENDS_DIR}/cuda-samples/Common"
+      )
+      SET(CUDA_FLAGS -use_fast_math)
+      IF(NOT MSVC)
+        SET(CUDA_FLAGS "${CUDA_FLAGS} -Xcompiler -fPIC")
+      ENDIF()
+      IF(HAVE_CXX11 STREQUAL yes AND CUDA_VERSION VERSION_GREATER 7.0)
+        SET(CUDA_FLAGS "${CUDA_FLAGS} -std=c++11")
+      ENDIF()
+
+      SET(OLD_CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+      STRING(REGEX REPLACE "-std=c\\+\\+.." "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+      CUDA_COMPILE(CUDA_OBJECTS
+        src/cuda_depth_packet_processor.cu
+        src/cuda_kde_depth_packet_processor.cu
+        OPTIONS ${CUDA_FLAGS}
+      )
+      SET(CMAKE_CXX_FLAGS "${OLD_CMAKE_CXX_FLAGS}")
+
+      INCLUDE_DIRECTORIES(${CUDA_INCLUDE_DIRS})
+
+      LIST(APPEND SOURCES
+        ${CUDA_OBJECTS}
+      )
+
+      LIST(APPEND LIBRARIES
+        ${CUDA_LIBRARIES}
+      )
     ENDIF()
-
-    SET(OLD_CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    STRING(REGEX REPLACE "-std=c\\+\\+.." "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    CUDA_COMPILE(CUDA_OBJECTS
-      src/cuda_depth_packet_processor.cu
-      src/cuda_kde_depth_packet_processor.cu
-      OPTIONS ${CUDA_FLAGS}
-    )
-    SET(CMAKE_CXX_FLAGS "${OLD_CMAKE_CXX_FLAGS}")
-
-    INCLUDE_DIRECTORIES(${CUDA_INCLUDE_DIRS})
-
-    LIST(APPEND SOURCES
-      ${CUDA_OBJECTS}
-    )
-
-    LIST(APPEND LIBRARIES
-      ${CUDA_LIBRARIES}
-    )
   ENDIF()
 ENDIF(ENABLE_CUDA)
 
