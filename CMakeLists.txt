@@ -362,6 +362,13 @@ IF(ENABLE_OPENGL)
       src/shader/stage1.fs
       src/shader/stage2.fs
     )
+  ELSE()
+    MESSAGE(WARNING
+      "OpenGL support is enabled but GLFW3 or OpenGL was not found; the "
+      "opengl pipeline and the Protonect viewer will NOT be built. Install "
+      "GLFW (e.g. 'brew install glfw' on macOS, 'apt-get install "
+      "libglfw3-dev' on Debian/Ubuntu) or pass -DGLFW_ROOT=<prefix>, then "
+      "re-run cmake. Pass -DENABLE_OPENGL=OFF to silence this warning.")
   ENDIF()
 ENDIF(ENABLE_OPENGL)
 
