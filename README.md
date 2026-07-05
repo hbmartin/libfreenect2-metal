@@ -40,6 +40,7 @@ Additional guides in this repository:
 
 * [Depth accuracy and calibration](doc/depth_accuracy.md)
 * [Using the Kinect v2 as a webcam](doc/webcam.md)
+* [Using libfreenect2 from Python](doc/python.md)
 
 ## Requirements
 
