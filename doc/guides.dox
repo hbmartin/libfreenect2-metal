@@ -1,0 +1,27 @@
+/** @page guides User Guides
+
+Task-oriented recipes and reference material that complement the
+[API reference](modules.html). Each guide distills the most frequently asked
+questions from the upstream issue tracker into a single, self-contained page.
+
+@par Get answers
+- @subpage faq &mdash; mirrored images, IR emitter, log spam, timestamps,
+  color/depth synchronization.
+- @subpage configuration &mdash; the `Config` struct, environment variables,
+  and color-camera controls.
+
+@par Work with the data
+- @subpage registration &mdash; map between color, depth, and 3-D coordinates;
+  build point clouds.
+- @subpage depth_accuracy &mdash; systematic offset, warm-up drift,
+  calibration limits, and how to correct them.
+
+@par Integrate
+- @subpage recording_replay &mdash; capture raw streams, replay them through
+  any pipeline, and run multiple Kinects.
+- @subpage webcam &mdash; bridge the RGB stream into apps that expect a system
+  webcam.
+- @subpage python &mdash; the community Python bindings and the two most common
+  recipes.
+
+*/

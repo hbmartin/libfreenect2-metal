@@ -1,36 +1,21 @@
-@import url(https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Mono:400);
+/* Project-specific tweaks layered on top of doxygen-awesome-css.
+ *
+ * doxygen-awesome exposes its color scheme through CSS custom properties, so
+ * we only override those here. Do not add layout/padding/font rules: the
+ * theme owns the layout, and this stylesheet is loaded last. */
 
-body, table, div, p, dl, table.directory, div.toc li, div.toc h3, div.summary, div.ingroups, .tabsearch, .directory .levels, span.mlabel {
-  font: 400 18px/24px Lato,sans-serif;
-}
-.title, .icon, .navpath li.navelem a, #projectname, #projectbrief, #projectnumber, #powerTip div, .tabs, .tabs2, .tabs3 {
-  font-family: Lato,sans-serif;
-}
-
-#projectname {
-  font-weight: bold;
-}
-
-.icon {
-  height: 100%;
-}
-.title {
-  font-size: 200%;
+html {
+    --primary-color: #1565c0;
+    --primary-dark-color: #0d47a1;
+    --primary-light-color: #5e92f3;
+    --primary-lighter-color: #c9dcf5;
+    --primary-lightest-color: #eaf2fc;
 }
 
-code {
-  font: 400 16px/20px Roboto Mono,monospace;
+html.dark-mode {
+    --primary-color: #5e92f3;
+    --primary-dark-color: #8bb4f7;
+    --primary-light-color: #2b5797;
+    --primary-lighter-color: #1e2a3a;
+    --primary-lightest-color: #16202c;
 }
-pre.fragment, div.line, .params .paramdir {
-  font-family: Roboto Mono,monospace;
-}
-
-p, li {
-  max-width: 50em;
-}
-
-div.contents, #titlearea, div.header, div.navpath ul, .tabs, .tabs2, .tabs3 {
-  padding-left: 5em;
-  padding-right: 5em;
-}
-

@@ -1,4 +1,4 @@
-# Recording, replay, and multiple Kinects
+# Recording, replay, and multiple Kinects {#recording_replay}
 
 ## What exists today
 

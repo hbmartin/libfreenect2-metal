@@ -1,5 +1,5 @@
 Source code: https://github.com/OpenKinect/libfreenect2
-API reference: http://openkinect.github.io/libfreenect2
+API reference: https://hbmartin.github.io/libfreenect2-metal
 
 This release is x64 only with basic features enabled. If you want better performance or extra features, you will have to build it from source.
 

@@ -1,4 +1,4 @@
-# Runtime configuration reference
+# Runtime configuration reference {#configuration}
 
 ## Depth processing configuration (`Freenect2Device::Config`)
 

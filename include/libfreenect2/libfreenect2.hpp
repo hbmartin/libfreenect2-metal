@@ -346,11 +346,11 @@ public:
 
   /** Open device by a collection of stored frame filenames with the specified pipeline.
    * File names non-compliant with the filename format will be skipped.
-   * Filename format: <prefix>_<timestamp>_<sequence>.<suffix>
-   *  <prefix> - a string of the filename, anything
-   *  <timestamp> -- packet timestamp as in pipeline packets
-   *  <sequence> -- frame sequence number in the packet
-   *  <suffix> -- .depth, .jpg, or .jpeg (case sensitive)
+   * Filename format: `<prefix>_<timestamp>_<sequence>.<suffix>`
+   *  - `<prefix>` -- a string of the filename, anything
+   *  - `<timestamp>` -- packet timestamp as in pipeline packets
+   *  - `<sequence>` -- frame sequence number in the packet
+   *  - `<suffix>` -- .depth, .jpg, or .jpeg (case sensitive)
    * @param frame_filenames A list of filenames for stored frames.
    * @param factory New PacketPipeline instance. This is always automatically freed.
    * @return New device object, or NULL on failure

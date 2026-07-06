@@ -1,4 +1,4 @@
-# Using the Kinect v2 as a webcam
+# Using the Kinect v2 as a webcam {#webcam}
 
 A recurring question
 ([#1162](https://github.com/OpenKinect/libfreenect2/issues/1162),

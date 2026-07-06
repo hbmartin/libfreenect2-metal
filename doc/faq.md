@@ -1,4 +1,4 @@
-# Frequently asked questions
+# Frequently asked questions {#faq}
 
 Answers to recurring API questions from the upstream tracker.
 

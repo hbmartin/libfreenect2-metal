@@ -1,4 +1,4 @@
-# Depth accuracy and calibration
+# Depth accuracy and calibration {#depth_accuracy}
 
 This page collects what is known about the accuracy of the depth values
 libfreenect2 produces, and what you can do about it. It consolidates

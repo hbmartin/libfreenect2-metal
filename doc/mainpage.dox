@@ -1,21 +1,32 @@
-/** @mainpage API Reference
+/** @mainpage libfreenect2
 
-Older versions: [0.1](0.1).
+%libfreenect2 is an open source cross-platform driver for the **Kinect for
+Windows v2** (K4W2) sensor. It streams color, infrared, and depth images over
+USB 3.0 and registers color to depth so you can build point clouds &mdash; on
+Linux, Windows, and macOS (including Apple Silicon, with a Metal GPU pipeline).
 
-Introduction
-============
+This documentation is for application developers who want to extract and use
+depth and color images from the Kinect v2. Some understanding of camera
+calibration and 3-D geometry is helpful. Questions not covered here can be
+posted to
+[GitHub issues](https://github.com/hbmartin/libfreenect2-metal/issues).
 
-%libfreenect2 is an open source cross-platform driver for Kinect for Windows v2
-devices. For information on installation and troubleshooting, see the
-[GitHub repository](https://github.com/OpenKinect/libfreenect2).
+Where to start
+==============
 
-This documentation is designed for application developers who want to extract
-and use depth and color images from Kinect v2 for further processing.
-Additional questions and comments not covered by this documentation can be
-posted to [GitHub issues](https://github.com/OpenKinect/libfreenect2/issues).
+- **New here?** Jump to the @ref walkthrough "API walkthrough" below for a
+  guided tour of opening a device and receiving frames.
+- **Installing?** See the build and troubleshooting instructions in the
+  [README](https://github.com/hbmartin/libfreenect2-metal#readme).
+- **Solving a specific problem?** Browse the @subpage guides &mdash;
+  task-oriented recipes for registration, depth accuracy, recording, Python,
+  and more.
+- **Looking up a class?** The [Modules](modules.html) page organizes the API
+  by functionality; [Classes](annotated.html) lists every type.
 
-This documentation may require some understanding on camera calibration and 3-D
-geometry.
+Start with libfreenect2::Freenect2 to enumerate and open devices,
+libfreenect2::SyncMultiFrameListener to receive frames, and
+libfreenect2::Registration to map between color and depth.
 
 Features
 ========
@@ -34,11 +45,14 @@ Features
   production use.
 - Firmware upload. The protocol has been reverse engineered, but use Windows
   for this right now.
-- Example of multiple Kinects.
-- Example utility of dumping image frames.
 - API for on-demand processing.
-- Verification of systematic errors through accurate calibration.
-- Bindings for C, Python, Java, etc.
+- Verification of systematic errors through accurate calibration (see
+  @ref depth_accuracy).
+
+Several long-standing requests are now covered by the @ref guides &mdash;
+recording and replaying raw streams and running @ref recording_replay
+"multiple Kinects", @ref python "Python bindings", and dumping raw frames via
+the `dump` pipeline.
 
 Getting Started
 ===============
@@ -72,7 +86,7 @@ programmers:
 
 You can also see the following walkthrough for the most basic usage.
 
-Walkthrough
+Walkthrough {#walkthrough}
 ===========
 
 Here is an example to walk you through the API. See `examples/Protonect.cpp`

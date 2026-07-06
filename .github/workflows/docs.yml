@@ -1,0 +1,75 @@
+name: Documentation
+
+# Build the Doxygen site and publish it to GitHub Pages.
+#
+# One-time setup: in the repository settings, under Pages, set
+# "Build and deployment" > "Source" to "GitHub Actions". The site is then
+# served at https://<owner>.github.io/libfreenect2/.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'doc/**'
+      - 'include/**'
+      - 'examples/**'
+      - 'README.md'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+# Allow the workflow to deploy to Pages via the GitHub Actions source.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time; don't cancel an in-progress deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Doxygen and configure dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            doxygen graphviz libusb-1.0-0-dev libturbojpeg0-dev
+
+      # Only the CMake configure step and the `doc` target are needed; the
+      # library itself is never compiled, so optional backends are disabled
+      # to keep configuration fast and dependency-free.
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_OPENNI2_DRIVER=OFF \
+            -DENABLE_OPENGL=OFF \
+            -DENABLE_OPENCL=OFF \
+            -DENABLE_CUDA=OFF \
+            -DENABLE_VAAPI=OFF \
+            -DENABLE_TEGRAJPEG=OFF
+
+      - name: Build documentation
+        run: cmake --build build --target doc
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/doc/html
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

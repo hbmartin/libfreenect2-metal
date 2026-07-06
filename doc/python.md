@@ -1,4 +1,4 @@
-# Using libfreenect2 from Python
+# Using libfreenect2 from Python {#python}
 
 Python bindings are a perennial request
 ([#280](https://github.com/OpenKinect/libfreenect2/issues/280)) and most

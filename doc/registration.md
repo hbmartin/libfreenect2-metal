@@ -1,4 +1,4 @@
-# Registration and coordinate mapping recipes
+# Registration and coordinate mapping recipes {#registration}
 
 The `Registration` class answers every "how do I map between color, depth,
 and 3D coordinates" question. This page collects the recipes behind the most
