@@ -100,6 +100,7 @@ private:
   bool enable_submit_;
   size_t stalled_transfers_;
   bool stall_logged_;
+  bool disconnect_logged_;
 
   static void onTransferCompleteStatic(libusb_transfer *transfer);
 

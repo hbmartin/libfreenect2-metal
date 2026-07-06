@@ -1124,9 +1124,18 @@ PacketPipeline *createDefaultPacketPipeline()
 
 #if defined(LIBFREENECT2_WITH_METAL_SUPPORT)
   // Metal is the native GPU API on Apple platforms, where OpenGL is
-  // deprecated; prefer it when built in.
-  return new MetalPacketPipeline();
-#elif defined(LIBFREENECT2_WITH_OPENGL_SUPPORT)
+  // deprecated; prefer it when built in. Fall back to the next pipeline if
+  // no usable Metal device exists at runtime (VM guests, headless CI) —
+  // otherwise every depth packet would be dropped silently.
+  {
+    PacketPipeline *metal = new MetalPacketPipeline();
+    if (metal->getDepthPacketProcessor() && metal->getDepthPacketProcessor()->good())
+      return metal;
+    LOG_WARNING << "Metal depth processing is unavailable on this machine; falling back to the next available pipeline.";
+    delete metal;
+  }
+#endif
+#if defined(LIBFREENECT2_WITH_OPENGL_SUPPORT)
   return new OpenGLPacketPipeline();
 #elif defined(LIBFREENECT2_WITH_CUDA_SUPPORT)
   return new CudaPacketPipeline();

@@ -315,6 +315,9 @@ ENDIF()
 
 SET(HAVE_TurboJPEG no)
 IF(TurboJPEG_FOUND)
+  IF(APPLE)
+    CHECK_APPLE_LIBRARY_ARCH("${TurboJPEG_LIBRARIES}" "turbojpeg")
+  ENDIF()
   SET(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT 1)
   SET(HAVE_TurboJPEG yes)
 
@@ -339,6 +342,15 @@ IF(ENABLE_OPENGL)
   FIND_PACKAGE(OpenGL)
   SET(HAVE_OpenGL no)
   IF(GLFW3_FOUND AND OPENGL_FOUND)
+    IF(APPLE)
+      # GLFW3_LIBRARIES is the imported target name on the config-package
+      # path; resolve it to a file the lipo check can inspect.
+      SET(_glfw3_arch_check_lib "${GLFW3_LIBRARIES}")
+      IF(TARGET glfw)
+        GET_TARGET_PROPERTY(_glfw3_arch_check_lib glfw LOCATION)
+      ENDIF()
+      CHECK_APPLE_LIBRARY_ARCH("${_glfw3_arch_check_lib}" "glfw")
+    ENDIF()
     SET(LIBFREENECT2_WITH_OPENGL_SUPPORT 1)
     SET(HAVE_OpenGL yes)
 

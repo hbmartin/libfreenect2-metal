@@ -44,7 +44,8 @@ TransferPool::TransferPool(libusb_device_handle* device_handle, unsigned char de
     buffer_size_(0),
     enable_submit_(false),
     stalled_transfers_(0),
-    stall_logged_(false)
+    stall_logged_(false),
+    disconnect_logged_(false)
 {
 }
 
@@ -94,6 +95,7 @@ bool TransferPool::submit()
 
   stalled_transfers_ = 0;
   stall_logged_ = false;
+  disconnect_logged_ = false;
 
   size_t failcount = 0;
   for(size_t i = 0; i < transfers_.size(); ++i)
@@ -107,6 +109,9 @@ bool TransferPool::submit()
     {
       LOG_ERROR << "failed to submit transfer: " << WRITE_LIBUSB_ERROR(r);
       transfers_[i].setStopped(true);
+      // count it as stalled so logStallIfComplete() still fires if the
+      // remaining transfers die later
+      stalled_transfers_++;
       failcount++;
     }
   }
@@ -193,9 +198,16 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
 
   if(t->transfer->status == LIBUSB_TRANSFER_NO_DEVICE)
   {
+    // deliver any iso packets that completed before the disconnect;
+    // processTransfer() checks per-packet (iso) or whole-transfer (bulk)
+    // completion status itself
+    processTransfer(t->transfer);
     // the device is gone; resubmitting can never succeed
-    if(stalled_transfers_ == 0)
+    if(!disconnect_logged_)
+    {
+      disconnect_logged_ = true;
       LOG_ERROR << "usb transfer failed: device disconnected";
+    }
     t->setStopped(true);
     stalled_transfers_++;
     logStallIfComplete();
@@ -218,17 +230,10 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
     return;
   }
 
-  // resubmit self, retrying transient failures a few times before giving
-  // up on this transfer
-  int r = LIBUSB_SUCCESS;
-  for(int attempt = 0; attempt < 3; ++attempt)
-  {
-    r = libusb_submit_transfer(t->transfer);
-    if(r == LIBUSB_SUCCESS)
-      break;
-    if(r == LIBUSB_ERROR_NO_DEVICE || r == LIBUSB_ERROR_NOT_FOUND)
-      break;
-  }
+  // resubmit self; an immediate retry cannot succeed where this attempt
+  // failed (the conditions that clear a transient submit error require
+  // event-loop progress, which is blocked while this callback runs)
+  int r = libusb_submit_transfer(t->transfer);
 
   if(r != LIBUSB_SUCCESS)
   {
