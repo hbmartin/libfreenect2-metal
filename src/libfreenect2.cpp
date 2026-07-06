@@ -1145,7 +1145,10 @@ PacketPipeline *createDefaultPacketPipeline()
   // available and terminates the chain, so a machine with no usable GPU keeps
   // producing depth instead of dropping every packet (or aborting the process
   // inside a pipeline constructor).
+#if defined(LIBFREENECT2_WITH_METAL_SUPPORT) || defined(LIBFREENECT2_WITH_OPENGL_SUPPORT) \
+ || defined(LIBFREENECT2_WITH_CUDA_SUPPORT) || defined(LIBFREENECT2_WITH_OPENCL_SUPPORT)
   PacketPipeline *pipeline = NULL;
+#endif
 #if defined(LIBFREENECT2_WITH_METAL_SUPPORT)
   // Metal is the native GPU API on Apple platforms, where OpenGL is deprecated.
   if ((pipeline = acceptIfDepthProcessorGood(new MetalPacketPipeline(), "Metal")))
