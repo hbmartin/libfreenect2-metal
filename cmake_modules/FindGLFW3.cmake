@@ -17,19 +17,13 @@ IF(TARGET glfw)
     SET(GLFW3_INCLUDE_DIRS "")
   ENDIF()
   IF(WIN32)
-    # A shared glfw imported target's IMPORTED_LOCATION is glfw3.dll itself;
-    # record it so the DLL-deploy step can copy it next to Protonect.exe.
+    # A shared glfw imported target's file is glfw3.dll itself; record it so
+    # the DLL-deploy step can copy it next to Protonect.exe. Use a generator
+    # expression so a multi-config build deploys the matching configuration's
+    # DLL, rather than freezing one configuration's path at configure time.
     GET_TARGET_PROPERTY(_glfw3_type glfw TYPE)
     IF(_glfw3_type STREQUAL "SHARED_LIBRARY")
-      GET_TARGET_PROPERTY(_glfw3_location glfw IMPORTED_LOCATION)
-      FOREACH(_glfw3_config RELEASE RELWITHDEBINFO MINSIZEREL DEBUG)
-        IF(NOT _glfw3_location)
-          GET_TARGET_PROPERTY(_glfw3_location glfw IMPORTED_LOCATION_${_glfw3_config})
-        ENDIF()
-      ENDFOREACH()
-      IF(_glfw3_location)
-        SET(GLFW3_DLL "${_glfw3_location}")
-      ENDIF()
+      SET(GLFW3_DLL "$<TARGET_FILE:glfw>")
     ENDIF()
   ENDIF()
   SET(GLFW3_FOUND TRUE)

@@ -343,11 +343,20 @@ IF(ENABLE_OPENGL)
   SET(HAVE_OpenGL no)
   IF(GLFW3_FOUND AND OPENGL_FOUND)
     IF(APPLE)
-      # GLFW3_LIBRARIES is the imported target name on the config-package
-      # path; resolve it to a file the lipo check can inspect.
-      SET(_glfw3_arch_check_lib "${GLFW3_LIBRARIES}")
+      # Resolve the glfw target to a file the lipo check can inspect. Only an
+      # IMPORTED target (config package) exposes a LOCATION: reading LOCATION
+      # from a vendored in-tree "glfw" build target is a fatal error under
+      # CMP0026, and such a target is compiled with this project's own
+      # toolchain, so it can never have a mismatched architecture. Skip the
+      # check in that case.
+      SET(_glfw3_arch_check_lib "")
       IF(TARGET glfw)
-        GET_TARGET_PROPERTY(_glfw3_arch_check_lib glfw LOCATION)
+        GET_TARGET_PROPERTY(_glfw3_imported glfw IMPORTED)
+        IF(_glfw3_imported)
+          GET_TARGET_PROPERTY(_glfw3_arch_check_lib glfw LOCATION)
+        ENDIF()
+      ELSE()
+        SET(_glfw3_arch_check_lib "${GLFW3_LIBRARIES}")
       ENDIF()
       CHECK_APPLE_LIBRARY_ARCH("${_glfw3_arch_check_lib}" "glfw")
     ENDIF()

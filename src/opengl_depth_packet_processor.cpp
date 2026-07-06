@@ -512,10 +512,12 @@ public:
     CHECKGL();
   }
 
-  void initialize()
+  /** @return false if the context is too old to use; the caller then leaves
+   *  the processor in a not-good state instead of aborting the process. */
+  bool initialize()
   {
     ChangeCurrentOpenGLContext ctx(opengl_context_ptr);
-    
+
     int major = glfwGetWindowAttrib(opengl_context_ptr, GLFW_CONTEXT_VERSION_MAJOR);
     int minor = glfwGetWindowAttrib(opengl_context_ptr, GLFW_CONTEXT_VERSION_MINOR);
 
@@ -523,7 +525,7 @@ public:
         LOG_ERROR << "OpenGL version 3.1 not supported.";
         LOG_ERROR << "Your version is " << major << "." << minor;
         LOG_ERROR << "Try updating your graphics driver.";
-        exit(-1);
+        return false;
     }
 
     OpenGLBindings *b = new OpenGLBindings();
@@ -660,6 +662,7 @@ public:
     gl()->glVertexAttribPointer(texcoord_attr, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)(2 * sizeof(float)));
     gl()->glEnableVertexAttribArray(texcoord_attr);
     CHECKGL();
+    return true;
   }
 
   void deinitialize()
@@ -851,6 +854,7 @@ public:
 };
 
 OpenGLDepthPacketProcessor::OpenGLDepthPacketProcessor(void *parent_opengl_context_ptr, bool debug)
+  : impl_(NULL)
 {
   GLFWwindow* parent_window = (GLFWwindow *)parent_opengl_context_ptr;
 
@@ -858,13 +862,16 @@ OpenGLDepthPacketProcessor::OpenGLDepthPacketProcessor(void *parent_opengl_conte
   if (prev_func)
     glfwSetErrorCallback(prev_func);
 
-  // init glfw - if already initialized nothing happens
+  // init glfw - if already initialized nothing happens. A failure here (no
+  // window server, headless CI, GPU-less VM) must not abort the host process:
+  // leave impl_ NULL so good() reports false and the caller can fall back to
+  // another pipeline.
   if (glfwInit() == GL_FALSE)
   {
       LOG_ERROR << "Failed to initialize GLFW.";
-      exit(-1);
+      return;
   }
-  
+
   // setup context
   // This hidden context only runs this processor's own GLSL 1.40 shaders
   // (GL >= 3.1, see initialize()). The example viewer's GLSL 3.30 shaders
@@ -888,11 +895,21 @@ OpenGLDepthPacketProcessor::OpenGLDepthPacketProcessor(void *parent_opengl_conte
   if (window == NULL)
   {
       LOG_ERROR << "Failed to create opengl window.";
-      exit(-1);
+      return;
   }
 
-  impl_ = new OpenGLDepthPacketProcessorImpl(window, debug);
-  impl_->initialize();
+  OpenGLDepthPacketProcessorImpl *impl = new OpenGLDepthPacketProcessorImpl(window, debug);
+  if (!impl->initialize())
+  {
+      delete impl;
+      return;
+  }
+  impl_ = impl;
+}
+
+bool OpenGLDepthPacketProcessor::good()
+{
+  return impl_ != NULL;
 }
 
 OpenGLDepthPacketProcessor::~OpenGLDepthPacketProcessor()
@@ -904,6 +921,8 @@ OpenGLDepthPacketProcessor::~OpenGLDepthPacketProcessor()
 void OpenGLDepthPacketProcessor::setConfiguration(const libfreenect2::DepthPacketProcessor::Config &config)
 {
   DepthPacketProcessor::setConfiguration(config);
+  if (!impl_)
+    return;
   impl_->config = config;
 
   impl_->params.min_depth = impl_->config.MinDepth * 1000.0f;
@@ -914,6 +933,8 @@ void OpenGLDepthPacketProcessor::setConfiguration(const libfreenect2::DepthPacke
 
 void OpenGLDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char* buffer, size_t buffer_length)
 {
+  if (!impl_)
+    return;
   ChangeCurrentOpenGLContext ctx(impl_->opengl_context_ptr);
 
   size_t n = 512 * 424;
@@ -938,6 +959,8 @@ void OpenGLDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char* 
 
 void OpenGLDepthPacketProcessor::loadXZTables(const float *xtable, const float *ztable)
 {
+  if (!impl_)
+    return;
   ChangeCurrentOpenGLContext ctx(impl_->opengl_context_ptr);
 
   impl_->x_table.allocate(512, 424);
@@ -951,6 +974,8 @@ void OpenGLDepthPacketProcessor::loadXZTables(const float *xtable, const float *
 
 void OpenGLDepthPacketProcessor::loadLookupTable(const short *lut)
 {
+  if (!impl_)
+    return;
   ChangeCurrentOpenGLContext ctx(impl_->opengl_context_ptr);
 
   impl_->lut11to16.allocate(2048, 1);
@@ -960,7 +985,7 @@ void OpenGLDepthPacketProcessor::loadLookupTable(const short *lut)
 
 void OpenGLDepthPacketProcessor::process(const DepthPacket &packet)
 {
-  if (!listener_)
+  if (!impl_ || !listener_)
     return;
   Frame *ir = 0, *depth = 0;
 

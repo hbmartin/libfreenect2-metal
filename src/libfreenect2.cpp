@@ -1110,6 +1110,24 @@ PacketPipeline *createPacketPipelineByName(std::string name)
   return NULL;
 }
 
+#if defined(LIBFREENECT2_WITH_METAL_SUPPORT) || defined(LIBFREENECT2_WITH_OPENGL_SUPPORT) \
+ || defined(LIBFREENECT2_WITH_CUDA_SUPPORT) || defined(LIBFREENECT2_WITH_OPENCL_SUPPORT)
+/** Return the pipeline if its depth processor has a usable device at runtime;
+ *  otherwise delete it, warn, and return NULL so the caller can fall back.
+ *  A GPU backend can be compiled in yet unavailable at runtime (no device on
+ *  VM guests / headless CI), and constructing the next pipeline in the chain
+ *  must not depend on the previous one succeeding. */
+static PacketPipeline *acceptIfDepthProcessorGood(PacketPipeline *pipeline, const char *name)
+{
+  DepthPacketProcessor *dpp = pipeline->getDepthPacketProcessor();
+  if (dpp && dpp->good())
+    return pipeline;
+  LOG_WARNING << name << " depth processing is unavailable on this machine; trying the next pipeline.";
+  delete pipeline;
+  return NULL;
+}
+#endif
+
 PacketPipeline *createDefaultPacketPipeline()
 {
   const char *pipeline_env = std::getenv("LIBFREENECT2_PIPELINE");
@@ -1122,28 +1140,30 @@ PacketPipeline *createDefaultPacketPipeline()
       LOG_WARNING << "`" << pipeline_env << "' pipeline is not available.";
   }
 
+  // Prefer GPU pipelines in order, but probe each for a usable runtime device
+  // and fall through to the next when it has none. The CPU pipeline is always
+  // available and terminates the chain, so a machine with no usable GPU keeps
+  // producing depth instead of dropping every packet (or aborting the process
+  // inside a pipeline constructor).
+  PacketPipeline *pipeline = NULL;
 #if defined(LIBFREENECT2_WITH_METAL_SUPPORT)
-  // Metal is the native GPU API on Apple platforms, where OpenGL is
-  // deprecated; prefer it when built in. Fall back to the next pipeline if
-  // no usable Metal device exists at runtime (VM guests, headless CI) —
-  // otherwise every depth packet would be dropped silently.
-  {
-    PacketPipeline *metal = new MetalPacketPipeline();
-    if (metal->getDepthPacketProcessor() && metal->getDepthPacketProcessor()->good())
-      return metal;
-    LOG_WARNING << "Metal depth processing is unavailable on this machine; falling back to the next available pipeline.";
-    delete metal;
-  }
+  // Metal is the native GPU API on Apple platforms, where OpenGL is deprecated.
+  if ((pipeline = acceptIfDepthProcessorGood(new MetalPacketPipeline(), "Metal")))
+    return pipeline;
 #endif
 #if defined(LIBFREENECT2_WITH_OPENGL_SUPPORT)
-  return new OpenGLPacketPipeline();
-#elif defined(LIBFREENECT2_WITH_CUDA_SUPPORT)
-  return new CudaPacketPipeline();
-#elif defined(LIBFREENECT2_WITH_OPENCL_SUPPORT)
-  return new OpenCLPacketPipeline();
-#else
-  return new CpuPacketPipeline();
+  if ((pipeline = acceptIfDepthProcessorGood(new OpenGLPacketPipeline(), "OpenGL")))
+    return pipeline;
 #endif
+#if defined(LIBFREENECT2_WITH_CUDA_SUPPORT)
+  if ((pipeline = acceptIfDepthProcessorGood(new CudaPacketPipeline(), "CUDA")))
+    return pipeline;
+#endif
+#if defined(LIBFREENECT2_WITH_OPENCL_SUPPORT)
+  if ((pipeline = acceptIfDepthProcessorGood(new OpenCLPacketPipeline(), "OpenCL")))
+    return pipeline;
+#endif
+  return new CpuPacketPipeline();
 }
 
 Freenect2::Freenect2(void *usb_context) :

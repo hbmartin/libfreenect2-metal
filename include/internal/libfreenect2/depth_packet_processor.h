@@ -137,6 +137,7 @@ public:
   virtual void loadXZTables(const float *xtable, const float *ztable);
   virtual void loadLookupTable(const short *lut);
 
+  virtual bool good();
   virtual const char *name() { return "OpenGL"; }
   virtual void process(const DepthPacket &packet);
 private:

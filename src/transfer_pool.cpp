@@ -198,11 +198,12 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
 
   if(t->transfer->status == LIBUSB_TRANSFER_NO_DEVICE)
   {
-    // deliver any iso packets that completed before the disconnect;
-    // processTransfer() checks per-packet (iso) or whole-transfer (bulk)
-    // completion status itself
-    processTransfer(t->transfer);
-    // the device is gone; resubmitting can never succeed
+    // The device is gone; resubmitting can never succeed. Do not process the
+    // transfer: libusb (and the macOS backend) does not rewrite
+    // iso_packet_desc[] when a transfer completes with NO_DEVICE, so the
+    // descriptors still carry the previous round's COMPLETED statuses and the
+    // buffer its already-delivered bytes — processing here would re-emit stale
+    // duplicate packets to the stream parser at disconnect.
     if(!disconnect_logged_)
     {
       disconnect_logged_ = true;
