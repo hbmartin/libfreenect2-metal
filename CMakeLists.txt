@@ -512,12 +512,15 @@ IF(ENABLE_CUDA)
     IF(CMAKE_CUDA_COMPILER)
       # Pick a default architecture BEFORE enable_language(), which creates
       # the CMAKE_CUDA_ARCHITECTURES cache entry (a guarded default after it
-      # would never apply). "native" targets the build machine's GPU and
-      # avoids hardcoding arch lists the installed toolkit may not support;
-      # override with -DCMAKE_CUDA_ARCHITECTURES=... for distribution builds.
+      # would never apply). "all-major" covers every major architecture the
+      # installed toolkit supports without hardcoding a list, configures on
+      # hosts without a GPU attached (unlike "native", which hard-fails on
+      # GPU-less CI/container builds), and produces binaries that run on any
+      # GPU; override with -DCMAKE_CUDA_ARCHITECTURES=native for a faster
+      # local build targeting only this machine.
       IF(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND "$ENV{CUDAARCHS}" STREQUAL ""
-         AND NOT CMAKE_VERSION VERSION_LESS 3.24)
-        SET(CMAKE_CUDA_ARCHITECTURES native)
+         AND NOT CMAKE_VERSION VERSION_LESS 3.23)
+        SET(CMAKE_CUDA_ARCHITECTURES all-major)
       ENDIF()
       ENABLE_LANGUAGE(CUDA)
       FIND_PACKAGE(CUDAToolkit QUIET)
@@ -525,13 +528,6 @@ IF(ENABLE_CUDA)
         SET(LIBFREENECT2_WITH_CUDA_SUPPORT 1)
         SET(HAVE_CUDA yes)
         SET(CUDA_VERSION ${CUDAToolkit_VERSION})
-
-        # The legacy FindCUDA path always compiled .cu objects with -fPIC on
-        # non-MSVC; keep that so static libfreenect2 builds stay linkable
-        # into downstream shared objects.
-        IF(NOT MSVC)
-          SET(CMAKE_POSITION_INDEPENDENT_CODE ON)
-        ENDIF()
 
         INCLUDE_DIRECTORIES(
           "${MY_DIR}/include/"
@@ -649,6 +645,10 @@ SET_TARGET_PROPERTIES(freenect2 PROPERTIES
   VISIBILITY_INLINES_HIDDEN 1
   VERSION ${PROJECT_VER}
   SOVERSION ${PROJECT_APIVER}
+  # Keep objects (including CUDA ones) position-independent even for static
+  # builds, so libfreenect2.a stays linkable into downstream shared objects.
+  # The legacy FindCUDA path does the same via -Xcompiler -fPIC.
+  POSITION_INDEPENDENT_CODE ON
 )
 INCLUDE(GenerateExportHeader)
 GENERATE_EXPORT_HEADER(freenect2

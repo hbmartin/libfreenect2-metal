@@ -34,12 +34,18 @@
 /**
  * Add the content of the given filename to the resources.
  * @param filename File to add to the resources.
+ * @return true on success, false if the file could not be opened.
  */
-void dumpFile(const std::string& filename)
+bool dumpFile(const std::string& filename)
 {
   using namespace std;
 
   ifstream f(filename.c_str(), ios::binary);
+  if(!f)
+  {
+    cerr << "generate_resources: cannot open '" << filename << "'" << endl;
+    return false;
+  }
 
   unsigned char buffer[1024];
 
@@ -58,6 +64,7 @@ void dumpFile(const std::string& filename)
     cout << endl;
   }
   cout << dec;
+  return true;
 }
 
 /**
@@ -75,7 +82,9 @@ int main(int argc, char **argv)
   for(int i = 2; i < argc; ++i)
   {
     cout << "static unsigned char resource" << (i - 2) << "[] = {" << endl;
-    dumpFile(basefolder + "/" + argv[i]);
+    // Fail the build instead of silently embedding an empty resource.
+    if(!dumpFile(basefolder + "/" + argv[i]))
+      return -1;
     cout << "};" << endl;
   }
 

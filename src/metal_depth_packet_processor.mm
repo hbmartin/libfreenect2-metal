@@ -38,6 +38,7 @@
 #include <string>
 #include <cstring>
 #include <atomic>
+#include <mutex>
 
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -213,14 +214,19 @@ public:
   Frame *depth_frame;
 
   DepthPacketProcessor::Parameters params;
+  /* Processing-thread working copy; only run() reads or writes it. */
   DepthPacketProcessor::Config config;
 
   bool device_initialized;
   bool runtime_ok;
 
-  /* Set by setConfiguration() (caller thread), consumed by run() (processing
-   * thread) so the GPU params buffer is never written while a command buffer
-   * that reads it is in flight. */
+  /* setConfiguration() (caller thread) publishes a snapshot here and sets the
+   * flag; run() (processing thread) adopts the snapshot into `config` and
+   * re-uploads buf_params, so neither the config nor the GPU params buffer
+   * changes while a frame that reads them is in flight. The flag starts true
+   * so the first frame performs the initial upload through the same path. */
+  DepthPacketProcessor::Config pending_config;
+  std::mutex pending_config_mutex;
   std::atomic<bool> params_need_upload;
 
   MetalDepthPacketProcessorImpl(const int deviceIndex)
@@ -250,7 +256,7 @@ public:
     , depth_frame(NULL)
     , device_initialized(false)
     , runtime_ok(true)
-    , params_need_upload(false)
+    , params_need_upload(true)
   {
     device_initialized = init(deviceIndex);
     if(device_initialized)
@@ -403,10 +409,9 @@ public:
       if(!allocateBuffers())
         return false;
 
-      /* Parameters only change via setConfiguration(), which flags run() to
-       * re-upload; no need to touch buf_params per frame. */
-      uploadParams();
-
+      /* buf_params is uploaded by the first run(): params_need_upload starts
+       * true, so the initial upload goes through the same deferred path as
+       * later setConfiguration() calls. */
       return true;
     }
   }
@@ -511,12 +516,6 @@ public:
       return false;
     }
 
-    /* filterPixelStage2 reads edge_test even when filterPixelStage1 (its only
-     * writer) is skipped because EnableBilateralFilter is false. Pre-fill with
-     * 1 ("passes edge test") so that configuration sees pass-through behaviour
-     * instead of uninitialized data. */
-    memset([buf_edge_test contents], 1, IMAGE_SIZE);
-
     return true;
   }
 
@@ -527,10 +526,12 @@ public:
     fillParamsBuffer(*dst, params, config);
   }
 
-  /** Dispatch one compute pass, one thread per pixel over the 512x424 image. */
+  /** Bind the pipeline and dispatch one compute pass, one thread per pixel
+   *  over the 512x424 image. */
   void dispatchKernel(id<MTLComputeCommandEncoder> enc,
                       id<MTLComputePipelineState> pso)
   {
+    [enc setComputePipelineState:pso];
     /* Uniform threadgroup dispatch (unlike dispatchThreads: this does not
      * require non-uniform threadgroup support). The per-pipeline
      * maxTotalThreadsPerThreadgroup can drop below the device limit under
@@ -559,14 +560,19 @@ public:
   {
     @autoreleasepool
     {
-      /* Apply a pending setConfiguration() here, on the processing thread,
-       * where no command buffer reading these buffers is in flight. */
+      /* Adopt a pending setConfiguration() here, on the processing thread,
+       * where no command buffer reading these buffers is in flight and the
+       * per-stage config reads below cannot observe a half-applied change. */
       if(params_need_upload.exchange(false))
       {
+        {
+          std::lock_guard<std::mutex> lock(pending_config_mutex);
+          config = pending_config;
+        }
         uploadParams();
         /* filterPixelStage1 is edge_test's only writer; when the bilateral
-         * filter is off it no longer runs, so restore the pass-through mask
-         * instead of leaving the last bilateral frame's edge flags behind. */
+         * filter is off it never runs, so restore the pass-through mask
+         * instead of leaving stale (or uninitialized) edge flags behind. */
         if(!config.EnableBilateralFilter)
           memset([buf_edge_test contents], 1, IMAGE_SIZE);
       }
@@ -586,7 +592,6 @@ public:
       /* ------------------------------------------------------------------ */
       {
         id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
-        [enc setComputePipelineState:pipeline_stage1];
         [enc setBuffer:buf_lut11to16 offset:0 atIndex:0];
         [enc setBuffer:buf_z_table   offset:0 atIndex:1];
         [enc setBuffer:buf_p0_table  offset:0 atIndex:2];
@@ -606,7 +611,6 @@ public:
       if(config.EnableBilateralFilter)
       {
         id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
-        [enc setComputePipelineState:pipeline_filter_stage1];
         [enc setBuffer:buf_a           offset:0 atIndex:0];
         [enc setBuffer:buf_b           offset:0 atIndex:1];
         [enc setBuffer:buf_n           offset:0 atIndex:2];
@@ -623,7 +627,6 @@ public:
       /* ------------------------------------------------------------------ */
       {
         id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
-        [enc setComputePipelineState:pipeline_stage2];
         /* Use filtered a/b if bilateral filter was run, otherwise raw. */
         id<MTLBuffer> a_src = config.EnableBilateralFilter ? buf_a_filtered : buf_a;
         id<MTLBuffer> b_src = config.EnableBilateralFilter ? buf_b_filtered : buf_b;
@@ -644,7 +647,6 @@ public:
       if(config.EnableEdgeAwareFilter)
       {
         id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
-        [enc setComputePipelineState:pipeline_filter_stage2];
         [enc setBuffer:buf_depth      offset:0 atIndex:0];
         [enc setBuffer:buf_ir_sum     offset:0 atIndex:1];
         [enc setBuffer:buf_edge_test  offset:0 atIndex:2];
@@ -696,9 +698,13 @@ MetalDepthPacketProcessor::~MetalDepthPacketProcessor()
 void MetalDepthPacketProcessor::setConfiguration(const libfreenect2::DepthPacketProcessor::Config &config)
 {
   DepthPacketProcessor::setConfiguration(config);
-  impl_->config = config;
-  /* Defer the GPU upload to run() on the processing thread — writing
-   * buf_params here would race with an in-flight command buffer. */
+  /* Publish a snapshot and defer the switch to run() on the processing
+   * thread — writing impl_->config or buf_params here would race with a
+   * frame in flight. */
+  {
+    std::lock_guard<std::mutex> lock(impl_->pending_config_mutex);
+    impl_->pending_config = config;
+  }
   impl_->params_need_upload = true;
 }
 
