@@ -41,6 +41,8 @@ OPTION(ENABLE_OPENGL "Enable OpenGL support" ON)
 OPTION(ENABLE_VAAPI "Enable VA-API support" ON)
 OPTION(ENABLE_TEGRAJPEG "Enable Tegra HW JPEG support" ON)
 OPTION(ENABLE_PROFILING "Collect profiling stats (memory consuming)" OFF)
+OPTION(BUILD_TESTING "Build the unit test suite" OFF)
+OPTION(ENABLE_SANITIZERS "Build the tests with AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
 IF(APPLE)
   OPTION(ENABLE_METAL "Enable Metal GPU depth processing (Apple platforms)" ON)
 ELSE()
@@ -732,6 +734,38 @@ IF(BUILD_STREAMER_RECORDER)
   SET(HAVE_streamer_recorder yes)
   MESSAGE(STATUS "Configurating streamer_recorder")
   ADD_SUBDIRECTORY(${MY_DIR}/tools/streamer_recorder)
+ENDIF()
+
+SET(HAVE_Tests disabled)
+IF(BUILD_TESTING)
+  SET(HAVE_Tests yes)
+  MESSAGE(STATUS "Configuring unit tests")
+
+  # The shipping `freenect2` target is built with hidden symbol visibility, so
+  # its internal classes (Cpu/Metal depth processors, stream parsers) are not
+  # linkable from a test binary. Build a second static library from the SAME
+  # sources with default visibility that the tests link against instead. The
+  # shipping library is left untouched.
+  ADD_LIBRARY(freenect2_testlib STATIC ${SOURCES})
+  TARGET_LINK_LIBRARIES(freenect2_testlib ${LIBRARIES})
+  # Inherits the global INCLUDE_DIRECTORIES (include/internal + the binary dir
+  # with generated config.h / resources.inc.h) and the global -DRESOURCES_INC,
+  # so loadResource() and the embedded Metal .metallib resolve exactly as in
+  # the real library.
+  IF(LIBFREENECT2_WITH_METAL_SUPPORT)
+    ADD_DEPENDENCIES(freenect2_testlib MetalShaders)
+  ENDIF()
+
+  IF(ENABLE_SANITIZERS)
+    MESSAGE(STATUS "  Building tests with ASan + UBSan")
+    TARGET_COMPILE_OPTIONS(freenect2_testlib PUBLIC
+      -fsanitize=address,undefined -fno-omit-frame-pointer)
+    TARGET_LINK_OPTIONS(freenect2_testlib PUBLIC
+      -fsanitize=address,undefined)
+  ENDIF()
+
+  ENABLE_TESTING()
+  ADD_SUBDIRECTORY(${MY_DIR}/tests)
 ENDIF()
 
 GET_CMAKE_PROPERTY(vars VARIABLES)

@@ -1,0 +1,146 @@
+# Continuous integration for the libfreenect2 macOS / Metal fork.
+#
+# Runs on a self-hosted macOS runner that must provide:
+#   * Full Xcode with the Metal toolchain — verify with `xcrun -sdk macosx metal --version`
+#     (on Xcode 26+ also run `xcodebuild -downloadComponent MetalToolchain`)
+#   * Homebrew deps: `brew install libusb glfw3 jpeg-turbo`
+#   * A real GPU / logged-in graphics session so the Metal parity test can run
+#   * For the advisory jobs: `brew install clang-format llvm` (clang-tidy)
+#
+# Enforcement: build + test failures block; formatting and static analysis are
+# advisory (continue-on-error) so they report without blocking merges.
+# Each job uses its own build directory to stay isolated on the persistent runner.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build & unit tests (Metal)
+    runs-on: [self-hosted, macOS]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: true
+
+      - name: Configure
+        run: cmake -B build -DBUILD_TESTING=ON -DENABLE_METAL=ON -DBUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test (includes Metal-vs-CPU parity on the GPU)
+        run: ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    name: Sanitizers (ASan + UBSan)
+    runs-on: [self-hosted, macOS]
+    needs: build-test
+    env:
+      # Focus on memory-safety + UB; leak detection off to avoid noise from
+      # system frameworks. Metal is disabled here so the host code is checked in
+      # isolation (the GPU parity cases are excluded via `-LE gpu`).
+      ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: true
+
+      - name: Configure (sanitizers, no Metal)
+        run: cmake -B build-asan -DBUILD_TESTING=ON -DENABLE_SANITIZERS=ON -DENABLE_METAL=OFF -DBUILD_EXAMPLES=OFF
+
+      - name: Build
+        run: cmake --build build-asan -j
+
+      - name: Test under sanitizers (hardware-free suite)
+        run: ctest --test-dir build-asan -LE gpu --output-on-failure
+
+  format:
+    name: clang-format (advisory)
+    runs-on: [self-hosted, macOS]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Check formatting of changed files
+        run: |
+          set -euo pipefail
+          if ! command -v clang-format >/dev/null 2>&1; then
+            echo "::notice::clang-format not installed on runner (brew install clang-format); skipping"
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          # Fall back to the previous commit if the base is unavailable.
+          if ! git cat-file -e "$base" 2>/dev/null; then
+            base="HEAD~1"
+          fi
+          files=$(git diff --name-only "$base" HEAD -- '*.cpp' '*.h' '*.hpp' '*.mm' || true)
+          if [ -z "$files" ]; then
+            echo "No changed C/C++ files to check."
+            exit 0
+          fi
+          echo "Checking:"; echo "$files"
+          clang-format --dry-run --Werror $files
+
+  static-analysis:
+    name: clang-tidy (advisory)
+    runs-on: [self-hosted, macOS]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Configure with compile commands
+        run: cmake -B build-tidy -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_METAL=ON -DBUILD_EXAMPLES=OFF
+
+      - name: Build (generate resource / shader headers used by sources)
+        run: cmake --build build-tidy -j
+
+      - name: Run clang-tidy on changed files
+        run: |
+          set -euo pipefail
+          tidy="clang-tidy"
+          if ! command -v "$tidy" >/dev/null 2>&1; then
+            if [ -x /opt/homebrew/opt/llvm/bin/clang-tidy ]; then
+              tidy=/opt/homebrew/opt/llvm/bin/clang-tidy
+            else
+              echo "::notice::clang-tidy not installed on runner (brew install llvm); skipping"
+              exit 0
+            fi
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if ! git cat-file -e "$base" 2>/dev/null; then
+            base="HEAD~1"
+          fi
+          files=$(git diff --name-only "$base" HEAD -- 'src/*.cpp' | { grep -v -E '\.(cu|mm)$' || true; })
+          if [ -z "$files" ]; then
+            echo "No changed .cpp sources to analyze."
+            exit 0
+          fi
+          echo "Analyzing:"; echo "$files"
+          "$tidy" -p build-tidy $files

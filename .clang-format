@@ -1,0 +1,15 @@
+# Formatting style for new / changed C++ in libfreenect2, matching the existing
+# codebase convention (2-space indent, Allman braces). Enforced only on files
+# changed in a PR (advisory job in CI), so legacy code is not reformatted en masse.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+IndentWidth: 2
+BreakBeforeBraces: Allman
+ColumnLimit: 100
+PointerAlignment: Left
+DerivePointerAlignment: false
+AccessModifierOffset: -2
+SortIncludes: false
+AllowShortFunctionsOnASingleLine: Inline
+SpaceBeforeParens: ControlStatements

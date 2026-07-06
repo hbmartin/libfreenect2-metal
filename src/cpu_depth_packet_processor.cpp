@@ -107,7 +107,7 @@ private:
 
 public:
   /** Default constructor. */
-  Mat():buffer_(0), buffer_end_(0)
+  Mat():owns_buffer(false), buffer_(0), buffer_end_(0)
   {
   }
 
