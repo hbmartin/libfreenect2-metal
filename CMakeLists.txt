@@ -420,8 +420,11 @@ IF(APPLE AND ENABLE_METAL)
 
   # The Metal shader compiler ships with full Xcode only, not the standalone
   # Command Line Tools — degrade gracefully like the other optional backends.
+  # Run the compiler rather than just locating it (xcrun -f): since Xcode 26
+  # a launcher stub is always present, but it cannot execute until the Metal
+  # Toolchain component has been downloaded.
   EXECUTE_PROCESS(
-    COMMAND xcrun -sdk macosx -f metal
+    COMMAND xcrun -sdk macosx metal --version
     RESULT_VARIABLE METAL_COMPILER_RESULT
     OUTPUT_QUIET
     ERROR_QUIET
@@ -472,8 +475,8 @@ IF(APPLE AND ENABLE_METAL)
       PROPERTIES COMPILE_FLAGS "-x objective-c++ -fobjc-arc"
     )
   ELSE()
-    SET(HAVE_Metal "no (metal compiler not found; install full Xcode)")
-    MESSAGE(STATUS "Metal shader compiler not found (requires full Xcode, not just the Command Line Tools) — Metal depth processing disabled")
+    SET(HAVE_Metal "no (metal compiler not usable; install full Xcode and the Metal Toolchain)")
+    MESSAGE(STATUS "Metal shader compiler not usable (requires full Xcode; on Xcode 26+ also run 'xcodebuild -downloadComponent MetalToolchain') — Metal depth processing disabled")
   ENDIF()
 ENDIF(APPLE AND ENABLE_METAL)
 
@@ -495,6 +498,15 @@ IF(ENABLE_CUDA)
     INCLUDE(CheckLanguage)
     CHECK_LANGUAGE(CUDA)
     IF(CMAKE_CUDA_COMPILER)
+      # Pick a default architecture BEFORE enable_language(), which creates
+      # the CMAKE_CUDA_ARCHITECTURES cache entry (a guarded default after it
+      # would never apply). "native" targets the build machine's GPU and
+      # avoids hardcoding arch lists the installed toolkit may not support;
+      # override with -DCMAKE_CUDA_ARCHITECTURES=... for distribution builds.
+      IF(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND "$ENV{CUDAARCHS}" STREQUAL ""
+         AND NOT CMAKE_VERSION VERSION_LESS 3.24)
+        SET(CMAKE_CUDA_ARCHITECTURES native)
+      ENDIF()
       ENABLE_LANGUAGE(CUDA)
       FIND_PACKAGE(CUDAToolkit QUIET)
       IF(CUDAToolkit_FOUND)
@@ -502,9 +514,11 @@ IF(ENABLE_CUDA)
         SET(HAVE_CUDA yes)
         SET(CUDA_VERSION ${CUDAToolkit_VERSION})
 
-        # Broad default architecture set if the user did not pick one.
-        IF(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-          SET(CMAKE_CUDA_ARCHITECTURES 52 60 61 70 75 80 86 89 90)
+        # The legacy FindCUDA path always compiled .cu objects with -fPIC on
+        # non-MSVC; keep that so static libfreenect2 builds stay linkable
+        # into downstream shared objects.
+        IF(NOT MSVC)
+          SET(CMAKE_POSITION_INDEPENDENT_CODE ON)
         ENDIF()
 
         INCLUDE_DIRECTORIES(

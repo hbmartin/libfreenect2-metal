@@ -74,13 +74,8 @@ int main(int argc, char **argv)
 
   for(int i = 2; i < argc; ++i)
   {
-    string path(argv[i]);
-    // Resources generated into the build tree (e.g. compiled Metal shader
-    // libraries) are passed as absolute paths; only prepend the base folder
-    // for relative ones.
-    bool absolute = !path.empty() && (path[0] == '/' || path[0] == '\\' || (path.size() > 1 && path[1] == ':'));
     cout << "static unsigned char resource" << (i - 2) << "[] = {" << endl;
-    dumpFile(absolute ? path : basefolder + "/" + path);
+    dumpFile(basefolder + "/" + argv[i]);
     cout << "};" << endl;
   }
 
