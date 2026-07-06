@@ -501,15 +501,18 @@ public:
     LOG_ERROR << "GLFW error " << error << " " << description;
   }
 
-  void checkFBO(GLenum target)
+  /** @return false on an incomplete framebuffer so initialize() can leave the
+   *  processor not-good and fall back, instead of aborting the host process. */
+  bool checkFBO(GLenum target)
   {
     GLenum status = gl()->glCheckFramebufferStatus(target);
     if (status != GL_FRAMEBUFFER_COMPLETE)
     {
       LOG_ERROR << "incomplete FBO " << status;
-      exit(-1);
+      return false;
     }
     CHECKGL();
+    return true;
   }
 
   /** @return false if the context is too old to use; the caller then leaves
@@ -525,6 +528,19 @@ public:
         LOG_ERROR << "OpenGL version 3.1 not supported.";
         LOG_ERROR << "Your version is " << major << "." << minor;
         LOG_ERROR << "Try updating your graphics driver.";
+        return false;
+    }
+
+    // Some headless/software GL stacks (e.g. Mesa llvmpipe, GPU-less VM guests)
+    // advertise GL >= 3.1 yet cannot allocate the rectangle textures this
+    // processor needs. Probe the limit up front and bail gracefully, rather
+    // than reaching exit(-1) deep inside Texture::allocate() and aborting the
+    // host process. input_data is the tallest rectangle texture we allocate
+    // (424 * 9); every other allocation here is smaller.
+    GLint max_rect_texture_size = 0;
+    glGetIntegerv(GL_MAX_RECTANGLE_TEXTURE_SIZE, &max_rect_texture_size);
+    if (max_rect_texture_size < 424 * 9) {
+        LOG_ERROR << "GL_MAX_RECTANGLE_TEXTURE_SIZE is too small: " << max_rect_texture_size;
         return false;
     }
 
@@ -605,7 +621,7 @@ public:
     gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE, stage1_data[1].texture, 0);
     gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_RECTANGLE, stage1_data[2].texture, 0);
     gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_RECTANGLE, stage1_infrared.texture, 0);
-    checkFBO(GL_FRAMEBUFFER);
+    if (!checkFBO(GL_FRAMEBUFFER)) return false;
 
     gl()->glGenFramebuffers(1, &filter1_framebuffer);
     gl()->glBindFramebuffer(GL_FRAMEBUFFER, filter1_framebuffer);
@@ -618,7 +634,7 @@ public:
     gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE, filter1_data[0].texture, 0);
     gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE, filter1_data[1].texture, 0);
     gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_RECTANGLE, filter1_max_edge_test.texture, 0);
-    checkFBO(GL_FRAMEBUFFER);
+    if (!checkFBO(GL_FRAMEBUFFER)) return false;
 
     gl()->glGenFramebuffers(1, &stage2_framebuffer);
     gl()->glBindFramebuffer(GL_FRAMEBUFFER, stage2_framebuffer);
@@ -630,7 +646,7 @@ public:
     if(do_debug) gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE, stage2_debug.texture, 0);
     gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE, stage2_depth.texture, 0);
     gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE, stage2_depth_and_ir_sum.texture, 0);
-    checkFBO(GL_FRAMEBUFFER);
+    if (!checkFBO(GL_FRAMEBUFFER)) return false;
 
     gl()->glGenFramebuffers(1, &filter2_framebuffer);
     gl()->glBindFramebuffer(GL_FRAMEBUFFER, filter2_framebuffer);
@@ -641,7 +657,7 @@ public:
 
     if(do_debug) gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE, filter2_debug.texture, 0);
     gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE, filter2_depth.texture, 0);
-    checkFBO(GL_FRAMEBUFFER);
+    if (!checkFBO(GL_FRAMEBUFFER)) return false;
 
     Vertex bl = {-1.0f, -1.0f, 0.0f, 0.0f }, br = { 1.0f, -1.0f, 512.0f, 0.0f }, tl = {-1.0f, 1.0f, 0.0f, 424.0f }, tr = { 1.0f, 1.0f, 512.0f, 424.0f };
     Vertex vertices[] = {
