@@ -396,7 +396,7 @@ TimestampAlignedFrameListener::Statistics TimestampAlignedFrameListener::getStat
 
 bool TimestampAlignedFrameListener::onNewFrame(Frame::Type type, Frame* frame)
 {
-  if ((type != Frame::Color && type != Frame::Ir && type != Frame::Depth) ||
+  if (frame == 0 || (type != Frame::Color && type != Frame::Ir && type != Frame::Depth) ||
       (impl_->subscribed_frame_types_ & type) == 0)
     return false;
 

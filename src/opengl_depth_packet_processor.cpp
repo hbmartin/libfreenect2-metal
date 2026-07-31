@@ -335,13 +335,9 @@ public:
 
   void release()
   {
-    if (texture != 0)
-    {
-      if (gl() == 0)
-        return;
+    if (texture != 0 && gl() != 0)
       glDeleteTextures(1, &texture);
-      texture = 0;
-    }
+    texture = 0;
 
     delete[] data;
     data = 0;

@@ -71,6 +71,7 @@ bool collectFrames(libfreenect2::Freenect2Device& device, double known_distance_
   device.setIrAndDepthFrameListener(&listener);
   if (!device.startStreams(false, true))
   {
+    device.setIrAndDepthFrameListener(0);
     error = "unable to start replay depth stream";
     return false;
   }
@@ -112,6 +113,7 @@ bool collectFrames(libfreenect2::Freenect2Device& device, double known_distance_
   }
 
   const bool stopped = device.stop();
+  device.setIrAndDepthFrameListener(0);
   if (success && !stopped)
   {
     error = "unable to stop replay depth stream";

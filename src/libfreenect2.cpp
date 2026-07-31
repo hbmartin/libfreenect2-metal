@@ -1141,7 +1141,7 @@ bool Freenect2DeviceImpl::startStreams(bool enable_rgb, bool enable_depth)
   }
   p0_tables.assign(result.begin(), result.end());
   if (pipeline_->getDepthPacketProcessor() != 0)
-    pipeline_->getDepthPacketProcessor()->loadP0TablesFromCommandResponse(&result[0],
+    pipeline_->getDepthPacketProcessor()->loadP0TablesFromCommandResponse(result.data(),
                                                                           result.size());
 
   if (!command_tx_.execute(ReadRgbCameraParametersCommand(nextCommandSeq()), result))
@@ -2055,7 +2055,7 @@ bool Freenect2ReplayDevice::stop()
   }
   {
     libfreenect2::lock_guard guard(state_mutex_);
-    if (state_ != DeviceClosed)
+    if (state_ == DeviceStreaming)
     {
       state_ = DeviceOpen;
       last_error_.clear();

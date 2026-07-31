@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <string>
@@ -95,6 +96,7 @@ TEST(PublicApi, ExposesCanonicalPipelineFactories)
             libfreenect2::createPacketPipeline("cl"));
 }
 
+#if defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
 TEST(PublicApi, ConfiguresTheRgbDecoderPerPipeline)
 {
   lf::PacketPipelineConfig config;
@@ -127,8 +129,10 @@ TEST(PublicApi, ProgrammaticRgbSelectionOverridesTheEnvironment)
   EXPECT_STREQ("TurboJPEG", environment_pipeline.getRgbPacketProcessor()->name());
   setRgbProcessorEnvironment(NULL);
 }
+#endif
 
-#if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT)
+#if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT) && \
+    defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
 TEST(PublicApi, VaapiInitializationFailureRespectsFallbackPolicy)
 {
   lf::PacketPipelineConfig fallback;
@@ -281,6 +285,7 @@ TEST(PublicApi, ReplayStateSnapshotsRemainValidDuringLifecycleChanges)
           if (state < lf::DeviceCreated || state > lf::DeviceClosed)
             invalid_states.fetch_add(1);
           (void)device->getLastError();
+          std::this_thread::yield();
         }
       });
 

@@ -177,6 +177,7 @@ TEST(SyncMultiFrameListener, TimedWaitExpiresWithoutFrames)
 TEST(TimestampAlignedFrameListener, SelectsTheSmallestQueuedTimestampSpan)
 {
   TimestampAlignedFrameListener listener(Frame::Color | Frame::Depth, 5);
+  EXPECT_FALSE(listener.onNewFrame(Frame::Color, NULL));
   EXPECT_TRUE(listener.onNewFrame(Frame::Color, makeTimestampedFrame(100)));
   EXPECT_TRUE(listener.onNewFrame(Frame::Color, makeTimestampedFrame(200)));
   EXPECT_TRUE(listener.onNewFrame(Frame::Depth, makeTimestampedFrame(203)));
