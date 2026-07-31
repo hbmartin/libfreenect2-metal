@@ -184,6 +184,7 @@ SET(SOURCES
   include/libfreenect2/frame_listener_impl.h
   include/libfreenect2/libfreenect2.hpp
   include/libfreenect2/color_settings.h
+  include/libfreenect2/depth_calibration.h
   include/libfreenect2/led_settings.h
   include/libfreenect2/packet_pipeline.h
   include/internal/libfreenect2/packet_processor.h
@@ -208,6 +209,7 @@ SET(SOURCES
   src/rgb_decoder_fallback.cpp
   src/depth_packet_stream_parser.cpp
   src/depth_packet_processor.cpp
+  src/depth_calibration.cpp
   src/cpu_depth_packet_processor.cpp
   src/resource.cpp
   src/recording_utils.cpp
