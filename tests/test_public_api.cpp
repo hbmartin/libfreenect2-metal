@@ -183,6 +183,21 @@ TEST(PublicApi, ReplayStartStopCloseIsRepeatable)
   EXPECT_TRUE(device->close());
 }
 
+TEST(PublicApi, LegacyFilenameReplayRetainsSoftwareIdentityAndNeedsNoManifest)
+{
+  lf::Freenect2Replay replay;
+  std::vector<std::string> files(1, "missing_color_1_1.jpg");
+  lf::Freenect2Device* device = replay.openDevice(files, new lf::DumpPacketPipeline());
+  ASSERT_NE(static_cast<lf::Freenect2Device*>(NULL), device);
+  EXPECT_EQ(std::string(LIBFREENECT2_VERSION), device->getSerialNumber());
+  EXPECT_EQ(std::string(LIBFREENECT2_VERSION), device->getFirmwareVersion());
+  lf::CalibrationData calibration;
+  EXPECT_FALSE(device->getCalibrationData(calibration));
+  EXPECT_TRUE(device->startStreams(true, false));
+  EXPECT_TRUE(device->stop());
+  EXPECT_TRUE(device->close());
+}
+
 TEST(PublicApi, ReplayStateSnapshotsRemainValidDuringLifecycleChanges)
 {
   lf::Freenect2Replay replay;

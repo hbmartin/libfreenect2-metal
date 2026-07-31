@@ -410,6 +410,7 @@ public:
 
   /** Open a device by a collection of stored frame filenames with default pipeline.
    * See filename format below.
+   * This legacy API remains independent of manifest-directory ReplayOptions.
    * @param frame_filenames A list of filenames for stored frames.
    * @return New device object, or NULL on failure
    */
