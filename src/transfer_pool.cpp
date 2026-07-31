@@ -47,7 +47,8 @@ TransferPool::TransferPool(libusb_device_handle* device_handle, unsigned char de
     enable_submit_(false),
     stalled_transfers_(0),
     stall_logged_(false),
-    disconnect_logged_(false)
+    disconnect_logged_(false),
+    event_listener_(0)
 {
 }
 
@@ -157,6 +158,11 @@ void TransferPool::setCallback(DataCallback *callback)
   callback_ = callback;
 }
 
+void TransferPool::setEventListener(TransferPoolEventListener *listener)
+{
+  event_listener_ = listener;
+}
+
 void TransferPool::allocateTransfers(size_t num_transfers, size_t transfer_size)
 {
   buffer_size_ = num_transfers * transfer_size;
@@ -212,6 +218,9 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
     {
       disconnect_logged_ = true;
       LOG_ERROR << "usb transfer failed: device disconnected";
+      if(event_listener_ != 0)
+        event_listener_->onTransferPoolEvent(TransferPoolEventListener::DeviceDisconnected,
+                                             device_endpoint_);
     }
     t->setStopped(true);
     stalled_transfers_++;
@@ -251,7 +260,8 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
 
 void TransferPool::logStallIfComplete()
 {
-  if(!stall_logged_ && enable_submit_ && stalled_transfers_ >= transfers_.size())
+  if(!stall_logged_ && !disconnect_logged_ && enable_submit_ &&
+     stalled_transfers_ >= transfers_.size())
   {
     stall_logged_ = true;
     LOG_ERROR << "all usb transfers on endpoint 0x" << std::hex
@@ -261,6 +271,9 @@ void TransferPool::logStallIfComplete()
                  "reopening fails). Common causes: USB3 bandwidth "
                  "or power limits, flaky cables/adapters, or VM USB "
                  "passthrough.";
+    if(event_listener_ != 0)
+      event_listener_->onTransferPoolEvent(TransferPoolEventListener::TransfersStalled,
+                                           device_endpoint_);
   }
 }
 

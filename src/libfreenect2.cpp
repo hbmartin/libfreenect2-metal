@@ -259,7 +259,7 @@ struct IrCameraTables: Freenect2Device::IrCameraParams
 };
 
 /** Freenect2 device implementation. */
-class Freenect2DeviceImpl : public Freenect2Device
+class Freenect2DeviceImpl : public Freenect2Device, private TransferPoolEventListener
 {
 private:
   enum State
@@ -289,6 +289,8 @@ private:
   Freenect2Device::IrCameraParams ir_camera_params_;
   Freenect2Device::ColorCameraParams rgb_camera_params_;
   void rollbackStreamStart();
+  virtual void onTransferPoolEvent(TransferPoolEventListener::Event event,
+                                   unsigned char endpoint);
 public:
   Freenect2DeviceImpl(Freenect2Impl *context, const PacketPipeline *pipeline, libusb_device *usb_device, libusb_device_handle *usb_device_handle, const std::string &serial);
   virtual ~Freenect2DeviceImpl();
@@ -716,6 +718,8 @@ Freenect2DeviceImpl::Freenect2DeviceImpl(Freenect2Impl *context, const PacketPip
 {
   rgb_transfer_pool_.setCallback(pipeline_->getRgbPacketParser());
   ir_transfer_pool_.setCallback(pipeline_->getIrPacketParser());
+  rgb_transfer_pool_.setEventListener(this);
+  ir_transfer_pool_.setEventListener(this);
 }
 
 Freenect2DeviceImpl::~Freenect2DeviceImpl()
@@ -729,6 +733,17 @@ Freenect2DeviceImpl::~Freenect2DeviceImpl()
 int Freenect2DeviceImpl::nextCommandSeq()
 {
   return command_seq_++;
+}
+
+void Freenect2DeviceImpl::onTransferPoolEvent(TransferPoolEventListener::Event event,
+                                              unsigned char endpoint)
+{
+  if(event == TransferPoolEventListener::DeviceDisconnected)
+    LOG_ERROR << "device " << serial_ << " disconnected on endpoint 0x" << std::hex
+              << int(endpoint) << std::dec;
+  else
+    LOG_ERROR << "device " << serial_ << " reached a terminal transfer stall on endpoint 0x"
+              << std::hex << int(endpoint) << std::dec;
 }
 
 bool Freenect2DeviceImpl::isSameUsbDevice(libusb_device* other)

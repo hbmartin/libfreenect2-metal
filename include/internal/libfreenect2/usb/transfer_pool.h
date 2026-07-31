@@ -39,6 +39,19 @@ namespace libfreenect2
 namespace usb
 {
 
+class TransferPoolEventListener
+{
+public:
+  enum Event
+  {
+    DeviceDisconnected,
+    TransfersStalled
+  };
+
+  virtual ~TransferPoolEventListener() {}
+  virtual void onTransferPoolEvent(Event event, unsigned char endpoint) = 0;
+};
+
 class TransferPool
 {
 public:
@@ -58,6 +71,8 @@ public:
   void cancel();
 
   void setCallback(DataCallback *callback);
+
+  void setEventListener(TransferPoolEventListener *listener);
 protected:
   libfreenect2::mutex stopped_mutex;
   struct Transfer
@@ -101,6 +116,7 @@ private:
   size_t stalled_transfers_;
   bool stall_logged_;
   bool disconnect_logged_;
+  TransferPoolEventListener *event_listener_;
 
   static void onTransferCompleteStatic(libusb_transfer *transfer);
 
