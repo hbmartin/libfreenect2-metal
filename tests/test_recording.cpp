@@ -19,6 +19,7 @@
 
 #include <libfreenect2/recording.h>
 #include <libfreenect2/recording_journal.h>
+#include <libfreenect2/recording_loader.h>
 #include <libfreenect2/recording_manifest.h>
 #include <libfreenect2/recording_utils.h>
 #include <libfreenect2/protocol/response.h>
@@ -318,6 +319,32 @@ TEST(RecordingWriter, LeavesAnIncompleteRecordingWithoutCalibration)
   EXPECT_NE(std::string::npos, writer.getLastError().find("calibration"));
   size_t unused = 0;
   EXPECT_FALSE(regularFileSize(joinPath(directory, "recording.complete"), unused));
+  removeTestRecording(directory);
+}
+
+TEST(RecordingLoader, LoadsIdentityAndCalibrationAndEnforcesCompletion)
+{
+  const std::string directory = uniqueRecordingDirectory();
+  RecordingWriter writer(directory, 1);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  const CalibrationData expected = sampleCalibrationData();
+  ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", expected)) << writer.getLastError();
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  RecordingMetadata metadata;
+  std::string error;
+  ASSERT_TRUE(loadRecordingMetadata(directory, false, metadata, &error)) << error;
+  EXPECT_EQ("123456789", metadata.manifest.serial);
+  EXPECT_EQ("4.0.3912.0", metadata.manifest.firmware);
+  EXPECT_EQ(expected.p0_tables, metadata.calibration.p0_tables);
+
+  ASSERT_EQ(0, std::remove(joinPath(directory, "recording.complete").c_str()));
+  EXPECT_FALSE(loadRecordingMetadata(directory, false, metadata, &error));
+  EXPECT_NE(std::string::npos, error.find("incomplete"));
+  EXPECT_TRUE(loadRecordingMetadata(directory, true, metadata, &error)) << error;
+
+  ASSERT_EQ(0, std::remove(joinPath(directory, "calibration/p0.bin").c_str()));
+  EXPECT_FALSE(loadRecordingMetadata(directory, true, metadata, &error));
   removeTestRecording(directory);
 }
 
