@@ -26,9 +26,9 @@
 
 #include <libfreenect2/depth_packet_processor.h>
 #include <libfreenect2/protocol/response.h>
+#include "libfreenect2/cuda_math.h"
 #include "libfreenect2/logging.h"
 
-#include <helper_math.h>
 #include <math_constants.h>
 
 __constant__ static unsigned int BFI_BITMASK;
