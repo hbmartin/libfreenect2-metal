@@ -32,6 +32,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <glob.h>
+#include <fstream>
 #include <vector>
 #include <va/va.h>
 #include <va/va_drm.h>
@@ -311,6 +312,16 @@ public:
     globfree(&matches);
   }
 
+  static bool isNvidiaDevice(const std::string &path)
+  {
+    const std::string::size_type separator = path.find_last_of('/');
+    const std::string name = separator == std::string::npos ? path : path.substr(separator + 1);
+    std::ifstream vendor(("/sys/class/drm/" + name + "/device/vendor").c_str());
+    std::string value;
+    vendor >> value;
+    return value == "0x10de" || value == "0X10DE" || value == "10de" || value == "10DE";
+  }
+
   bool initializeVaapi()
   {
     /* Open display */
@@ -322,6 +333,10 @@ public:
       appendGlob("/dev/dri/card*", drm_devices);
       for (std::vector<std::string>::const_iterator device = drm_devices.begin();
            device != drm_devices.end(); ++device) {
+        if (isNvidiaDevice(*device)) {
+          LOG_INFO << "skipping NVIDIA DRM node during automatic VAAPI probing: " << *device;
+          continue;
+        }
         if (tryInitializeDevice(*device))
           break;
       }
