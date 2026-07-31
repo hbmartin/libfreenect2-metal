@@ -6,11 +6,15 @@ on:
       iterations:
         description: Connect/start/capture/stop cycles per pipeline
         required: true
-        default: "10"
+        default: "100"
       frames:
         description: Frames captured in each cycle
         required: true
         default: "300"
+      reconnect_cycles:
+        description: Operator-assisted unplug/replug recoveries (0 skips)
+        required: true
+        default: "1"
 
 permissions:
   contents: read
@@ -44,8 +48,8 @@ jobs:
           -DENABLE_OPENGL=OFF
           -DENABLE_WARNINGS_AS_ERRORS=ON
 
-      - name: Build Protonect
-        run: cmake --build build-soak -j --target Protonect
+      - name: Build lifecycle tools
+        run: cmake --build build-soak -j --target Protonect KinectReconnect
 
       - name: Exercise reconnect and stream lifecycles
         run: >-
@@ -54,3 +58,10 @@ jobs:
           '${{ inputs.iterations }}'
           '${{ inputs.frames }}'
           cpu metal
+
+      - name: Exercise unplug/replug recovery with fresh device objects
+        if: ${{ inputs.reconnect_cycles != '0' }}
+        run: >-
+          bash tools/quality/reconnect_soak.sh
+          build-soak/bin/KinectReconnect
+          '${{ inputs.reconnect_cycles }}'
