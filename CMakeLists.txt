@@ -651,6 +651,7 @@ GENERATE_RESOURCES(${RESOURCES_INC_FILE} ${MY_DIR} ${RESOURCES})
 ADD_DEFINITIONS(-DRESOURCES_INC)
 ADD_LIBRARY(freenect2 ${SOURCES})
 libfreenect2_apply_quality(freenect2 PRIVATE)
+TARGET_INCLUDE_DIRECTORIES(freenect2 SYSTEM PRIVATE "${MY_DIR}/third_party")
 
 IF(LIBFREENECT2_WITH_METAL_SUPPORT)
   ADD_DEPENDENCIES(freenect2 MetalShaders)
@@ -690,6 +691,9 @@ INSTALL(DIRECTORY "${PROJECT_BINARY_DIR}/${PROJECT_NAME}" DESTINATION include)
 INSTALL(FILES "${PROJECT_BINARY_DIR}/freenect2Config.cmake" DESTINATION lib/cmake/freenect2/)
 INSTALL(FILES "${PROJECT_BINARY_DIR}/freenect2ConfigVersion.cmake" DESTINATION lib/cmake/freenect2/)
 INSTALL(FILES "${PROJECT_BINARY_DIR}/freenect2.pc" DESTINATION lib/pkgconfig/)
+INSTALL(FILES "${MY_DIR}/third_party/nlohmann/LICENSE.MIT"
+  DESTINATION share/doc/${PROJECT_NAME}
+  RENAME nlohmann-json-LICENSE.MIT)
 INSTALL(FILES
   "${MY_DIR}/README.md"
   "${MY_DIR}/doc/configuration.md"
@@ -765,6 +769,7 @@ IF(BUILD_TESTING)
   # shipping library is left untouched.
   ADD_LIBRARY(freenect2_testlib STATIC ${SOURCES})
   libfreenect2_apply_quality(freenect2_testlib PUBLIC)
+  TARGET_INCLUDE_DIRECTORIES(freenect2_testlib SYSTEM PRIVATE "${MY_DIR}/third_party")
   TARGET_LINK_LIBRARIES(freenect2_testlib ${LIBRARIES})
   # Inherits the global INCLUDE_DIRECTORIES (include/internal + the binary dir
   # with generated config.h / resources.inc.h) and the global -DRESOURCES_INC,
