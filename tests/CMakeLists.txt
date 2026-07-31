@@ -7,7 +7,7 @@
 INCLUDE(FetchContent)
 
 # GoogleTest 1.15 requires C++14. Keep this scoped to the test subdirectory so
-# ENABLE_CXX11 can continue selecting the library's std::thread implementation.
+# Tests use the same required C++11 standard-threading configuration as the library.
 SET(CMAKE_CXX_STANDARD 14)
 SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 

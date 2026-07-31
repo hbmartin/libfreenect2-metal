@@ -36,6 +36,13 @@ ENDIF()
 
 PROJECT(libfreenect2)
 
+# libfreenect2 0.3 requires the C++11 language and threading library. Keep the
+# requirement target-independent so every library, example, test, and tool is
+# compiled with the same public ABI assumptions.
+SET(CMAKE_CXX_STANDARD 11)
+SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+SET(CMAKE_CXX_EXTENSIONS OFF)
+
 IF(POLICY CMP0042)
   cmake_policy(SET CMP0042 NEW)
 ENDIF()
@@ -46,7 +53,6 @@ SET(DEPENDS_DIR "${MY_DIR}/depends" CACHE STRING "dependency directory must be s
 OPTION(BUILD_SHARED_LIBS "Build shared (ON) or static (OFF) libraries" ON)
 OPTION(BUILD_EXAMPLES "Build examples" ON)
 OPTION(BUILD_OPENNI2_DRIVER "Build OpenNI2 driver" ON)
-OPTION(ENABLE_CXX11 "Enable C++11 support" OFF)
 OPTION(ENABLE_OPENCL "Enable OpenCL support" ON)
 OPTION(ENABLE_CUDA "Enable CUDA support" ON)
 OPTION(ENABLE_OPENGL "Enable OpenGL support" ON)
@@ -76,29 +82,15 @@ ELSE()
   # Target-scoped warnings are configured in QualityChecks.cmake.
 ENDIF()
 
-SET(HAVE_CXX11 disabled)
-IF(ENABLE_CXX11)
-  INCLUDE(CheckCXXCompilerFlag)
-  CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
-  CHECK_CXX_COMPILER_FLAG("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
-  IF(COMPILER_SUPPORTS_CXX11)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-    SET(LIBFREENECT2_WITH_CXX11_SUPPORT 1)
-    SET(HAVE_CXX11 yes)
-  ELSEIF(COMPILER_SUPPORTS_CXX0X)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
-    SET(HAVE_CXX11 c++0x)
-  ELSE()
-    SET(HAVE_CXX11 no)
-    MESSAGE(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
-  ENDIF()
-ENDIF(ENABLE_CXX11)
+SET(HAVE_CXX11 yes)
+SET(LIBFREENECT2_WITH_CXX11_SUPPORT 1)
+SET(LIBFREENECT2_THREADING_STDLIB 1)
 
 # additional cmake modules
 LIST(APPEND CMAKE_MODULE_PATH ${MY_DIR}/cmake_modules)
 
-# setup threading
-INCLUDE(SetupLibfreenect2Threading)
+# CMake supplies any platform-specific linker flags needed by std::thread.
+FIND_PACKAGE(Threads REQUIRED)
 
 INCLUDE(GenerateResources)
 
@@ -167,7 +159,6 @@ INCLUDE_DIRECTORIES(
   "${MY_DIR}/include"
   "${MY_DIR}/include/internal"
   ${PROJECT_BINARY_DIR} # for generated headers
-  ${LIBFREENECT2_THREADING_INCLUDE_DIR}
 )
 INCLUDE_DIRECTORIES(SYSTEM ${LibUSB_INCLUDE_DIRS})
 
@@ -219,7 +210,6 @@ SET(SOURCES
   src/logging.cpp
   src/libfreenect2.cpp
 
-  ${LIBFREENECT2_THREADING_SOURCE}
   ${RESOURCES_INC_FILE}
   "${PROJECT_BINARY_DIR}/libfreenect2/config.h"
   "${PROJECT_BINARY_DIR}/libfreenect2/export.h"
@@ -227,7 +217,7 @@ SET(SOURCES
 
 SET(LIBRARIES
   ${LibUSB_LIBRARIES}
-  ${LIBFREENECT2_THREADING_LIBRARIES}
+  Threads::Threads
 )
 
 SET(LIBFREENECT2_DLLS
@@ -600,7 +590,7 @@ IF(ENABLE_CUDA)
       IF(NOT MSVC)
         SET(CUDA_FLAGS "${CUDA_FLAGS} -Xcompiler -fPIC")
       ENDIF()
-      IF(HAVE_CXX11 STREQUAL yes AND CUDA_VERSION VERSION_GREATER 7.0)
+      IF(CUDA_VERSION VERSION_GREATER 7.0)
         SET(CUDA_FLAGS "${CUDA_FLAGS} -std=c++11")
       ENDIF()
 
@@ -727,10 +717,10 @@ IF(BUILD_OPENNI2_DRIVER)
   IF(OpenNI2_FOUND)
     SET(HAVE_OpenNI2 yes)
     FILE(GLOB OPENNI2_DRIVER_SOURCES src/openni2/*.cpp)
-    ADD_LIBRARY(freenect2-openni2 ${OPENNI2_DRIVER_SOURCES} ${LIBFREENECT2_THREADING_SOURCE})
+    ADD_LIBRARY(freenect2-openni2 ${OPENNI2_DRIVER_SOURCES})
     TARGET_INCLUDE_DIRECTORIES(freenect2-openni2 SYSTEM PRIVATE ${OpenNI2_INCLUDE_DIRS})
     libfreenect2_apply_quality(freenect2-openni2 PRIVATE)
-    TARGET_LINK_LIBRARIES(freenect2-openni2 freenect2 ${LIBFREENECT2_THREADING_LIBRARIES})
+    TARGET_LINK_LIBRARIES(freenect2-openni2 freenect2 Threads::Threads)
     SET_TARGET_PROPERTIES(freenect2-openni2 PROPERTIES SOVERSION 0)
     IF(NOT ${CMAKE_INSTALL_PREFIX} MATCHES "^/usr")
       SET_TARGET_PROPERTIES(freenect2-openni2 PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")

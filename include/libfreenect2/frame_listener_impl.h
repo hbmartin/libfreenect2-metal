@@ -59,7 +59,7 @@ public:
 
   /** Wait milliseconds for new frames.
    * @param[out] frame Caller is responsible to release the frames in `frame`.
-   * @param milliseconds Timeout. This parameter is ignored if not built with C++11 threading support.
+   * @param milliseconds Timeout in milliseconds.
    * @return true if a frame is received; false if not.
    */
   bool waitForNewFrame(FrameMap &frame, int milliseconds);

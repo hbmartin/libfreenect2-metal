@@ -20,11 +20,9 @@ LOCAL_C_INCLUDES += \
   $(LIBTURBOJPEG_ROOT) \
   $(LIBFREENECT2_ROOT)/include \
   $(LIBFREENECT2_ROOT)/include/internal \
-  $(LIBFREENECT2_SRC)/tinythread \
   $(LIBFREENECT2_ROOT)/platform/android
 
 LOCAL_SRC_FILES := \
-  $(LIBFREENECT2_SRC)/tinythread/tinythread.cpp \
   $(LIBFREENECT2_SRC)/allocator.cpp \
   $(LIBFREENECT2_SRC)/command_transaction.cpp \
   $(LIBFREENECT2_SRC)/cpu_depth_packet_processor.cpp \
