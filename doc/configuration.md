@@ -11,6 +11,23 @@ Set via `dev->setConfiguration(config)` **before** `start()`:
 | `EnableBilateralFilter` | true | joint bilateral filter; removes "flying pixels" |
 | `EnableEdgeAwareFilter` | true | suppresses noisy pixels on depth edges |
 
+The two filter switches are independent in the CPU, OpenCL, CUDA, OpenGL, and
+Metal depth processors:
+
+| Bilateral | Edge-aware | Processing |
+|---|---|---|
+| on | on | default two-stage spatial filtering |
+| on | off | bilateral smoothing only |
+| off | on | edge-aware filtering of the un-smoothed phase result |
+| off | off | no conventional spatial filtering |
+
+When bilateral filtering is off, the backends provide an explicit all-valid
+stage-1 edge mask. This makes edge-only output deterministic and prevents a
+fresh or previously reconfigured processor from consuming unwritten GPU/CPU
+memory. The edge-aware stage still applies its own depth-neighborhood and IR
+consistency checks. The OpenCL/CUDA KDE pipelines retain their separate KDE
+final-filter behavior.
+
 Limits and behavior that were previously undocumented
 ([#163](https://github.com/OpenKinect/libfreenect2/issues/163)):
 
@@ -26,7 +43,8 @@ Limits and behavior that were previously undocumented
   strengths (`DepthPacketProcessor::Parameters`) are internal constants
   compiled into the processors and are not part of the public `Config`.
 * Disabling both filters gives raw, noisier depth including flying pixels —
-  useful when you do your own filtering.
+  useful when you do your own filtering. Edge-only mode is supported when you
+  want discontinuity rejection without bilateral smoothing.
 
 ## Environment variables
 
