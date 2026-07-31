@@ -68,6 +68,7 @@ public:
 
   virtual Buffer *allocate(size_t size)
   {
+    (void)size;
     VaapiImage *vi = new VaapiImage();
     vi->allocator = this;
     CALL_VA(vaCreateImage(display, &format, width, height, &vi->image));
@@ -281,7 +282,8 @@ public:
 
     buffer_allocator = new PoolAllocator(new VaapiAllocator(display, context));
 
-    VAImageFormat format = {0};
+    VAImageFormat format;
+    std::memset(&format, 0, sizeof(format));
     format.fourcc = VA_FOURCC_BGRX;
     format.byte_order = VA_LSB_FIRST;
     format.bits_per_pixel = 4*8;
@@ -418,9 +420,9 @@ public:
     int max_entrypoints = vaMaxNumEntrypoints(display);
     CHECK_COND(max_entrypoints >= 1);
 
-    VAEntrypoint entrypoints[max_entrypoints];
+    std::vector<VAEntrypoint> entrypoints(static_cast<size_t>(max_entrypoints));
     int num_entrypoints;
-    CHECK_VA(vaQueryConfigEntrypoints(display, VAProfileJPEGBaseline, entrypoints, &num_entrypoints));
+    CHECK_VA(vaQueryConfigEntrypoints(display, VAProfileJPEGBaseline, entrypoints.data(), &num_entrypoints));
     CHECK_COND(num_entrypoints >= 1 && num_entrypoints <= max_entrypoints);
 
     int vld_entrypoint;
@@ -459,25 +461,27 @@ public:
     return buffer;
   }
 
-  bool createParameters(struct jpeg_decompress_struct &dinfo, const unsigned char *vb_start)
+  bool createParameters(struct jpeg_decompress_struct &jpeg_info, const unsigned char *vb_start)
   {
     /* Picture Parameter */
-    VAPictureParameterBufferJPEGBaseline pic = {0};
-    pic.picture_width = dinfo.image_width;
-    pic.picture_height = dinfo.image_height;
-    for (int i = 0; i< dinfo.num_components; i++) {
-      pic.components[i].component_id = dinfo.comp_info[i].component_id;
-      pic.components[i].h_sampling_factor = dinfo.comp_info[i].h_samp_factor;
-      pic.components[i].v_sampling_factor = dinfo.comp_info[i].v_samp_factor;
-      pic.components[i].quantiser_table_selector = dinfo.comp_info[i].quant_tbl_no;
+    VAPictureParameterBufferJPEGBaseline pic;
+    std::memset(&pic, 0, sizeof(pic));
+    pic.picture_width = jpeg_info.image_width;
+    pic.picture_height = jpeg_info.image_height;
+    for (int i = 0; i< jpeg_info.num_components; i++) {
+      pic.components[i].component_id = jpeg_info.comp_info[i].component_id;
+      pic.components[i].h_sampling_factor = jpeg_info.comp_info[i].h_samp_factor;
+      pic.components[i].v_sampling_factor = jpeg_info.comp_info[i].v_samp_factor;
+      pic.components[i].quantiser_table_selector = jpeg_info.comp_info[i].quant_tbl_no;
     }
-    pic.num_components = dinfo.num_components;
+    pic.num_components = jpeg_info.num_components;
     pic_param_buf = createBuffer(VAPictureParameterBufferType, sizeof(pic), &pic);
 
     /* IQ Matrix */
-    VAIQMatrixBufferJPEGBaseline iq = {0};
+    VAIQMatrixBufferJPEGBaseline iq;
+    std::memset(&iq, 0, sizeof(iq));
     for (int i = 0; i < NUM_QUANT_TBLS; i++) {
-      if (!dinfo.quant_tbl_ptrs[i])
+      if (!jpeg_info.quant_tbl_ptrs[i])
         continue;
       iq.load_quantiser_table[i] = 1;
       /* Assuming dinfo.data_precision == 8 */
@@ -493,24 +497,25 @@ public:
       };
 
       for (int j = 0; j < DCTSIZE2; j++)
-        iq.quantiser_table[i][j] = dinfo.quant_tbl_ptrs[i]->quantval[natural_order[j]];
+        iq.quantiser_table[i][j] = jpeg_info.quant_tbl_ptrs[i]->quantval[natural_order[j]];
     }
     iq_buf = createBuffer(VAIQMatrixBufferType, sizeof(iq), &iq);
 
     /* Huffman Table */
-    VAHuffmanTableBufferJPEGBaseline huff = {0};
+    VAHuffmanTableBufferJPEGBaseline huff;
+    std::memset(&huff, 0, sizeof(huff));
     const int num_huffman_tables = 2;
     for (int i = 0; i < num_huffman_tables; i++) {
-      if (!dinfo.dc_huff_tbl_ptrs[i] || !dinfo.ac_huff_tbl_ptrs[i])
+      if (!jpeg_info.dc_huff_tbl_ptrs[i] || !jpeg_info.ac_huff_tbl_ptrs[i])
         continue;
       huff.load_huffman_table[i] = 1;
-      memcpy(huff.huffman_table[i].num_dc_codes, &dinfo.dc_huff_tbl_ptrs[i]->bits[1],
+      memcpy(huff.huffman_table[i].num_dc_codes, &jpeg_info.dc_huff_tbl_ptrs[i]->bits[1],
            sizeof(huff.huffman_table[i].num_dc_codes));
-      memcpy(huff.huffman_table[i].dc_values, dinfo.dc_huff_tbl_ptrs[i]->huffval,
+      memcpy(huff.huffman_table[i].dc_values, jpeg_info.dc_huff_tbl_ptrs[i]->huffval,
            sizeof(huff.huffman_table[i].dc_values));
-      memcpy(huff.huffman_table[i].num_ac_codes, &dinfo.ac_huff_tbl_ptrs[i]->bits[1],
+      memcpy(huff.huffman_table[i].num_ac_codes, &jpeg_info.ac_huff_tbl_ptrs[i]->bits[1],
            sizeof(huff.huffman_table[i].num_ac_codes));
-      memcpy(huff.huffman_table[i].ac_values, dinfo.ac_huff_tbl_ptrs[i]->huffval,
+      memcpy(huff.huffman_table[i].ac_values, jpeg_info.ac_huff_tbl_ptrs[i]->huffval,
            sizeof(huff.huffman_table[i].ac_values));
     }
     huff_buf = createBuffer(VAHuffmanTableBufferType, sizeof(huff), &huff);
@@ -521,17 +526,17 @@ public:
     CHECK_VA(vaMapBuffer(display, slice_param_buf, (void**)&pslice));
     VASliceParameterBufferJPEGBaseline &slice = *pslice;
 
-    slice.slice_data_offset = dinfo.src->next_input_byte - vb_start;
+    slice.slice_data_offset = jpeg_info.src->next_input_byte - vb_start;
     slice.slice_data_flag = VA_SLICE_DATA_FLAG_ALL;
-    for (int i = 0; i < dinfo.comps_in_scan; i++) {
-      slice.components[i].component_selector = dinfo.cur_comp_info[i]->component_id;
-      slice.components[i].dc_table_selector = dinfo.cur_comp_info[i]->dc_tbl_no;
-      slice.components[i].ac_table_selector = dinfo.cur_comp_info[i]->ac_tbl_no;
+    for (int i = 0; i < jpeg_info.comps_in_scan; i++) {
+      slice.components[i].component_selector = jpeg_info.cur_comp_info[i]->component_id;
+      slice.components[i].dc_table_selector = jpeg_info.cur_comp_info[i]->dc_tbl_no;
+      slice.components[i].ac_table_selector = jpeg_info.cur_comp_info[i]->ac_tbl_no;
     }
-    slice.num_components = dinfo.comps_in_scan;
-    slice.restart_interval = dinfo.restart_interval;
-    unsigned int mcu_h_size = dinfo.max_h_samp_factor * DCTSIZE;
-    unsigned int mcu_v_size = dinfo.max_v_samp_factor * DCTSIZE;
+    slice.num_components = jpeg_info.comps_in_scan;
+    slice.restart_interval = jpeg_info.restart_interval;
+    unsigned int mcu_h_size = jpeg_info.max_h_samp_factor * DCTSIZE;
+    unsigned int mcu_v_size = jpeg_info.max_v_samp_factor * DCTSIZE;
     unsigned int mcus_per_row = (WIDTH + mcu_h_size - 1) / mcu_h_size;
     unsigned int mcu_rows_in_scan = (HEIGHT + mcu_v_size - 1) / mcu_v_size;
     slice.num_mcus = mcus_per_row * mcu_rows_in_scan;

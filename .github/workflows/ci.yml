@@ -143,6 +143,46 @@ jobs:
           -R '^(OpenCLCpuParity|OpenGLCpuParity)\\.'
           --timeout 120 --output-on-failure
 
+  linux-vaapi:
+    name: Clang, VAAPI selection and fake failover
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install VAAPI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang ninja-build pkg-config libusb-1.0-0-dev libturbojpeg0-dev \
+            libjpeg-dev libva-dev
+
+      - name: Configure VAAPI
+        run: >-
+          cmake -S . -B build-vaapi -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_STANDARD=11
+          -DBUILD_TESTING=ON
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_OPENNI2_DRIVER=OFF
+          -DENABLE_OPENCL=OFF
+          -DENABLE_OPENGL=OFF
+          -DENABLE_CUDA=OFF
+          -DENABLE_VAAPI=ON
+          -DENABLE_TEGRAJPEG=OFF
+          -DENABLE_WARNINGS_AS_ERRORS=ON
+
+      - name: Compile VAAPI and failover paths
+        run: cmake --build build-vaapi -j 2 --target freenect2 unit_tests
+
+      - name: Test initialization and runtime failover
+        run: >-
+          ctest --test-dir build-vaapi
+          -R '^(RgbDecoderFallback\.|PublicApi\.VaapiInitializationFailure)'
+          --timeout 120 --output-on-failure
+
   windows-msvc:
     name: MSVC, static, C++11
     runs-on: windows-2025
@@ -262,6 +302,7 @@ jobs:
         run: >-
           cmake --build build-fuzz -j 2 --target
           fuzz_rgb_stream_parser fuzz_depth_stream_parser fuzz_protocol_response
+          fuzz_recording_metadata
 
       - name: Run bounded fuzz smoke tests
         run: ctest --test-dir build-fuzz -L fuzz --timeout 180

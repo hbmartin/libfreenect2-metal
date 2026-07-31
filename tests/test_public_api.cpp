@@ -128,6 +128,25 @@ TEST(PublicApi, ProgrammaticRgbSelectionOverridesTheEnvironment)
   setRgbProcessorEnvironment(NULL);
 }
 
+#if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT)
+TEST(PublicApi, VaapiInitializationFailureRespectsFallbackPolicy)
+{
+  lf::PacketPipelineConfig fallback;
+  fallback.rgb_decoder = lf::PacketPipelineConfig::VAAPI;
+  fallback.vaapi_device = "/dev/libfreenect2-definitely-missing-render-node";
+  fallback.allow_fallback = true;
+  lf::CpuPacketPipeline recovered(fallback);
+  EXPECT_TRUE(recovered.good());
+  EXPECT_STREQ("TurboJPEG", recovered.getRgbPacketProcessor()->name());
+
+  lf::PacketPipelineConfig strict = fallback;
+  strict.allow_fallback = false;
+  lf::CpuPacketPipeline failed(strict);
+  EXPECT_FALSE(failed.good());
+  EXPECT_STREQ("Unavailable RGB decoder", failed.getRgbPacketProcessor()->name());
+}
+#endif
+
 TEST(PublicApi, ParsesReplayFilenameFromTheFinalTwoUnderscores)
 {
   size_t values[2] = {0, 0};
