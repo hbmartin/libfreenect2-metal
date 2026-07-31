@@ -34,3 +34,20 @@ TEST(Timing, MonotonicClockReportsMicroseconds)
   const uint64_t after = libfreenect2::monotonicTimeMicroseconds();
   EXPECT_GE(after - before, 1000u);
 }
+
+TEST(Timing, DeviceTimestampDeltaCrossesWrapSafely)
+{
+  EXPECT_EQ(libfreenect2::deviceTimestampDelta(2u, UINT32_MAX - 1u), 4);
+  EXPECT_EQ(libfreenect2::deviceTimestampDelta(UINT32_MAX - 1u, 2u), -4);
+  EXPECT_EQ(libfreenect2::deviceTimestampDistance(2u, UINT32_MAX - 1u), 4u);
+  EXPECT_TRUE(libfreenect2::deviceTimestampBefore(UINT32_MAX - 1u, 2u));
+  EXPECT_FALSE(libfreenect2::deviceTimestampBefore(2u, UINT32_MAX - 1u));
+}
+
+TEST(Timing, DeviceTimestampSpanHandlesWraparound)
+{
+  const uint32_t timestamps[] = {UINT32_MAX - 2u, 1u, 4u};
+  EXPECT_EQ(libfreenect2::deviceTimestampSpan(timestamps, 3), 7u);
+  EXPECT_EQ(libfreenect2::deviceTimestampSpan(timestamps, 1), 0u);
+  EXPECT_EQ(libfreenect2::deviceTimestampSpan(0, 0), 0u);
+}
