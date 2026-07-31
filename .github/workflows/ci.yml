@@ -99,6 +99,50 @@ jobs:
       - name: Test
         run: ctest --test-dir build -LE gpu --timeout 120
 
+  linux-filter-backends:
+    name: Clang, PoCL and llvmpipe filter parity
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang
+      CXX: clang++
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      POCL_DEVICES: pthread
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install software OpenCL and OpenGL runtimes
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang ninja-build pkg-config libusb-1.0-0-dev libturbojpeg0-dev \
+            ocl-icd-opencl-dev pocl-opencl-icd \
+            libglfw3-dev libgl1-mesa-dev mesa-utils xvfb
+
+      - name: Configure filter backends
+        run: >-
+          cmake -S . -B build-filter-backends -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_STANDARD=11
+          -DBUILD_TESTING=ON
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_OPENNI2_DRIVER=OFF
+          -DENABLE_OPENCL=ON
+          -DENABLE_OPENGL=ON
+          -DENABLE_CUDA=OFF
+          -DENABLE_VAAPI=OFF
+          -DENABLE_TEGRAJPEG=OFF
+          -DENABLE_WARNINGS_AS_ERRORS=ON
+
+      - name: Build filter parity tests
+        run: cmake --build build-filter-backends -j 2 --target unit_tests
+
+      - name: Test all OpenCL and OpenGL filter combinations
+        run: >-
+          xvfb-run -a -s '-screen 0 1024x768x24'
+          ctest --test-dir build-filter-backends
+          -R '^(OpenCLCpuParity|OpenGLCpuParity)\\.'
+          --timeout 120 --output-on-failure
+
   windows-msvc:
     name: MSVC, static, C++11
     runs-on: windows-2025
