@@ -240,6 +240,8 @@ TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)
 
   const RecordingWriter::Stats stats = writer.getStats();
   EXPECT_EQ(1u, stats.written_frames);
+  EXPECT_EQ(1u, stats.written_color_frames);
+  EXPECT_EQ(0u, stats.written_depth_frames);
   EXPECT_EQ(0u, stats.dropped_frames);
   EXPECT_EQ(4u, stats.written_bytes);
 

@@ -292,6 +292,10 @@ private:
 
       libfreenect2::lock_guard guard(mutex_);
       ++stats_.written_frames;
+      if (job.entry.stream == "color")
+        ++stats_.written_color_frames;
+      else
+        ++stats_.written_depth_frames;
       stats_.written_bytes += job.data.size();
     }
   }
@@ -315,7 +319,11 @@ private:
   std::string last_error_;
 };
 
-RecordingWriter::Stats::Stats() : written_frames(0), dropped_frames(0), written_bytes(0) {}
+RecordingWriter::Stats::Stats()
+    : written_frames(0), written_color_frames(0), written_depth_frames(0), dropped_frames(0),
+      written_bytes(0)
+{
+}
 
 RecordingWriter::RecordingWriter(const std::string& directory, size_t queue_capacity)
     : impl_(new RecordingWriterImpl(directory, queue_capacity))

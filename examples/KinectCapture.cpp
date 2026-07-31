@@ -11,17 +11,20 @@
 #include <libfreenect2/frame_listener_impl.h>
 #include <libfreenect2/libfreenect2.hpp>
 #include <libfreenect2/packet_pipeline.h>
+#include <libfreenect2/recording.h>
 #include <libfreenect2/registration.h>
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -51,7 +54,9 @@ void printUsage()
 {
   std::cerr << "usage: KinectCapture OUTPUT_DIRECTORY\n"
             << "       KinectCapture snapshot OUTPUT_DIRECTORY "
-               "[--max-delta-ticks TICKS]\n";
+               "[--max-delta-ticks TICKS]\n"
+            << "       KinectCapture record OUTPUT_DIRECTORY "
+               "(--depth-frames N | --duration-seconds N)\n";
 }
 
 bool writeColorPpm(const std::string& path, const libfreenect2::Frame& frame)
@@ -212,7 +217,10 @@ bool writeIrPgm(const std::string& path, const libfreenect2::Frame& frame)
 int main(int argc, char** argv)
 {
   bool timestamp_aligned = false;
+  bool recording_mode = false;
   uint32_t max_delta_ticks = DEFAULT_MAX_DELTA_TICKS;
+  uint32_t recording_depth_frames = 0;
+  uint32_t recording_duration_seconds = 0;
   std::string output;
   if (argc == 2)
   {
@@ -232,14 +240,43 @@ int main(int argc, char** argv)
       }
     }
   }
+  else if (argc == 5 && std::string(argv[1]) == "record")
+  {
+    recording_mode = true;
+    output = argv[2];
+    const std::string option = argv[3];
+    if (option == "--depth-frames")
+    {
+      if (!parseUint32(argv[4], recording_depth_frames) || recording_depth_frames == 0)
+      {
+        printUsage();
+        return 2;
+      }
+    }
+    else if (option == "--duration-seconds")
+    {
+      if (!parseUint32(argv[4], recording_duration_seconds) || recording_duration_seconds == 0)
+      {
+        printUsage();
+        return 2;
+      }
+    }
+    else
+    {
+      printUsage();
+      return 2;
+    }
+  }
   else
   {
     printUsage();
     return 2;
   }
 
-  std::ofstream output_probe(output + "/metadata.json", std::ios::app);
-  if (!output_probe)
+  std::ofstream output_probe;
+  if (!recording_mode)
+    output_probe.open((output + "/metadata.json").c_str(), std::ios::app);
+  if (!recording_mode && !output_probe)
   {
     std::cerr << "Output directory does not exist or is not writable: " << output << "\n";
     return 2;
@@ -254,13 +291,23 @@ int main(int argc, char** argv)
   }
   const std::string serial = freenect2.getDefaultDeviceSerialNumber();
 
+  libfreenect2::PacketPipeline* pipeline = 0;
+  const char* pipeline_name = 0;
+  if (recording_mode)
+  {
+    pipeline = new libfreenect2::DumpPacketPipeline();
+    pipeline_name = "Dump";
+  }
+  else
+  {
 #ifdef LIBFREENECT2_WITH_METAL_SUPPORT
-  libfreenect2::PacketPipeline* pipeline = new libfreenect2::MetalPacketPipeline();
-  const char* pipeline_name = "Metal";
+    pipeline = new libfreenect2::MetalPacketPipeline();
+    pipeline_name = "Metal";
 #else
-  libfreenect2::PacketPipeline* pipeline = new libfreenect2::CpuPacketPipeline();
-  const char* pipeline_name = "CPU";
+    pipeline = new libfreenect2::CpuPacketPipeline();
+    pipeline_name = "CPU";
 #endif
+  }
 
   // openDevice transfers pipeline ownership to its internal device object.
   libfreenect2::Freenect2Device* device = freenect2.openDevice(serial, pipeline);
@@ -268,6 +315,65 @@ int main(int argc, char** argv)
   {
     std::cerr << "Unable to open Kinect " << serial << "\n";
     return 1;
+  }
+
+  if (recording_mode)
+  {
+    libfreenect2::RecordingWriter writer(output, 64);
+    if (!writer.isOpen())
+    {
+      std::cerr << "Unable to create recording: " << writer.getLastError() << "\n";
+      device->close();
+      return 1;
+    }
+    device->setColorFrameListener(&writer);
+    device->setIrAndDepthFrameListener(&writer);
+    if (!device->start())
+    {
+      std::cerr << "Unable to start Kinect streams\n";
+      device->close();
+      return 1;
+    }
+
+    libfreenect2::CalibrationData calibration;
+    if (!device->getCalibrationData(calibration) ||
+        !writer.setCalibration(serial, device->getFirmwareVersion(), calibration))
+    {
+      std::cerr << "Unable to publish recording calibration: " << writer.getLastError() << "\n";
+      device->stop();
+      device->close();
+      return 1;
+    }
+
+    const std::chrono::steady_clock::time_point deadline =
+        std::chrono::steady_clock::now() +
+        std::chrono::seconds(recording_duration_seconds);
+    while (writer.isOpen())
+    {
+      const libfreenect2::RecordingWriter::Stats stats = writer.getStats();
+      if (recording_depth_frames != 0 &&
+          stats.written_depth_frames >= recording_depth_frames)
+        break;
+      if (recording_duration_seconds != 0 && std::chrono::steady_clock::now() >= deadline)
+        break;
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    const bool device_stopped = device->stop();
+    const bool device_closed = device->close();
+    const bool device_ok = device_stopped && device_closed;
+    const bool recording_ok = writer.close();
+    const libfreenect2::RecordingWriter::Stats stats = writer.getStats();
+    if (!device_ok || !recording_ok ||
+        (recording_depth_frames != 0 && stats.written_depth_frames < recording_depth_frames))
+    {
+      std::cerr << "Recording did not complete cleanly: " << writer.getLastError() << "\n";
+      return 1;
+    }
+    std::cout << "Recorded Kinect " << serial << " with " << stats.written_color_frames
+              << " color and " << stats.written_depth_frames << " depth frames; dropped "
+              << stats.dropped_frames << " frames\n";
+    return 0;
   }
 
   const unsigned int frame_types =

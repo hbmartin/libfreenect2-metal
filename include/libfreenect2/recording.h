@@ -28,6 +28,8 @@ public:
     Stats();
 
     uint64_t written_frames;
+    uint64_t written_color_frames;
+    uint64_t written_depth_frames;
     uint64_t dropped_frames;
     uint64_t written_bytes;
   };
