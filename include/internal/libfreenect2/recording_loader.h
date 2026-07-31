@@ -9,9 +9,11 @@
 #define LIBFREENECT2_RECORDING_LOADER_H_
 
 #include <libfreenect2/libfreenect2.hpp>
+#include <libfreenect2/recording_journal.h>
 #include <libfreenect2/recording_manifest.h>
 
 #include <string>
+#include <vector>
 
 namespace libfreenect2
 {
@@ -25,8 +27,15 @@ struct RecordingMetadata
   CalibrationData calibration;
 };
 
+struct RecordingData : RecordingMetadata
+{
+  std::vector<JournalEntry> entries;
+};
+
 bool loadRecordingMetadata(const std::string& directory, bool salvage_incomplete,
                            RecordingMetadata& metadata, std::string* error = 0);
+bool loadRecordingData(const std::string& directory, bool salvage_incomplete,
+                       RecordingData& recording, std::string* error = 0);
 
 } // namespace recording
 } // namespace libfreenect2

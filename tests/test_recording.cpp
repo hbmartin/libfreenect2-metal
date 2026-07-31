@@ -18,6 +18,7 @@
 #endif
 
 #include <libfreenect2/recording.h>
+#include <libfreenect2/frame_listener_impl.h>
 #include <libfreenect2/recording_journal.h>
 #include <libfreenect2/recording_loader.h>
 #include <libfreenect2/recording_manifest.h>
@@ -345,6 +346,55 @@ TEST(RecordingLoader, LoadsIdentityAndCalibrationAndEnforcesCompletion)
 
   ASSERT_EQ(0, std::remove(joinPath(directory, "calibration/p0.bin").c_str()));
   EXPECT_FALSE(loadRecordingMetadata(directory, true, metadata, &error));
+  removeTestRecording(directory);
+}
+
+TEST(RecordingReplay, ReplaysJournaledColorWithRecordedMetadata)
+{
+  const std::string directory = uniqueRecordingDirectory();
+  RecordingWriter writer(directory, 2);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
+      << writer.getLastError();
+
+  Frame source(1, 1, 4);
+  source.format = Frame::Raw;
+  source.timestamp = 345;
+  source.sequence = 6;
+  source.arrival_timestamp_us = monotonicTimeMicroseconds();
+  source.exposure = 1.25f;
+  source.gain = 2.0f;
+  source.gamma = 1.0f;
+  std::memset(source.data, 0x44, 4);
+  EXPECT_FALSE(writer.onNewFrame(Frame::Color, &source));
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  Freenect2Replay replay;
+  Freenect2Device* device =
+      replay.openRecording(directory, new DumpPacketPipeline(), ReplayOptions());
+  ASSERT_NE(static_cast<Freenect2Device*>(0), device);
+  EXPECT_EQ("123456789", device->getSerialNumber());
+  EXPECT_EQ("4.0.3912.0", device->getFirmwareVersion());
+  CalibrationData calibration;
+  ASSERT_TRUE(device->getCalibrationData(calibration));
+  EXPECT_EQ(sampleCalibrationData().p0_tables, calibration.p0_tables);
+
+  SyncMultiFrameListener listener(Frame::Color);
+  device->setColorFrameListener(&listener);
+  const uint64_t delivery_start = monotonicTimeMicroseconds();
+  ASSERT_TRUE(device->startStreams(true, false));
+  FrameMap frames;
+  ASSERT_TRUE(listener.waitForNewFrame(frames, 1000));
+  ASSERT_NE(frames.end(), frames.find(Frame::Color));
+  Frame* actual = frames[Frame::Color];
+  EXPECT_EQ(345u, actual->timestamp);
+  EXPECT_EQ(6u, actual->sequence);
+  EXPECT_GE(actual->arrival_timestamp_us, delivery_start);
+  EXPECT_FLOAT_EQ(1.25f, actual->exposure);
+  EXPECT_EQ(4u, actual->bytes_per_pixel);
+  listener.release(frames);
+  EXPECT_TRUE(device->stop());
+  EXPECT_TRUE(device->close());
   removeTestRecording(directory);
 }
 

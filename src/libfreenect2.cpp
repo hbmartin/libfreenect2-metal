@@ -53,6 +53,8 @@
 #include <libfreenect2/protocol/response.h>
 #include <libfreenect2/protocol/command_transaction.h>
 #include <libfreenect2/logging.h>
+#include <libfreenect2/recording_loader.h>
+#include <libfreenect2/recording_utils.h>
 #include <libfreenect2/threading.h>
 #include <libfreenect2/timing.h>
 
@@ -339,6 +341,8 @@ public:
                         const std::vector<std::string>& frame_filenames,
                         const PacketPipeline* pipeline,
                         const Freenect2Replay::Calibration* calibration);
+  Freenect2ReplayDevice(Freenect2ReplayImpl* context_, const recording::RecordingData& recording,
+                        const PacketPipeline* pipeline, const ReplayOptions& options);
   virtual ~Freenect2ReplayDevice();
 
   virtual std::string getSerialNumber();
@@ -382,6 +386,7 @@ private:
   void processDepthFrame(Frame* frame);
 
   void run();
+  void runRecording();
   static void static_execute(void* arg);
 
   Freenect2ReplayImpl* context_;
@@ -399,6 +404,11 @@ private:
   bool enable_depth_;
   bool has_calibration_;
   Freenect2Replay::Calibration calibration_;
+  bool recording_mode_;
+  ReplayOptions replay_options_;
+  recording::RecordingData recording_;
+  std::string serial_;
+  std::string firmware_;
 
   Freenect2Device::IrCameraParams ir_camera_params_;
   Freenect2Device::ColorCameraParams rgb_camera_params_;
@@ -711,9 +721,13 @@ public:
   Freenect2Device* openDevice(const std::vector<std::string>& frame_filenames,
                               const PacketPipeline* pipeline,
                               const Freenect2Replay::Calibration* calibration = NULL);
+  Freenect2Device* openRecording(const recording::RecordingData& recording,
+                                 const PacketPipeline* pipeline, const ReplayOptions& options);
 };
 
 Freenect2Device::~Freenect2Device() {}
+
+ReplayOptions::ReplayOptions() : salvage_incomplete(false), reproduce_timing(false) {}
 
 bool Freenect2Device::getCalibrationData(CalibrationData&) const
 {
@@ -1709,10 +1723,34 @@ Freenect2ReplayDevice::Freenect2ReplayDevice(Freenect2ReplayImpl* context,
                                              const Freenect2Replay::Calibration* calibration)
     : context_(context), pipeline_(pipeline), frame_filenames_(frame_filenames), t_(NULL),
       running_(false), state_(DeviceCreated), enable_rgb_(true), enable_depth_(true),
-      has_calibration_(calibration != NULL)
+      has_calibration_(calibration != NULL), recording_mode_(false), serial_(LIBFREENECT2_VERSION),
+      firmware_(LIBFREENECT2_VERSION)
 {
   if (calibration != NULL)
     calibration_ = *calibration;
+  size_t single_image = 512 * 424 * 11 / 8;
+  buffer_size_ = 10 * single_image;
+  if (pipeline_ != NULL && pipeline_->getDepthPacketProcessor() != NULL)
+    pipeline_->getDepthPacketProcessor()->allocateBuffer(packet_, buffer_size_);
+}
+
+Freenect2ReplayDevice::Freenect2ReplayDevice(Freenect2ReplayImpl* context,
+                                             const recording::RecordingData& recording,
+                                             const PacketPipeline* pipeline,
+                                             const ReplayOptions& options)
+    : context_(context), pipeline_(pipeline), t_(NULL), running_(false), state_(DeviceCreated),
+      enable_rgb_(true), enable_depth_(true), has_calibration_(true), recording_mode_(true),
+      replay_options_(options), recording_(recording), serial_(recording.manifest.serial),
+      firmware_(recording.manifest.firmware)
+{
+  calibration_.color = recording.calibration.color;
+  calibration_.ir = recording.calibration.ir;
+  calibration_.p0_tables = recording.calibration.p0_tables;
+  IrCameraTables tables(calibration_.ir);
+  calibration_.x_table.assign(tables.xtable.begin(), tables.xtable.end());
+  calibration_.z_table.assign(tables.ztable.begin(), tables.ztable.end());
+  calibration_.lookup_table.assign(tables.lut.begin(), tables.lut.end());
+
   size_t single_image = 512 * 424 * 11 / 8;
   buffer_size_ = 10 * single_image;
   if (pipeline_ != NULL && pipeline_->getDepthPacketProcessor() != NULL)
@@ -1728,14 +1766,12 @@ Freenect2ReplayDevice::~Freenect2ReplayDevice()
 
 std::string Freenect2ReplayDevice::getSerialNumber()
 {
-  // Reasonable assumption given it is a software serial for apps that display this
-  return LIBFREENECT2_VERSION;
+  return serial_;
 }
 
 std::string Freenect2ReplayDevice::getFirmwareVersion()
 {
-  // Reasonable assumption given it is a software serial for apps that display this
-  return LIBFREENECT2_VERSION;
+  return firmware_;
 }
 
 std::string Freenect2ReplayDevice::getPacketPipelineName()
@@ -1830,7 +1866,7 @@ bool Freenect2ReplayDevice::open()
     return false;
   };
 
-  if (pipeline_ == NULL || frame_filenames_.empty())
+  if (pipeline_ == NULL || (!recording_mode_ && frame_filenames_.empty()))
     return fail("replay requires a pipeline and at least one frame");
 
   if (has_calibration_)
@@ -2076,6 +2112,12 @@ bool parseFrameFilename(const std::string& frame_filename, size_t timestamp_sequ
 
 void Freenect2ReplayDevice::run()
 {
+  if (recording_mode_)
+  {
+    runRecording();
+    return;
+  }
+
   size_t timestamp_sequence[2] = {0};
 
   for (size_t i = 0; i < frame_filenames_.size() && running_.load(); i++)
@@ -2174,11 +2216,87 @@ void Freenect2ReplayDevice::run()
   }
 }
 
+void Freenect2ReplayDevice::runRecording()
+{
+  for (std::vector<recording::JournalEntry>::const_iterator entry = recording_.entries.begin();
+       entry != recording_.entries.end() && running_.load(); ++entry)
+  {
+    std::vector<unsigned char> data;
+    std::string error;
+    const std::string path = recording::joinPath(recording_.directory, entry->path);
+    if (!recording::readFile(path, data, &error) || data.size() != entry->byte_count)
+    {
+      LOG_ERROR << error;
+      continue;
+    }
+
+    if (entry->stream == "depth")
+    {
+      DepthPacketProcessor* processor = pipeline_->getDepthPacketProcessor();
+      if (processor == NULL || packet_.memory == NULL || data.size() != buffer_size_ ||
+          !processor->ready())
+      {
+        LOG_ERROR << "recorded depth frame cannot be decoded: " << entry->path;
+        continue;
+      }
+      std::memcpy(packet_.memory->data, &data[0], data.size());
+      packet_.timestamp = entry->device_timestamp;
+      packet_.arrival_timestamp_us = monotonicTimeMicroseconds();
+      packet_.sequence = entry->sequence;
+      packet_.buffer = packet_.memory->data;
+      packet_.buffer_length = data.size();
+      processor->process(packet_);
+      processor->allocateBuffer(packet_, buffer_size_);
+    }
+    else
+    {
+      RgbPacketProcessor* processor = pipeline_->getRgbPacketProcessor();
+      if (processor == NULL || data.empty())
+        continue;
+      RgbPacket packet;
+      packet.timestamp = entry->device_timestamp;
+      packet.arrival_timestamp_us = monotonicTimeMicroseconds();
+      packet.sequence = entry->sequence;
+      packet.jpeg_buffer = &data[0];
+      packet.jpeg_buffer_length = data.size();
+      packet.exposure = entry->exposure;
+      packet.gain = entry->gain;
+      packet.gamma = entry->gamma;
+      processor->process(packet);
+    }
+  }
+  running_.store(false);
+  libfreenect2::lock_guard guard(state_mutex_);
+  if (state_ == DeviceStreaming)
+    state_ = DeviceOpen;
+}
+
 Freenect2Replay::Freenect2Replay() : impl_(new Freenect2ReplayImpl) {}
 
 Freenect2Replay::~Freenect2Replay()
 {
   delete impl_;
+}
+
+Freenect2Device* Freenect2Replay::openRecording(const std::string& directory,
+                                                const ReplayOptions& options)
+{
+  return openRecording(directory, createDefaultPacketPipeline(), options);
+}
+
+Freenect2Device* Freenect2Replay::openRecording(const std::string& directory,
+                                                const PacketPipeline* pipeline,
+                                                const ReplayOptions& options)
+{
+  recording::RecordingData recording;
+  std::string error;
+  if (!recording::loadRecordingData(directory, options.salvage_incomplete, recording, &error))
+  {
+    LOG_ERROR << "failed to load recording: " << error;
+    delete pipeline;
+    return 0;
+  }
+  return impl_->openRecording(recording, pipeline, options);
 }
 
 Freenect2Device* Freenect2Replay::openDevice(const std::vector<std::string>& frame_filenames)
@@ -2220,6 +2338,21 @@ Freenect2Device* Freenect2ReplayImpl::openDevice(const std::vector<std::string>&
     LOG_ERROR << "failed to instantiate a replay device!";
   }
 
+  return device;
+}
+
+Freenect2Device* Freenect2ReplayImpl::openRecording(const recording::RecordingData& recording,
+                                                    const PacketPipeline* pipeline,
+                                                    const ReplayOptions& options)
+{
+  Freenect2ReplayDevice* device = new Freenect2ReplayDevice(this, recording, pipeline, options);
+  addDevice(device);
+  if (!device->open())
+  {
+    delete device;
+    device = 0;
+    LOG_ERROR << "failed to instantiate a recording replay device!";
+  }
   return device;
 }
 

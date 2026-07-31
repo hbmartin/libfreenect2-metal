@@ -374,6 +374,15 @@ private:
 
 class Freenect2ReplayImpl;
 
+/** Options for manifest-directory replay. */
+struct LIBFREENECT2_API ReplayOptions
+{
+  ReplayOptions();
+
+  bool salvage_incomplete; ///< Accept a missing completion marker and a truncated final entry.
+  bool reproduce_timing;   ///< Wait according to recorded arrival offsets instead of fast replay.
+};
+
 /**
  * Library context to create and open replay devices.
  *
@@ -425,6 +434,14 @@ public:
                               const Calibration& calibration);
   Freenect2Device* openDevice(const std::vector<std::string>& frame_filenames,
                               const Calibration& calibration, const PacketPipeline* factory);
+
+  /** Open a versioned recording directory with the default pipeline. */
+  Freenect2Device* openRecording(const std::string& directory,
+                                 const ReplayOptions& options = ReplayOptions());
+
+  /** Open a versioned recording directory with the specified pipeline. */
+  Freenect2Device* openRecording(const std::string& directory, const PacketPipeline* factory,
+                                 const ReplayOptions& options = ReplayOptions());
 
 private:
   Freenect2ReplayImpl* impl_;
