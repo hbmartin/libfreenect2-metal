@@ -86,6 +86,16 @@ TARGET_LINK_LIBRARIES(Protonect
   ${Protonect_LIBRARIES}
 )
 
+ADD_EXECUTABLE(KinectCapture
+  KinectCapture.cpp
+)
+
+TARGET_COMPILE_FEATURES(KinectCapture PRIVATE cxx_std_11)
+
+TARGET_LINK_LIBRARIES(KinectCapture
+  ${freenect2_LIBRARIES}
+)
+
 IF(WIN32)
   INSTALL(TARGETS Protonect DESTINATION bin)
   LIST(REMOVE_DUPLICATES Protonect_DLLS)

@@ -1,4 +1,7 @@
 build
+/captures/
+__pycache__/
+*.py[cod]
 
 # Dependency folders
 depends/*/
