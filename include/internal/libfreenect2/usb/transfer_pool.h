@@ -84,7 +84,7 @@ protected:
   virtual libusb_transfer *allocateTransfer() = 0;
   virtual void fillTransfer(libusb_transfer *transfer) = 0;
 
-  virtual void processTransfer(libusb_transfer *transfer) = 0;
+  virtual void processTransfer(libusb_transfer *transfer, uint64_t arrival_timestamp_us) = 0;
 
   DataCallback *callback_;
 private:
@@ -119,7 +119,7 @@ public:
 protected:
   virtual libusb_transfer *allocateTransfer();
   virtual void fillTransfer(libusb_transfer *transfer);
-  virtual void processTransfer(libusb_transfer *transfer);
+  virtual void processTransfer(libusb_transfer *transfer, uint64_t arrival_timestamp_us);
 };
 
 class IsoTransferPool : public TransferPool
@@ -133,7 +133,7 @@ public:
 protected:
   virtual libusb_transfer *allocateTransfer();
   virtual void fillTransfer(libusb_transfer *transfer);
-  virtual void processTransfer(libusb_transfer *transfer);
+  virtual void processTransfer(libusb_transfer *transfer, uint64_t arrival_timestamp_us);
 
 private:
   size_t num_packets_;

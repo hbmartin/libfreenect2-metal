@@ -48,7 +48,8 @@ public:
 
   void setPacketProcessor(BaseRgbPacketProcessor *processor);
 
-  virtual void onDataReceived(unsigned char* buffer, size_t length);
+  virtual void onDataReceived(unsigned char* buffer, size_t length,
+                              uint64_t arrival_timestamp_us = 0);
 private:
   size_t buffer_size_;
   RgbPacket packet_;

@@ -30,6 +30,7 @@
 #define DATA_CALLBACK_H_
 
 #include <stddef.h>
+#include <stdint.h>
 #include <libfreenect2/config.h>
 
 namespace libfreenect2
@@ -42,8 +43,11 @@ public:
    * Callback that new data has arrived.
    * @param buffer Buffer with new data.
    * @param n Size of the new data.
+   * @param arrival_timestamp_us Monotonic time captured when the USB transfer
+   * completed, or zero when the caller has no host-arrival timestamp.
    */
-  virtual void onDataReceived(unsigned char *buffer, size_t n) = 0;
+  virtual void onDataReceived(unsigned char *buffer, size_t n,
+                              uint64_t arrival_timestamp_us = 0) = 0;
 };
 
 } // namespace libfreenect2

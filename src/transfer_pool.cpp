@@ -28,6 +28,7 @@
 
 #include <libfreenect2/usb/transfer_pool.h>
 #include <libfreenect2/logging.h>
+#include <libfreenect2/timing.h>
 
 #define WRITE_LIBUSB_ERROR(__RESULT) \
   libusb_error_name((__RESULT)) << " " << libusb_strerror(static_cast<libusb_error>((__RESULT)))
@@ -191,6 +192,8 @@ void TransferPool::onTransferCompleteStatic(libusb_transfer* transfer)
 
 void TransferPool::onTransferComplete(TransferPool::Transfer* t)
 {
+  const uint64_t arrival_timestamp_us = monotonicTimeMicroseconds();
+
   if(t->transfer->status == LIBUSB_TRANSFER_CANCELLED)
   {
     t->setStopped(true);
@@ -224,7 +227,7 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
   }
 
   // process data
-  processTransfer(t->transfer);
+  processTransfer(t->transfer, arrival_timestamp_us);
 
   if(!enable_submit_)
   {
@@ -285,12 +288,13 @@ void BulkTransferPool::fillTransfer(libusb_transfer* transfer)
   transfer->type = LIBUSB_TRANSFER_TYPE_BULK;
 }
 
-void BulkTransferPool::processTransfer(libusb_transfer* transfer)
+void BulkTransferPool::processTransfer(libusb_transfer* transfer, uint64_t arrival_timestamp_us)
 {
   if(transfer->status != LIBUSB_TRANSFER_COMPLETED) return;
 
   if(callback_)
-    callback_->onDataReceived(transfer->buffer, transfer->actual_length);
+    callback_->onDataReceived(transfer->buffer, transfer->actual_length,
+                              arrival_timestamp_us);
 }
 
 IsoTransferPool::IsoTransferPool(libusb_device_handle* device_handle, unsigned char device_endpoint) :
@@ -325,7 +329,7 @@ void IsoTransferPool::fillTransfer(libusb_transfer* transfer)
   libusb_set_iso_packet_lengths(transfer, packet_size_);
 }
 
-void IsoTransferPool::processTransfer(libusb_transfer* transfer)
+void IsoTransferPool::processTransfer(libusb_transfer* transfer, uint64_t arrival_timestamp_us)
 {
   unsigned char *ptr = transfer->buffer;
 
@@ -334,7 +338,8 @@ void IsoTransferPool::processTransfer(libusb_transfer* transfer)
     if(transfer->iso_packet_desc[i].status != LIBUSB_TRANSFER_COMPLETED) continue;
 
     if(callback_)
-      callback_->onDataReceived(ptr, transfer->iso_packet_desc[i].actual_length);
+      callback_->onDataReceived(ptr, transfer->iso_packet_desc[i].actual_length,
+                                arrival_timestamp_us);
 
     ptr += transfer->iso_packet_desc[i].length;
   }

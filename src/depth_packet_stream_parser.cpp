@@ -64,8 +64,10 @@ void DepthPacketStreamParser::setPacketProcessor(libfreenect2::BaseDepthPacketPr
   null_buffer_logged_ = false;
 }
 
-void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_length)
+void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_length,
+                                             uint64_t arrival_timestamp_us)
 {
+  (void)arrival_timestamp_us;
   if (packet_.memory == NULL || packet_.memory->data == NULL)
   {
     // Log the diagnosis once instead of spamming at USB transfer rate.

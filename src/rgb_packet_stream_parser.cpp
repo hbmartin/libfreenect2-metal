@@ -80,8 +80,10 @@ void RgbPacketStreamParser::setPacketProcessor(BaseRgbPacketProcessor *processor
   processor_->allocateBuffer(packet_, buffer_size_);
 }
 
-void RgbPacketStreamParser::onDataReceived(unsigned char* buffer, size_t length)
+void RgbPacketStreamParser::onDataReceived(unsigned char* buffer, size_t length,
+                                           uint64_t arrival_timestamp_us)
 {
+  (void)arrival_timestamp_us;
   if (packet_.memory == NULL || packet_.memory->data == NULL)
   {
     LOG_ERROR << "Packet buffer is NULL";
