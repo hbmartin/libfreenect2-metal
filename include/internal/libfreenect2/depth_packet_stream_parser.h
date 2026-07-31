@@ -77,6 +77,9 @@ private:
   uint32_t processed_packets_;
   uint32_t current_sequence_;
   uint32_t current_subsequence_;
+  uint32_t current_timestamp_;
+  uint64_t current_arrival_timestamp_us_;
+  uint64_t work_buffer_arrival_timestamp_us_;
   bool null_buffer_logged_;
 };
 

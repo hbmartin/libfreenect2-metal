@@ -38,6 +38,9 @@ DepthPacketStreamParser::DepthPacketStreamParser() :
     processed_packets_(UINT32_MAX),
     current_sequence_(0),
     current_subsequence_(0),
+    current_timestamp_(0),
+    current_arrival_timestamp_us_(0),
+    work_buffer_arrival_timestamp_us_(0),
     null_buffer_logged_(false)
 {
   size_t single_image = 512*424*11/8;
@@ -67,7 +70,6 @@ void DepthPacketStreamParser::setPacketProcessor(libfreenect2::BaseDepthPacketPr
 void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_length,
                                              uint64_t arrival_timestamp_us)
 {
-  (void)arrival_timestamp_us;
   if (packet_.memory == NULL || packet_.memory->data == NULL)
   {
     // Log the diagnosis once instead of spamming at USB transfer rate.
@@ -87,9 +89,13 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
   {
     //synchronize to subpacket boundary
     wb.length = 0;
+    work_buffer_arrival_timestamp_us_ = 0;
   }
   else
   {
+    if(wb.length == 0)
+      work_buffer_arrival_timestamp_us_ = arrival_timestamp_us;
+
     DepthSubPacketFooter *footer = 0;
     bool footer_found = false;
 
@@ -104,6 +110,7 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
     {
       LOG_DEBUG << "subpacket too large";
       wb.length = 0;
+      work_buffer_arrival_timestamp_us_ = 0;
       return;
     }
 
@@ -133,7 +140,8 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
             {
               DepthPacket &packet = packet_;
               packet.sequence = current_sequence_;
-              packet.timestamp = footer->timestamp;
+              packet.timestamp = current_timestamp_;
+              packet.arrival_timestamp_us = current_arrival_timestamp_us_;
               packet.buffer = packet_.memory->data;
               packet.buffer_length = packet_.memory->capacity;
 
@@ -163,6 +171,8 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
 
           current_sequence_ = footer->sequence;
           current_subsequence_ = 0;
+          current_timestamp_ = footer->timestamp;
+          current_arrival_timestamp_us_ = work_buffer_arrival_timestamp_us_;
         }
 
         Buffer &fb = *packet_.memory;
@@ -186,6 +196,7 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
 
       // reset working buffer
       wb.length = 0;
+      work_buffer_arrival_timestamp_us_ = 0;
     }
   }
 }

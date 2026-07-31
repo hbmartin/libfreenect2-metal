@@ -37,11 +37,15 @@ class CapturingDepthProcessor : public libfreenect2::PacketProcessor<DepthPacket
 public:
   int count = 0;
   uint32_t last_sequence = 0xffffffff;
+  uint32_t last_timestamp = 0xffffffff;
+  uint64_t last_arrival_timestamp_us = 0;
 
   void process(const DepthPacket& packet) override
   {
     ++count;
     last_sequence = packet.sequence;
+    last_timestamp = packet.timestamp;
+    last_arrival_timestamp_us = packet.arrival_timestamp_us;
   }
 };
 
@@ -67,9 +71,10 @@ std::vector<unsigned char> makeSubpacket(uint32_t sequence, uint32_t subsequence
   return buf;
 }
 
-void feed(DepthPacketStreamParser& parser, std::vector<unsigned char>& buf)
+void feed(DepthPacketStreamParser& parser, std::vector<unsigned char>& buf,
+          uint64_t arrival_timestamp_us = 0)
 {
-  parser.onDataReceived(buf.data(), buf.size());
+  parser.onDataReceived(buf.data(), buf.size(), arrival_timestamp_us);
 }
 
 } // namespace
@@ -80,18 +85,28 @@ TEST(DepthStreamParser, AssemblesFullFrameAndForwardsOnce)
   DepthPacketStreamParser parser;
   parser.setPacketProcessor(&proc);
 
-  // 10 complete subsequences of sequence 1 ...
-  for (uint32_t s = 0; s < 10; ++s)
+  // The first subpacket is fragmented; its first USB arrival belongs to the
+  // completed frame even though its footer arrives in the second callback.
+  std::vector<unsigned char> first = makeSubpacket(1, 0);
+  const size_t first_fragment_size = 1234;
+  parser.onDataReceived(first.data(), first_fragment_size, 100);
+  parser.onDataReceived(first.data() + first_fragment_size,
+                        first.size() - first_fragment_size, 200);
+
+  // Complete the remaining subsequences of sequence 1 ...
+  for (uint32_t s = 1; s < 10; ++s)
   {
     std::vector<unsigned char> sub = makeSubpacket(1, s);
-    feed(parser, sub);
+    feed(parser, sub, 200 + s);
   }
   // ... then the first subpacket of sequence 2 flushes sequence 1.
   std::vector<unsigned char> flush = makeSubpacket(2, 0);
-  feed(parser, flush);
+  feed(parser, flush, 999);
 
   EXPECT_EQ(proc.count, 1);
   EXPECT_EQ(proc.last_sequence, 1u);
+  EXPECT_EQ(proc.last_timestamp, 1000u);
+  EXPECT_EQ(proc.last_arrival_timestamp_us, 100u);
 }
 
 TEST(DepthStreamParser, RejectsOutOfRangeSubsequenceWithoutForwarding)
