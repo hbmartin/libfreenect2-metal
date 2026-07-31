@@ -41,8 +41,7 @@ std::string uniqueProfilePath()
   temporary_root = std::getenv("TEMP");
   if (temporary_root == 0 || temporary_root[0] == '\0')
     temporary_root = std::getenv("TMP");
-  const std::string root =
-      temporary_root != 0 && temporary_root[0] != '\0' ? temporary_root : ".";
+  const std::string root = temporary_root != 0 && temporary_root[0] != '\0' ? temporary_root : ".";
 #else
   temporary_root = std::getenv("TMPDIR");
   const std::string root =

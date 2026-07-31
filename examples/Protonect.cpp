@@ -276,9 +276,9 @@ int main(int argc, char *argv[])
       errno = 0;
       char *end = NULL;
       const unsigned long long parsed_frame_count = std::strtoull(frame_count, &end, 10);
-      if(frame_count[0] == '-' || errno == ERANGE || end == frame_count || *end != '\0' ||
-         parsed_frame_count == 0 ||
-         parsed_frame_count > static_cast<unsigned long long>(std::numeric_limits<size_t>::max()))
+      if (frame_count[0] == '-' || errno == ERANGE || end == frame_count || *end != '\0' ||
+          parsed_frame_count == 0 ||
+          parsed_frame_count > static_cast<unsigned long long>(std::numeric_limits<size_t>::max()))
       {
         std::cerr << "invalid frame count '" << frame_count << "'" << std::endl;
         return -1;

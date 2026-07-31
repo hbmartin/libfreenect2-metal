@@ -152,8 +152,8 @@ protected:
   bool debug_;
 public:
   OpenGLPacketPipeline(void *parent_opengl_context = 0, bool debug = false);
-  explicit OpenGLPacketPipeline(const PacketPipelineConfig &config,
-                                void *parent_opengl_context = 0, bool debug = false);
+  explicit OpenGLPacketPipeline(const PacketPipelineConfig& config, void* parent_opengl_context = 0,
+                                bool debug = false);
   virtual ~OpenGLPacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_OPENGL_SUPPORT
@@ -166,7 +166,7 @@ protected:
   const int deviceId;
 public:
   OpenCLPacketPipeline(const int deviceId = -1);
-  explicit OpenCLPacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
+  explicit OpenCLPacketPipeline(const PacketPipelineConfig& config, const int deviceId = -1);
   virtual ~OpenCLPacketPipeline();
 };
 
@@ -182,7 +182,7 @@ protected:
   const int deviceId;
 public:
   OpenCLKdePacketPipeline(const int deviceId = -1);
-  explicit OpenCLKdePacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
+  explicit OpenCLKdePacketPipeline(const PacketPipelineConfig& config, const int deviceId = -1);
   virtual ~OpenCLKdePacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_OPENCL_SUPPORT
@@ -194,7 +194,7 @@ protected:
   const int deviceId;
 public:
   CudaPacketPipeline(const int device_id = -1);
-  explicit CudaPacketPipeline(const PacketPipelineConfig &config, const int device_id = -1);
+  explicit CudaPacketPipeline(const PacketPipelineConfig& config, const int device_id = -1);
   virtual ~CudaPacketPipeline();
 };
 
@@ -210,7 +210,7 @@ protected:
   const int deviceId;
 public:
   CudaKdePacketPipeline(const int device_id = -1);
-  explicit CudaKdePacketPipeline(const PacketPipelineConfig &config, const int device_id = -1);
+  explicit CudaKdePacketPipeline(const PacketPipelineConfig& config, const int device_id = -1);
   virtual ~CudaKdePacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_CUDA_SUPPORT
@@ -223,7 +223,7 @@ protected:
   const int deviceId;
 public:
   MetalPacketPipeline(const int deviceId = -1);
-  explicit MetalPacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
+  explicit MetalPacketPipeline(const PacketPipelineConfig& config, const int deviceId = -1);
   virtual ~MetalPacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_METAL_SUPPORT

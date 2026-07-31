@@ -177,8 +177,7 @@ static RgbPacketProcessor *getConfiguredRgbPacketProcessor(const PacketPipelineC
 
   if(processor != 0 && processor->good())
   {
-#if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT) && \
-    defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
+#if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT) && defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
     if(resolved.rgb_decoder == PacketPipelineConfig::VAAPI)
       return withVaapiRuntimeFallback(static_cast<VaapiRgbPacketProcessor *>(processor),
                                       resolved.allow_fallback);
@@ -341,7 +340,7 @@ CudaPacketPipeline::CudaPacketPipeline(const PacketPipelineConfig &config, const
   comp_->initialize(getConfiguredRgbPacketProcessor(config), new CudaDepthPacketProcessor(device_id));
 }
 
-CudaPacketPipeline::~CudaPacketPipeline() { }
+CudaPacketPipeline::~CudaPacketPipeline() {}
 
 CudaKdePacketPipeline::CudaKdePacketPipeline(const int device_id)
   : CudaKdePacketPipeline(PacketPipelineConfig(), device_id)
@@ -353,7 +352,7 @@ CudaKdePacketPipeline::CudaKdePacketPipeline(const PacketPipelineConfig &config,
   comp_->initialize(getConfiguredRgbPacketProcessor(config), new CudaKdeDepthPacketProcessor(device_id));
 }
 
-CudaKdePacketPipeline::~CudaKdePacketPipeline() { }
+CudaKdePacketPipeline::~CudaKdePacketPipeline() {}
 #endif // LIBFREENECT2_WITH_CUDA_SUPPORT
 
 #ifdef LIBFREENECT2_WITH_METAL_SUPPORT

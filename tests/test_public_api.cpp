@@ -131,8 +131,7 @@ TEST(PublicApi, ProgrammaticRgbSelectionOverridesTheEnvironment)
 }
 #endif
 
-#if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT) && \
-    defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
+#if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT) && defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
 TEST(PublicApi, VaapiInitializationFailureRespectsFallbackPolicy)
 {
   lf::PacketPipelineConfig fallback;
