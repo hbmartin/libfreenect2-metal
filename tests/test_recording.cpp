@@ -7,14 +7,61 @@
 
 #include <gtest/gtest.h>
 
-#include <libfreenect2/recording_manifest.h>
+#include <cstdio>
+#include <sstream>
+
+#if defined(_WIN32)
+#include <direct.h>
+#else
+#include <unistd.h>
+#endif
+
+#include <libfreenect2/recording.h>
 #include <libfreenect2/recording_journal.h>
+#include <libfreenect2/recording_manifest.h>
 #include <libfreenect2/recording_utils.h>
+#include <libfreenect2/timing.h>
 
 namespace libfreenect2
 {
 namespace recording
 {
+
+namespace
+{
+
+std::string uniqueRecordingDirectory()
+{
+  std::ostringstream path;
+  path << "libfreenect2-recording-test-" << monotonicTimeMicroseconds();
+  return path.str();
+}
+
+void removeTestRecording(const std::string& directory)
+{
+  std::remove(joinPath(directory, "recording.complete").c_str());
+  std::remove(joinPath(directory, "manifest.json").c_str());
+  std::remove(joinPath(directory, "calibration/p0.bin").c_str());
+  std::remove(joinPath(directory, "frames/color/0000000000.jpg").c_str());
+  std::remove(joinPath(directory, "frames/depth/0000000000.depth").c_str());
+  std::remove(joinPath(directory, "frames/depth/0000000001.depth").c_str());
+  std::remove(joinPath(directory, "frames.ndjson").c_str());
+#if defined(_WIN32)
+  _rmdir(joinPath(directory, "frames/color").c_str());
+  _rmdir(joinPath(directory, "frames/depth").c_str());
+  _rmdir(joinPath(directory, "frames").c_str());
+  _rmdir(joinPath(directory, "calibration").c_str());
+  _rmdir(directory.c_str());
+#else
+  rmdir(joinPath(directory, "frames/color").c_str());
+  rmdir(joinPath(directory, "frames/depth").c_str());
+  rmdir(joinPath(directory, "frames").c_str());
+  rmdir(joinPath(directory, "calibration").c_str());
+  rmdir(directory.c_str());
+#endif
+}
+
+} // namespace
 
 TEST(RecordingPaths, AcceptsCanonicalRecordingPaths)
 {
@@ -155,6 +202,49 @@ TEST(RecordingJournal, RejectsInvalidStreamsPathsAndMetadata)
   entry.has_rgb_metadata = false;
   EXPECT_FALSE(serializeJournalEntry(entry, line, &error));
   EXPECT_FALSE(parseJournalEntry("{\"index\":0}\n", entry, &error));
+}
+
+TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)
+{
+  const std::string directory = uniqueRecordingDirectory();
+  RecordingWriter writer(directory, 2);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+
+  Frame frame(1, 1, 4);
+  frame.format = Frame::Raw;
+  frame.timestamp = 123;
+  frame.sequence = 4;
+  frame.arrival_timestamp_us = monotonicTimeMicroseconds();
+  frame.exposure = 1.25f;
+  frame.gain = 2.0f;
+  frame.gamma = 1.0f;
+  frame.data[0] = 0xff;
+  frame.data[1] = 0xd8;
+  frame.data[2] = 0xff;
+  frame.data[3] = 0xd9;
+  EXPECT_FALSE(writer.onNewFrame(Frame::Color, &frame));
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  const RecordingWriter::Stats stats = writer.getStats();
+  EXPECT_EQ(1u, stats.written_frames);
+  EXPECT_EQ(0u, stats.dropped_frames);
+  EXPECT_EQ(4u, stats.written_bytes);
+
+  std::vector<unsigned char> jpeg;
+  std::string error;
+  ASSERT_TRUE(readFile(joinPath(directory, "frames/color/0000000000.jpg"), jpeg, &error)) << error;
+  EXPECT_EQ(4u, jpeg.size());
+
+  std::vector<unsigned char> journal;
+  ASSERT_TRUE(readFile(joinPath(directory, "frames.ndjson"), journal, &error)) << error;
+  JournalEntry entry;
+  ASSERT_TRUE(parseJournalEntry(std::string(journal.begin(), journal.end()), entry, &error))
+      << error;
+  EXPECT_EQ("color", entry.stream);
+  EXPECT_EQ(4u, entry.byte_count);
+  EXPECT_EQ(123u, entry.device_timestamp);
+  EXPECT_EQ(4u, entry.sequence);
+  removeTestRecording(directory);
 }
 
 } // namespace recording

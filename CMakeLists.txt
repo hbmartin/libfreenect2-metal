@@ -188,6 +188,7 @@ SET(SOURCES
   include/libfreenect2/packet_pipeline.h
   include/internal/libfreenect2/packet_processor.h
   include/libfreenect2/registration.h
+  include/libfreenect2/recording.h
   include/internal/libfreenect2/resource.h
   include/internal/libfreenect2/recording_utils.h
   include/internal/libfreenect2/rgb_packet_processor.h
@@ -209,6 +210,7 @@ SET(SOURCES
   src/recording_utils.cpp
   src/recording_manifest.cpp
   src/recording_journal.cpp
+  src/recording_writer.cpp
   src/command_transaction.cpp
   src/registration.cpp
   src/logging.cpp
