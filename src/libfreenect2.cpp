@@ -1136,8 +1136,10 @@ bool Freenect2DeviceImpl::stop()
   if(state_ != Streaming)
   {
     LOG_INFO << "already stopped, doing nothing";
-    return false;
+    return true;
   }
+
+  bool success = true;
 
   if (rgb_transfer_pool_.enabled())
   {
@@ -1153,23 +1155,33 @@ bool Freenect2DeviceImpl::stop()
     ir_transfer_pool_.cancel();
   }
 
-  if (usb_control_.setIrInterfaceState(UsbControl::Disabled) != UsbControl::Success) return false;
+  if (usb_control_.setIrInterfaceState(UsbControl::Disabled) != UsbControl::Success)
+    success = false;
 
   CommandTransaction::Result result;
-  if (!command_tx_.execute(SetModeEnabledWith0x00640064Command(nextCommandSeq()), result)) return false;
-  if (!command_tx_.execute(SetModeDisabledCommand(nextCommandSeq()), result)) return false;
-  if (!command_tx_.execute(StopCommand(nextCommandSeq()), result)) return false;
-  if (!command_tx_.execute(SetStreamDisabledCommand(nextCommandSeq()), result)) return false;
-  if (!command_tx_.execute(SetModeEnabledCommand(nextCommandSeq()), result)) return false;
-  if (!command_tx_.execute(SetModeDisabledCommand(nextCommandSeq()), result)) return false;
-  if (!command_tx_.execute(SetModeEnabledCommand(nextCommandSeq()), result)) return false;
-  if (!command_tx_.execute(SetModeDisabledCommand(nextCommandSeq()), result)) return false;
+  if (!command_tx_.execute(SetModeEnabledWith0x00640064Command(nextCommandSeq()), result))
+    success = false;
+  if (!command_tx_.execute(SetModeDisabledCommand(nextCommandSeq()), result))
+    success = false;
+  if (!command_tx_.execute(StopCommand(nextCommandSeq()), result))
+    success = false;
+  if (!command_tx_.execute(SetStreamDisabledCommand(nextCommandSeq()), result))
+    success = false;
+  if (!command_tx_.execute(SetModeEnabledCommand(nextCommandSeq()), result))
+    success = false;
+  if (!command_tx_.execute(SetModeDisabledCommand(nextCommandSeq()), result))
+    success = false;
+  if (!command_tx_.execute(SetModeEnabledCommand(nextCommandSeq()), result))
+    success = false;
+  if (!command_tx_.execute(SetModeDisabledCommand(nextCommandSeq()), result))
+    success = false;
 
-  if (usb_control_.setVideoTransferFunctionState(UsbControl::Disabled) != UsbControl::Success) return false;
+  if (usb_control_.setVideoTransferFunctionState(UsbControl::Disabled) != UsbControl::Success)
+    success = false;
 
   state_ = Open;
-  LOG_INFO << "stopped";
-  return true;
+  LOG_INFO << (success ? "stopped" : "stopped with control-transfer errors");
+  return success;
 }
 
 bool Freenect2DeviceImpl::close()
@@ -1182,14 +1194,15 @@ bool Freenect2DeviceImpl::close()
     return true;
   }
 
-  if(state_ == Streaming)
-  {
-    stop();
-  }
+  bool success = true;
+  if(state_ == Streaming && !stop())
+    success = false;
 
   CommandTransaction::Result result;
-  command_tx_.execute(SetModeEnabledWith0x00640064Command(nextCommandSeq()), result);
-  command_tx_.execute(SetModeDisabledCommand(nextCommandSeq()), result);
+  if(!command_tx_.execute(SetModeEnabledWith0x00640064Command(nextCommandSeq()), result))
+    success = false;
+  if(!command_tx_.execute(SetModeDisabledCommand(nextCommandSeq()), result))
+    success = false;
   /* This command actually reboots the device and makes it disappear for 3 seconds.
    * Protonect can restart instantly without it.
    */
@@ -1200,7 +1213,8 @@ bool Freenect2DeviceImpl::close()
    *
    * Shut down Kinect explicitly on Mac and wait a fixed time.
    */
-  command_tx_.execute(ShutdownCommand(nextCommandSeq()), result);
+  if(!command_tx_.execute(ShutdownCommand(nextCommandSeq()), result))
+    success = false;
   libfreenect2::this_thread::sleep_for(libfreenect2::chrono::milliseconds(4*1000));
 #endif
 
@@ -1214,7 +1228,8 @@ bool Freenect2DeviceImpl::close()
   {
     LOG_INFO << "releasing usb interfaces...";
 
-    usb_control_.releaseInterfaces();
+    if(usb_control_.releaseInterfaces() != UsbControl::Success)
+      success = false;
     has_usb_interfaces_ = false;
   }
 
@@ -1224,13 +1239,14 @@ bool Freenect2DeviceImpl::close()
 
   LOG_INFO << "closing usb device...";
 
-  libusb_close(usb_device_handle_);
+  if(usb_device_handle_ != 0)
+    libusb_close(usb_device_handle_);
   usb_device_handle_ = 0;
   usb_device_ = 0;
 
   state_ = Closed;
-  LOG_INFO << "closed";
-  return true;
+  LOG_INFO << (success ? "closed" : "closed with shutdown errors");
+  return success;
 }
 
 PacketPipeline *createPacketPipeline(const std::string &name, int device_id)
