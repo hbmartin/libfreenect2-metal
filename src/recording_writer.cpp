@@ -8,7 +8,9 @@
 #include <libfreenect2/recording.h>
 
 #include <libfreenect2/recording_journal.h>
+#include <libfreenect2/recording_manifest.h>
 #include <libfreenect2/recording_utils.h>
+#include <libfreenect2/protocol/response.h>
 #include <libfreenect2/threading.h>
 #include <libfreenect2/timing.h>
 
@@ -57,7 +59,8 @@ class RecordingWriterImpl
 public:
   RecordingWriterImpl(const std::string& directory, size_t queue_capacity)
       : directory_(directory), queue_capacity_(queue_capacity), worker_(0), accepting_(false),
-        stopping_(false), start_time_us_(monotonicTimeMicroseconds()), next_index_(0)
+        stopping_(false), start_time_us_(monotonicTimeMicroseconds()), next_index_(0),
+        calibration_set_(false)
   {
     if (directory_.empty())
     {
@@ -93,7 +96,8 @@ public:
 
   bool enqueue(Frame::Type type, Frame* frame)
   {
-    if (type != Frame::Color || frame == 0 || frame->format != Frame::Raw || frame->data == 0)
+    if ((type != Frame::Color && type != Frame::Depth) || frame == 0 ||
+        frame->format != Frame::Raw || frame->data == 0)
       return false;
 
     size_t byte_count = 0;
@@ -112,18 +116,23 @@ public:
       }
 
       job.entry.index = next_index_++;
-      job.entry.stream = "color";
-      job.entry.path = frameRelativePath("color", job.entry.index, ".jpg");
+      const bool is_color = type == Frame::Color;
+      job.entry.stream = is_color ? "color" : "depth";
+      job.entry.path =
+          frameRelativePath(job.entry.stream, job.entry.index, is_color ? ".jpg" : ".depth");
       job.entry.byte_count = byte_count;
       job.entry.device_timestamp = frame->timestamp;
       job.entry.sequence = frame->sequence;
       job.entry.arrival_offset_us = frame->arrival_timestamp_us > start_time_us_
                                         ? frame->arrival_timestamp_us - start_time_us_
                                         : 0;
-      job.entry.has_rgb_metadata = true;
-      job.entry.exposure = frame->exposure;
-      job.entry.gain = frame->gain;
-      job.entry.gamma = frame->gamma;
+      job.entry.has_rgb_metadata = is_color;
+      if (is_color)
+      {
+        job.entry.exposure = frame->exposure;
+        job.entry.gain = frame->gain;
+        job.entry.gamma = frame->gamma;
+      }
       job.data.assign(frame->data, frame->data + byte_count);
       queue_.push_back(job);
     }
@@ -131,11 +140,48 @@ public:
     return false;
   }
 
-  bool setCalibration(const std::string&, const std::string&, const CalibrationData&)
+  bool setCalibration(const std::string& serial, const std::string& firmware,
+                      const CalibrationData& calibration)
   {
     libfreenect2::lock_guard guard(mutex_);
-    last_error_ = "recording calibration persistence is not initialized";
-    return false;
+    if (!accepting_)
+    {
+      if (last_error_.empty())
+        last_error_ = "recording writer is not open";
+      return false;
+    }
+    if (calibration_set_)
+    {
+      last_error_ = "recording calibration was already published";
+      return false;
+    }
+    if (serial.empty() || firmware.empty())
+    {
+      last_error_ = "recording calibration requires a serial and firmware";
+      return false;
+    }
+    if (calibration.p0_tables.size() != sizeof(protocol::P0TablesResponse))
+    {
+      last_error_ = "recording calibration contains an invalid P0 table length";
+      return false;
+    }
+
+    std::string error;
+    if (!recording::writeFileAtomically(recording::joinPath(directory_, "calibration/p0.bin"),
+                                        &calibration.p0_tables[0], calibration.p0_tables.size(),
+                                        &error))
+    {
+      last_error_ = error;
+      accepting_ = false;
+      return false;
+    }
+
+    manifest_.serial = serial;
+    manifest_.firmware = firmware;
+    manifest_.color = calibration.color;
+    manifest_.ir = calibration.ir;
+    calibration_set_ = true;
+    return true;
   }
 
   bool close()
@@ -234,6 +280,8 @@ private:
   bool stopping_;
   uint64_t start_time_us_;
   uint64_t next_index_;
+  recording::ManifestV1 manifest_;
+  bool calibration_set_;
   recording::FrameJournal journal_;
   RecordingWriter::Stats stats_;
   std::string last_error_;

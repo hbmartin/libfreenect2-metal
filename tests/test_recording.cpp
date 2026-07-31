@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdio>
+#include <cstring>
 #include <sstream>
 
 #if defined(_WIN32)
@@ -20,6 +21,7 @@
 #include <libfreenect2/recording_journal.h>
 #include <libfreenect2/recording_manifest.h>
 #include <libfreenect2/recording_utils.h>
+#include <libfreenect2/protocol/response.h>
 #include <libfreenect2/timing.h>
 
 namespace libfreenect2
@@ -244,6 +246,41 @@ TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)
   EXPECT_EQ(4u, entry.byte_count);
   EXPECT_EQ(123u, entry.device_timestamp);
   EXPECT_EQ(4u, entry.sequence);
+  removeTestRecording(directory);
+}
+
+TEST(RecordingWriter, PersistsRawDepthAndP0Calibration)
+{
+  const std::string directory = uniqueRecordingDirectory();
+  RecordingWriter writer(directory, 2);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+
+  CalibrationData calibration = {};
+  calibration.color.fx = 1081.0f;
+  calibration.ir.fx = 365.0f;
+  calibration.p0_tables.resize(sizeof(protocol::P0TablesResponse), 0x2a);
+  ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", calibration))
+      << writer.getLastError();
+
+  Frame frame(1, 1, 4);
+  frame.format = Frame::Raw;
+  frame.timestamp = 234;
+  frame.sequence = 5;
+  frame.arrival_timestamp_us = monotonicTimeMicroseconds();
+  std::memset(frame.data, 0x55, 4);
+  EXPECT_FALSE(writer.onNewFrame(Frame::Depth, &frame));
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  std::vector<unsigned char> depth;
+  std::string error;
+  ASSERT_TRUE(readFile(joinPath(directory, "frames/depth/0000000000.depth"), depth, &error))
+      << error;
+  EXPECT_EQ(4u, depth.size());
+  EXPECT_EQ(0x55, depth[0]);
+
+  std::vector<unsigned char> p0;
+  ASSERT_TRUE(readFile(joinPath(directory, "calibration/p0.bin"), p0, &error)) << error;
+  EXPECT_EQ(calibration.p0_tables, p0);
   removeTestRecording(directory);
 }
 
