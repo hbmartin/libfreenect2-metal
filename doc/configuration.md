@@ -50,7 +50,7 @@ Limits and behavior that were previously undocumented
 
 | Variable | Effect |
 |---|---|
-| `LIBFREENECT2_PIPELINE` | select pipeline: `gl`, `cuda`, `cl`, `metal`, `cpu` (falls back to the default order if unavailable) |
+| `LIBFREENECT2_PIPELINE` | select pipeline: `cpu`, `metal`, `opengl`, `opencl`, `opencl_kde`, `cuda`, `cuda_kde`, or `dump` (legacy `gl`/`cl` aliases are accepted here only; falls back to the default order if unavailable) |
 | `LIBFREENECT2_RGB_PROCESSOR` | in automatic mode, select the RGB decoder: `auto`, `turbojpeg`, `videotoolbox`, `vaapi`, or `tegrajpeg` |
 | `LIBFREENECT2_VAAPI_DEVICE` | in automatic mode, use one explicit VAAPI DRM node, such as `/dev/dri/renderD128` |
 | `LIBFREENECT2_LOGGER_LEVEL` | `debug`, `info`, `warning`, `error`, or `none` |

@@ -99,6 +99,7 @@ INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/mainpage.dox \
                          @CMAKE_CURRENT_SOURCE_DIR@/depth_accuracy.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/depth_calibration.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/recording_replay.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/quality.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/webcam.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/python.md
 INPUT_ENCODING         = UTF-8

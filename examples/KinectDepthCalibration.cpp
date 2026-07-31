@@ -31,7 +31,8 @@ struct RecordingInput
 void printUsage()
 {
   std::cerr << "usage: KinectDepthCalibration OUTPUT.json --roi X Y WIDTH HEIGHT "
-               "[--frames N] [--warmup-frames N] [--serial SERIAL] [--pipeline NAME] "
+               "[--frames N] [--warmup-frames N (live only)] [--serial SERIAL] "
+               "[--pipeline NAME] "
                "(--recording DISTANCE_MM DIRECTORY | --live DISTANCE_MM) ...\n";
 }
 

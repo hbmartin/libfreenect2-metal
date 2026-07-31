@@ -12,6 +12,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -35,7 +36,22 @@ DepthCalibrationSample sample(double known_distance_mm, double measured_median_m
 
 std::string uniqueProfilePath()
 {
+  const char* temporary_root = 0;
+#if defined(_WIN32)
+  temporary_root = std::getenv("TEMP");
+  if (temporary_root == 0 || temporary_root[0] == '\0')
+    temporary_root = std::getenv("TMP");
+  const std::string root =
+      temporary_root != 0 && temporary_root[0] != '\0' ? temporary_root : ".";
+#else
+  temporary_root = std::getenv("TMPDIR");
+  const std::string root =
+      temporary_root != 0 && temporary_root[0] != '\0' ? temporary_root : "/tmp";
+#endif
   std::ostringstream path;
+  path << root;
+  if (!root.empty() && root[root.size() - 1] != '/' && root[root.size() - 1] != '\\')
+    path << '/';
   path << "libfreenect2-depth-profile-test-" << monotonicTimeMicroseconds() << ".json";
   return path.str();
 }
@@ -163,6 +179,10 @@ TEST(DepthCalibration, RoundTripsVersionedProfileDiagnostics)
   EXPECT_EQ(profile.serial, loaded.serial);
   EXPECT_EQ(profile.firmware, loaded.firmware);
   EXPECT_EQ(profile.model, loaded.model);
+  EXPECT_EQ(profile.roi.x, loaded.roi.x);
+  EXPECT_EQ(profile.roi.y, loaded.roi.y);
+  EXPECT_EQ(profile.roi.width, loaded.roi.width);
+  EXPECT_EQ(profile.roi.height, loaded.roi.height);
   EXPECT_DOUBLE_EQ(profile.scale, loaded.scale);
   EXPECT_DOUBLE_EQ(profile.offset_mm, loaded.offset_mm);
   ASSERT_EQ(1u, loaded.samples.size());
