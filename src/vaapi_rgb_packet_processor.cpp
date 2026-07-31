@@ -31,6 +31,8 @@
 #include <jpeglib.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <glob.h>
+#include <vector>
 #include <va/va.h>
 #include <va/va_drm.h>
 #include "libfreenect2/logging.h"
@@ -197,6 +199,8 @@ public:
   Allocator *image_allocator;
 
   explicit VaapiRgbPacketProcessorImpl(const std::string &device_path):
+    drm_fd(-1),
+    display(NULL),
     device_path(device_path),
     frame(NULL),
     buffer_allocator(NULL),
@@ -252,44 +256,79 @@ public:
     frame->format = Frame::BGRX;
   }
 
+  bool tryInitializeDevice(const std::string &path)
+  {
+    int candidate_fd = open(path.c_str(), O_RDWR);
+    if (candidate_fd < 0)
+      return false;
+    VADisplay candidate_display = vaGetDisplayDRM(candidate_fd);
+    if (!vaDisplayIsValid(candidate_display)) {
+      close(candidate_fd);
+      return false;
+    }
+
+    int major_ver = 0;
+    int minor_ver = 0;
+    if (vaInitialize(candidate_display, &major_ver, &minor_ver) != VA_STATUS_SUCCESS) {
+      close(candidate_fd);
+      return false;
+    }
+    const int maximum = vaMaxNumEntrypoints(candidate_display);
+    std::vector<VAEntrypoint> entrypoints(maximum > 0 ? maximum : 1);
+    int count = 0;
+    const VAStatus status = vaQueryConfigEntrypoints(candidate_display, VAProfileJPEGBaseline,
+                                                     &entrypoints[0], &count);
+    bool supports_jpeg = status == VA_STATUS_SUCCESS && count > 0 && count <= maximum;
+    if (supports_jpeg) {
+      supports_jpeg = false;
+      for (int index = 0; index < count; ++index) {
+        if (entrypoints[index] == VAEntrypointVLD) {
+          supports_jpeg = true;
+          break;
+        }
+      }
+    }
+    if (!supports_jpeg) {
+      CALL_VA(vaTerminate(candidate_display));
+      close(candidate_fd);
+      return false;
+    }
+
+    drm_fd = candidate_fd;
+    display = candidate_display;
+    LOG_INFO << "using VAAPI render node " << path;
+    return true;
+  }
+
+  static void appendGlob(const char *pattern, std::vector<std::string> &paths)
+  {
+    glob_t matches;
+    std::memset(&matches, 0, sizeof(matches));
+    if (glob(pattern, 0, NULL, &matches) == 0) {
+      for (size_t index = 0; index < matches.gl_pathc; ++index)
+        paths.push_back(matches.gl_pathv[index]);
+    }
+    globfree(&matches);
+  }
+
   bool initializeVaapi()
   {
     /* Open display */
     if (!device_path.empty()) {
-      drm_fd = open(device_path.c_str(), O_RDWR);
-      if (drm_fd >= 0) {
-        display = vaGetDisplayDRM(drm_fd);
-        if (!vaDisplayIsValid(display)) {
-          close(drm_fd);
-          drm_fd = -1;
-          display = NULL;
-        }
-      }
-      CHECK_COND(vaDisplayIsValid(display));
+      CHECK_COND(tryInitializeDevice(device_path));
     } else {
-    static const char *drm_devices[] = {
-      "/dev/dri/renderD128",
-      "/dev/dri/card0",
-      NULL,
-    };
-    for (int i = 0; drm_devices[i]; i++) {
-      drm_fd = open(drm_devices[i], O_RDWR);
-      if (drm_fd < 0)
-        continue;
-      display = vaGetDisplayDRM(drm_fd);
-      if (vaDisplayIsValid(display))
-        break;
-      close(drm_fd);
-      drm_fd = -1;
-      display = NULL;
-    }
+      std::vector<std::string> drm_devices;
+      appendGlob("/dev/dri/renderD*", drm_devices);
+      appendGlob("/dev/dri/card*", drm_devices);
+      for (std::vector<std::string>::const_iterator device = drm_devices.begin();
+           device != drm_devices.end(); ++device) {
+        if (tryInitializeDevice(*device))
+          break;
+      }
     }
     CHECK_COND(vaDisplayIsValid(display));
 
     /* Initialize and create config */
-    int major_ver, minor_ver;
-    CHECK_VA(vaInitialize(display, &major_ver, &minor_ver));
-
     LOG_INFO << "driver: " << vaQueryVendorString(display);
 
     int max_entrypoints = vaMaxNumEntrypoints(display);
