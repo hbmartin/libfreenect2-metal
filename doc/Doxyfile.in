@@ -91,6 +91,7 @@ INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/mainpage.dox \
                          @CMAKE_CURRENT_SOURCE_DIR@/guides.dox \
                          @CMAKE_SOURCE_DIR@/include \
                          @CMAKE_CURRENT_SOURCE_DIR@/faq.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/frame_timing.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/configuration.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/registration.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/depth_accuracy.md \

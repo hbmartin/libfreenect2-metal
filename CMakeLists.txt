@@ -695,6 +695,7 @@ INSTALL(FILES
   "${MY_DIR}/doc/configuration.md"
   "${MY_DIR}/doc/depth_accuracy.md"
   "${MY_DIR}/doc/faq.md"
+  "${MY_DIR}/doc/frame_timing.md"
   "${MY_DIR}/doc/python.md"
   "${MY_DIR}/doc/quality.md"
   "${MY_DIR}/doc/recording_replay.md"

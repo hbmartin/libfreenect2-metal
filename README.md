@@ -54,6 +54,7 @@ Additional guides (also rendered on the documentation site):
 * [Using libfreenect2 from Python](doc/python.md)
 * [Registration and coordinate mapping recipes](doc/registration.md)
 * [FAQ](doc/faq.md)
+* [Frame timing and software pairing](doc/frame_timing.md)
 * [Recording, replay, and multiple Kinects](doc/recording_replay.md)
 * [Runtime configuration reference](doc/configuration.md)
 * [C++ quality checks, sanitizers, fuzzing, and coverage](doc/quality.md)

@@ -42,21 +42,20 @@ Two ways:
 
 `Frame::timestamp` is the **device's** clock, in ticks of 0.125 ms
 (so it advances by ~266 per frame at 30 Hz, ~533 at 15 Hz in low light).
-It is not wall-clock time and it resets when the device restarts. To
-correlate with host time, record `now()` when the frame arrives and fit an
-offset (the USB delivery jitter is a few milliseconds); the library does
-not do this for you.
+It is not wall-clock time, wraps as a 32-bit value, and resets when the device
+restarts. `Frame::arrival_timestamp_us` records the monotonic host time of the
+first contributing USB transfer. It has no wall-clock epoch; sample your wall
+clock separately if you need UTC correlation.
 
 Multiply by `0.125f` to get milliseconds:
 `double ms = frame->timestamp * 0.125;`
 
 ## How well are color and depth synchronized? ([#721](https://github.com/OpenKinect/libfreenect2/issues/721))
 
-Color and depth frames carry timestamps from the same device clock, and
-`SyncMultiFrameListener` pairs the frames that arrive together, but the two
-cameras expose independently: the color camera auto-exposes (see
-`Frame::exposure`) while the depth stream uses fixed short IR exposures.
-Under low light the color stream can drop to 15 Hz while depth stays at
-30 Hz, so a "synchronized" pair can be up to one frame interval apart. For
-motion-sensitive work, match frames by timestamp difference rather than
-arrival order, and prefer good lighting so RGB stays at 30 Hz.
+Color and depth frames carry timestamps from the same device clock, but the
+two cameras expose independently. `SyncMultiFrameListener` groups requested
+frame types without enforcing a timestamp delta; it does not provide hardware
+synchronization. For motion-sensitive work, use
+`TimestampAlignedFrameListener` with an explicit threshold and inspect its
+drop/delta statistics. See the @ref frame_timing guide for clock semantics,
+wraparound, listener behavior, and capture diagnostics.
