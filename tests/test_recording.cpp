@@ -26,8 +26,9 @@
 #include <libfreenect2/recording_loader.h>
 #include <libfreenect2/recording_manifest.h>
 #include <libfreenect2/recording_utils.h>
-#include <libfreenect2/protocol/response.h>
 #include <libfreenect2/timing.h>
+
+#include "support/synthetic.h"
 
 namespace libfreenect2
 {
@@ -71,12 +72,9 @@ void removeTestRecording(const std::string& directory)
 CalibrationData sampleCalibrationData()
 {
   CalibrationData calibration = {};
-  calibration.color.fx = 1081.0f;
-  calibration.ir.fx = 365.0f;
-  calibration.ir.fy = 365.0f;
-  calibration.ir.cx = 255.5f;
-  calibration.ir.cy = 211.5f;
-  calibration.p0_tables.resize(sizeof(protocol::P0TablesResponse), 0x2a);
+  calibration.color = testing::makeColorParams();
+  calibration.ir = testing::makeIrParams();
+  calibration.p0_tables = testing::makeSyntheticP0Tables();
   return calibration;
 }
 
@@ -578,6 +576,46 @@ TEST(RecordingReplay, ReproducesRecordedOffsetsAndInterruptsLongWaits)
   const uint64_t stop_elapsed = monotonicTimeMicroseconds() - stop_start;
   EXPECT_LT(stop_elapsed, 250000u);
   EXPECT_EQ(2u, listener.types().size());
+  EXPECT_TRUE(device->close());
+  removeTestRecording(directory);
+}
+
+TEST(RecordingReplay, RoundTripsSyntheticRawDepthThroughCpuReplay)
+{
+  const std::string directory = uniqueRecordingDirectory();
+  RecordingWriter writer(directory, 2);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(
+      writer.setCalibration("synthetic-device", "synthetic-firmware", sampleCalibrationData()))
+      << writer.getLastError();
+
+  const std::vector<unsigned char> raw_depth = testing::makeSyntheticDepthBuffer(7);
+  Frame source(1, 1, raw_depth.size());
+  source.format = Frame::Raw;
+  source.timestamp = 700;
+  source.sequence = 7;
+  source.arrival_timestamp_us = monotonicTimeMicroseconds();
+  std::memcpy(source.data, &raw_depth[0], raw_depth.size());
+  EXPECT_FALSE(writer.onNewFrame(Frame::Depth, &source));
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  Freenect2Replay replay;
+  Freenect2Device* device =
+      replay.openRecording(directory, new CpuPacketPipeline(), ReplayOptions());
+  ASSERT_NE(static_cast<Freenect2Device*>(0), device);
+  SyncMultiFrameListener listener(Frame::Ir | Frame::Depth);
+  device->setIrAndDepthFrameListener(&listener);
+  ASSERT_TRUE(device->startStreams(false, true));
+  FrameMap frames;
+  ASSERT_TRUE(listener.waitForNewFrame(frames, 2000));
+  ASSERT_NE(frames.end(), frames.find(Frame::Depth));
+  EXPECT_EQ(700u, frames[Frame::Depth]->timestamp);
+  EXPECT_EQ(7u, frames[Frame::Depth]->sequence);
+  EXPECT_EQ(Frame::Float, frames[Frame::Depth]->format);
+  EXPECT_EQ(512u, frames[Frame::Depth]->width);
+  EXPECT_EQ(424u, frames[Frame::Depth]->height);
+  listener.release(frames);
+  EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
   removeTestRecording(directory);
 }
