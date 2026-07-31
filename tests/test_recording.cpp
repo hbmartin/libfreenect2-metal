@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <condition_variable>
 #include <mutex>
@@ -40,9 +41,23 @@ namespace
 
 std::string uniqueRecordingDirectory()
 {
+  const char* temporary_root = 0;
+#if defined(_WIN32)
+  temporary_root = std::getenv("TEMP");
+  if (temporary_root == 0 || temporary_root[0] == '\0')
+  {
+    temporary_root = std::getenv("TMP");
+  }
+  const std::string root =
+      temporary_root != 0 && temporary_root[0] != '\0' ? temporary_root : ".";
+#else
+  temporary_root = std::getenv("TMPDIR");
+  const std::string root =
+      temporary_root != 0 && temporary_root[0] != '\0' ? temporary_root : "/tmp";
+#endif
   std::ostringstream path;
   path << "libfreenect2-recording-test-" << monotonicTimeMicroseconds();
-  return path.str();
+  return joinPath(root, path.str());
 }
 
 void removeTestRecording(const std::string& directory)
