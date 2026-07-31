@@ -100,6 +100,19 @@ TARGET_LINK_LIBRARIES(KinectCapture
   ${freenect2_LIBRARIES}
 )
 
+ADD_EXECUTABLE(KinectReconnect
+  KinectReconnect.cpp
+)
+IF(COMMAND libfreenect2_apply_quality)
+  libfreenect2_apply_quality(KinectReconnect PRIVATE)
+ENDIF()
+
+TARGET_COMPILE_FEATURES(KinectReconnect PRIVATE cxx_std_11)
+
+TARGET_LINK_LIBRARIES(KinectReconnect
+  ${freenect2_LIBRARIES}
+)
+
 IF(WIN32)
   INSTALL(TARGETS Protonect DESTINATION bin)
   LIST(REMOVE_DUPLICATES Protonect_DLLS)
