@@ -113,6 +113,19 @@ TARGET_LINK_LIBRARIES(KinectReconnect
   ${freenect2_LIBRARIES}
 )
 
+ADD_EXECUTABLE(KinectDepthCalibration
+  KinectDepthCalibration.cpp
+)
+IF(COMMAND libfreenect2_apply_quality)
+  libfreenect2_apply_quality(KinectDepthCalibration PRIVATE)
+ENDIF()
+
+TARGET_COMPILE_FEATURES(KinectDepthCalibration PRIVATE cxx_std_11)
+
+TARGET_LINK_LIBRARIES(KinectDepthCalibration
+  ${freenect2_LIBRARIES}
+)
+
 IF(WIN32)
   INSTALL(TARGETS Protonect DESTINATION bin)
   LIST(REMOVE_DUPLICATES Protonect_DLLS)
