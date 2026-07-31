@@ -31,8 +31,8 @@ struct RecordingInput
 void printUsage()
 {
   std::cerr << "usage: KinectDepthCalibration OUTPUT.json --roi X Y WIDTH HEIGHT "
-               "[--frames N] --recording DISTANCE_MM DIRECTORY "
-               "[--recording DISTANCE_MM DIRECTORY ...]\n";
+               "[--frames N] [--warmup-frames N] [--serial SERIAL] "
+               "(--recording DISTANCE_MM DIRECTORY | --live DISTANCE_MM) ...\n";
 }
 
 bool parsePositiveDouble(const std::string& text, double& value)
@@ -62,7 +62,8 @@ bool parseUint32(const std::string& text, uint32_t& value)
 }
 
 bool collectFrames(libfreenect2::Freenect2Device& device, double known_distance_mm,
-                   const libfreenect2::DepthCalibrationRoi& roi, uint32_t frame_count,
+                   const libfreenect2::DepthCalibrationRoi& roi, uint32_t warmup_frame_count,
+                   uint32_t frame_count,
                    std::vector<libfreenect2::DepthCalibrationSample>& samples,
                    std::string& error)
 {
@@ -75,12 +76,14 @@ bool collectFrames(libfreenect2::Freenect2Device& device, double known_distance_
   }
 
   bool success = true;
-  for (uint32_t frame_index = 0; frame_index < frame_count; ++frame_index)
+  const uint64_t total_frame_count =
+      static_cast<uint64_t>(warmup_frame_count) + frame_count;
+  for (uint64_t frame_index = 0; frame_index < total_frame_count; ++frame_index)
   {
     libfreenect2::FrameMap frames;
     if (!listener.waitForNewFrame(frames, 10000))
     {
-      error = "recording ended before the requested calibration frame count";
+      error = "depth stream ended before the requested calibration frame count";
       success = false;
       break;
     }
@@ -96,12 +99,15 @@ bool collectFrames(libfreenect2::Freenect2Device& device, double known_distance_
       break;
     }
 
-    libfreenect2::DepthCalibrationSample sample;
-    sample.known_distance_mm = known_distance_mm;
-    sample.measured_median_mm = statistics.median_mm;
-    sample.mad_mm = statistics.mad_mm;
-    sample.valid_pixel_count = statistics.valid_pixel_count;
-    samples.push_back(sample);
+    if (frame_index >= warmup_frame_count)
+    {
+      libfreenect2::DepthCalibrationSample sample;
+      sample.known_distance_mm = known_distance_mm;
+      sample.measured_median_mm = statistics.median_mm;
+      sample.mad_mm = statistics.mad_mm;
+      sample.valid_pixel_count = statistics.valid_pixel_count;
+      samples.push_back(sample);
+    }
     listener.release(frames);
   }
 
@@ -146,7 +152,7 @@ bool collectRecording(const RecordingInput& input,
     return false;
   }
 
-  const bool collected = collectFrames(*device, input.known_distance_mm, roi, frame_count,
+  const bool collected = collectFrames(*device, input.known_distance_mm, roi, 0, frame_count,
                                        samples, error);
   const bool closed = device->close();
   if (collected && !closed)
@@ -157,11 +163,79 @@ bool collectRecording(const RecordingInput& input,
   return collected;
 }
 
+bool collectLive(const std::vector<double>& known_distances,
+                 const libfreenect2::DepthCalibrationRoi& roi, uint32_t warmup_frame_count,
+                 uint32_t frame_count, const std::string& requested_serial, std::string& serial,
+                 std::string& firmware,
+                 std::vector<libfreenect2::DepthCalibrationSample>& samples,
+                 std::string& error)
+{
+  libfreenect2::Freenect2 freenect2;
+  if (freenect2.enumerateDevices() == 0)
+  {
+    error = "no Kinect v2 device is available for live calibration";
+    return false;
+  }
+  const std::string live_serial =
+      requested_serial.empty() ? freenect2.getDefaultDeviceSerialNumber() : requested_serial;
+  libfreenect2::Freenect2Device* device =
+      freenect2.openDevice(live_serial, new libfreenect2::CpuPacketPipeline());
+  if (device == 0)
+  {
+    error = "unable to open Kinect '" + live_serial + "' for live calibration";
+    return false;
+  }
+
+  const std::string live_firmware = device->getFirmwareVersion();
+  if (serial.empty())
+  {
+    serial = live_serial;
+    firmware = live_firmware;
+  }
+  else if (serial != live_serial || firmware != live_firmware)
+  {
+    std::ostringstream message;
+    message << "live device mismatch: expected " << serial << " / " << firmware << ", got "
+            << live_serial << " / " << live_firmware;
+    error = message.str();
+    device->close();
+    return false;
+  }
+
+  bool success = true;
+  for (size_t index = 0; index < known_distances.size(); ++index)
+  {
+    std::cerr << "Place a flat target at " << known_distances[index]
+              << " mm, keep it perpendicular to the depth camera, then press Enter.\n";
+    std::string confirmation;
+    if (!std::getline(std::cin, confirmation))
+    {
+      error = "live calibration was cancelled before measurement";
+      success = false;
+      break;
+    }
+    if (!collectFrames(*device, known_distances[index], roi, warmup_frame_count, frame_count,
+                       samples, error))
+    {
+      success = false;
+      break;
+    }
+  }
+
+  const bool closed = device->close();
+  if (success && !closed)
+  {
+    error = "unable to close live calibration device";
+    return false;
+  }
+  return success;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
-  if (argc < 9)
+  if (argc < 8)
   {
     printUsage();
     return 2;
@@ -171,7 +245,10 @@ int main(int argc, char** argv)
   libfreenect2::DepthCalibrationRoi roi;
   bool have_roi = false;
   uint32_t frame_count = 30;
+  uint32_t warmup_frame_count = 30;
+  std::string requested_serial;
   std::vector<RecordingInput> recordings;
+  std::vector<double> live_distances;
   for (int argument = 2; argument < argc; ++argument)
   {
     const std::string option = argv[argument];
@@ -194,6 +271,23 @@ int main(int argc, char** argv)
         return 2;
       }
     }
+    else if (option == "--warmup-frames" && argument + 1 < argc)
+    {
+      if (!parseUint32(argv[++argument], warmup_frame_count))
+      {
+        printUsage();
+        return 2;
+      }
+    }
+    else if (option == "--serial" && argument + 1 < argc)
+    {
+      requested_serial = argv[++argument];
+      if (requested_serial.empty())
+      {
+        printUsage();
+        return 2;
+      }
+    }
     else if (option == "--recording" && argument + 2 < argc)
     {
       RecordingInput input;
@@ -205,6 +299,16 @@ int main(int argc, char** argv)
       input.directory = argv[++argument];
       recordings.push_back(input);
     }
+    else if (option == "--live" && argument + 1 < argc)
+    {
+      double known_distance_mm = 0.0;
+      if (!parsePositiveDouble(argv[++argument], known_distance_mm))
+      {
+        printUsage();
+        return 2;
+      }
+      live_distances.push_back(known_distance_mm);
+    }
     else
     {
       printUsage();
@@ -212,7 +316,7 @@ int main(int argc, char** argv)
     }
   }
 
-  if (!have_roi || recordings.empty())
+  if (!have_roi || (recordings.empty() && live_distances.empty()))
   {
     printUsage();
     return 2;
@@ -229,6 +333,13 @@ int main(int argc, char** argv)
       std::cerr << "Calibration input failed: " << error << "\n";
       return 1;
     }
+  }
+  if (!live_distances.empty() &&
+      !collectLive(live_distances, roi, warmup_frame_count, frame_count, requested_serial,
+                   serial, firmware, samples, error))
+  {
+    std::cerr << "Live calibration failed: " << error << "\n";
+    return 1;
   }
 
   libfreenect2::DepthCorrectionProfile profile;
