@@ -387,6 +387,7 @@ private:
 
   void run();
   void runRecording();
+  bool waitForRecordedOffset(uint64_t replay_start_us, uint64_t offset_us);
   static void static_execute(void* arg);
 
   Freenect2ReplayImpl* context_;
@@ -397,6 +398,8 @@ private:
   std::vector<std::string> frame_filenames_;
   libfreenect2::thread* t_;
   std::atomic<bool> running_;
+  libfreenect2::mutex timing_mutex_;
+  libfreenect2::condition_variable timing_condition_;
   mutable libfreenect2::mutex state_mutex_;
   DeviceState state_;
   std::string last_error_;
@@ -2028,7 +2031,11 @@ bool Freenect2ReplayDevice::startStreams(bool enable_rgb, bool enable_depth)
 
 bool Freenect2ReplayDevice::stop()
 {
-  running_.store(false);
+  {
+    libfreenect2::lock_guard guard(timing_mutex_);
+    running_.store(false);
+  }
+  timing_condition_.notify_all();
   if (t_ != NULL)
   {
     t_->join();
@@ -2220,11 +2227,16 @@ void Freenect2ReplayDevice::run()
 void Freenect2ReplayDevice::runRecording()
 {
   // The journal's global indices define cross-stream order in fast replay.
+  const uint64_t replay_start_us = monotonicTimeMicroseconds();
   for (std::vector<recording::JournalEntry>::const_iterator entry = recording_.entries.begin();
        entry != recording_.entries.end() && running_.load(); ++entry)
   {
     if ((entry->stream == "color" && !enable_rgb_) || (entry->stream == "depth" && !enable_depth_))
       continue;
+
+    if (replay_options_.reproduce_timing &&
+        !waitForRecordedOffset(replay_start_us, entry->arrival_offset_us))
+      break;
 
     std::vector<unsigned char> data;
     std::string error;
@@ -2275,6 +2287,24 @@ void Freenect2ReplayDevice::runRecording()
   libfreenect2::lock_guard guard(state_mutex_);
   if (state_ == DeviceStreaming)
     state_ = DeviceOpen;
+}
+
+bool Freenect2ReplayDevice::waitForRecordedOffset(uint64_t replay_start_us, uint64_t offset_us)
+{
+  const uint64_t maximum = std::numeric_limits<uint64_t>::max();
+  const uint64_t target =
+      offset_us > maximum - replay_start_us ? maximum : replay_start_us + offset_us;
+  libfreenect2::unique_lock lock(timing_mutex_);
+  while (running_.load())
+  {
+    const uint64_t now = monotonicTimeMicroseconds();
+    if (now >= target)
+      return true;
+    const uint64_t remaining = target - now;
+    const uint64_t slice = std::min<uint64_t>(remaining, 1000000);
+    timing_condition_.wait_for(lock, chrono::microseconds(slice));
+  }
+  return false;
 }
 
 Freenect2Replay::Freenect2Replay() : impl_(new Freenect2ReplayImpl) {}

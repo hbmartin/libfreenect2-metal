@@ -88,7 +88,10 @@ public:
     {
       std::lock_guard<std::mutex> guard(mutex_);
       if (type == Frame::Color || type == Frame::Depth)
+      {
         types_.push_back(type);
+        delivery_times_.push_back(monotonicTimeMicroseconds());
+      }
     }
     delete frame;
     condition_.notify_all();
@@ -108,10 +111,17 @@ public:
     return types_;
   }
 
+  std::vector<uint64_t> deliveryTimes() const
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    return delivery_times_;
+  }
+
 private:
   mutable std::mutex mutex_;
   std::condition_variable condition_;
   std::vector<Frame::Type> types_;
+  std::vector<uint64_t> delivery_times_;
 };
 
 } // namespace
@@ -528,6 +538,46 @@ TEST(RecordingReplay, PreservesGlobalJournalOrderInFastMode)
   EXPECT_EQ(Frame::Depth, types[1]);
   EXPECT_EQ(Frame::Color, types[2]);
   EXPECT_TRUE(device->stop());
+  EXPECT_TRUE(device->close());
+  removeTestRecording(directory);
+}
+
+TEST(RecordingReplay, ReproducesRecordedOffsetsAndInterruptsLongWaits)
+{
+  const std::string directory = uniqueRecordingDirectory();
+  RecordingWriter writer(directory, 4);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
+      << writer.getLastError();
+
+  Frame color(1, 1, 4);
+  color.format = Frame::Raw;
+  color.arrival_timestamp_us = monotonicTimeMicroseconds();
+  std::memset(color.data, 0x11, 4);
+  EXPECT_FALSE(writer.onNewFrame(Frame::Color, &color));
+  color.arrival_timestamp_us += 100000;
+  EXPECT_FALSE(writer.onNewFrame(Frame::Color, &color));
+  color.arrival_timestamp_us += 4900000;
+  EXPECT_FALSE(writer.onNewFrame(Frame::Color, &color));
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  ReplayOptions options;
+  options.reproduce_timing = true;
+  Freenect2Replay replay;
+  Freenect2Device* device = replay.openRecording(directory, new DumpPacketPipeline(), options);
+  ASSERT_NE(static_cast<Freenect2Device*>(0), device);
+  OrderedFrameListener listener;
+  device->setColorFrameListener(&listener);
+  ASSERT_TRUE(device->startStreams(true, false));
+  ASSERT_TRUE(listener.waitForCount(2));
+  const std::vector<uint64_t> delivery_times = listener.deliveryTimes();
+  ASSERT_GE(delivery_times.size(), 2u);
+  EXPECT_GE(delivery_times[1] - delivery_times[0], 80000u);
+  const uint64_t stop_start = monotonicTimeMicroseconds();
+  EXPECT_TRUE(device->stop());
+  const uint64_t stop_elapsed = monotonicTimeMicroseconds() - stop_start;
+  EXPECT_LT(stop_elapsed, 250000u);
+  EXPECT_EQ(2u, listener.types().size());
   EXPECT_TRUE(device->close());
   removeTestRecording(directory);
 }
