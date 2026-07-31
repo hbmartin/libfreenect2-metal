@@ -129,6 +129,52 @@ public:
   VaapiBuffer(): Buffer(), id(VA_INVALID_ID) {}
 };
 
+class VaapiBufferMapRestorer
+{
+public:
+  VaapiBufferMapRestorer(VADisplay display, VaapiBuffer *buffer):
+    display_(display), buffer_(buffer), restore_(false) {}
+
+  ~VaapiBufferMapRestorer()
+  {
+    if (restore_ && !remap())
+      LOG_ERROR << "failed to restore VAAPI packet buffer mapping";
+  }
+
+  bool unmap()
+  {
+    if (buffer_ == NULL || buffer_->id == VA_INVALID_ID || buffer_->data == NULL)
+      return false;
+    const VAStatus status = vaUnmapBuffer(display_, buffer_->id);
+    if (status != VA_STATUS_SUCCESS) {
+      LOG_ERROR << "vaUnmapBuffer: " << vaErrorStr(status);
+      return false;
+    }
+    buffer_->data = NULL;
+    restore_ = true;
+    return true;
+  }
+
+  bool remap()
+  {
+    if (!restore_)
+      return true;
+    const VAStatus status = vaMapBuffer(display_, buffer_->id, (void**)&buffer_->data);
+    if (status != VA_STATUS_SUCCESS) {
+      LOG_ERROR << "vaMapBuffer: " << vaErrorStr(status);
+      buffer_->data = NULL;
+      return false;
+    }
+    restore_ = false;
+    return true;
+  }
+
+private:
+  VADisplay display_;
+  VaapiBuffer *buffer_;
+  bool restore_;
+};
+
 class VaapiAllocator: public Allocator
 {
 private:
@@ -162,7 +208,11 @@ public:
     VaapiBuffer *vb = static_cast<VaapiBuffer *>(b);
     if (vb->data) {
       CALL_VA(vaUnmapBuffer(display, vb->id));
+      vb->data = NULL;
+    }
+    if (vb->id != VA_INVALID_ID) {
       CALL_VA(vaDestroyBuffer(display, vb->id));
+      vb->id = VA_INVALID_ID;
     }
     delete vb;
   }
@@ -506,7 +556,8 @@ public:
       jpeg_abort_decompress(&dinfo);
     }
     /* Grab the packet buffer for VAAPI backend */
-    CHECK_VA(vaUnmapBuffer(display, vb->id));
+    VaapiBufferMapRestorer mapping(display, vb);
+    CHECK_COND(mapping.unmap());
 
     /* The only parameter that changes after the first packet */
     VASliceParameterBufferJPEGBaseline *slice;
@@ -526,7 +577,7 @@ public:
     if (!frame->draw(display, surface))
       return false;
 
-    CHECK_VA(vaMapBuffer(display, vb->id, (void**)&vb->data));
+    CHECK_COND(mapping.remap());
 
     return true;
   }
