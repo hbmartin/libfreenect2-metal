@@ -288,6 +288,7 @@ private:
   std::string serial_, firmware_;
   Freenect2Device::IrCameraParams ir_camera_params_;
   Freenect2Device::ColorCameraParams rgb_camera_params_;
+  void rollbackStreamStart();
 public:
   Freenect2DeviceImpl(Freenect2Impl *context, const PacketPipeline *pipeline, libusb_device *usb_device, libusb_device_handle *usb_device_handle, const std::string &serial);
   virtual ~Freenect2DeviceImpl();
@@ -947,6 +948,27 @@ bool Freenect2DeviceImpl::start()
   return startStreams(true, true);
 }
 
+void Freenect2DeviceImpl::rollbackStreamStart()
+{
+  if(rgb_transfer_pool_.enabled())
+  {
+    rgb_transfer_pool_.disableSubmission();
+    rgb_transfer_pool_.cancel();
+  }
+  if(ir_transfer_pool_.enabled())
+  {
+    ir_transfer_pool_.disableSubmission();
+    ir_transfer_pool_.cancel();
+  }
+
+  usb_control_.setIrInterfaceState(UsbControl::Disabled);
+  CommandTransaction::Result result;
+  command_tx_.execute(StopCommand(nextCommandSeq()), result);
+  command_tx_.execute(SetStreamDisabledCommand(nextCommandSeq()), result);
+  usb_control_.setVideoTransferFunctionState(UsbControl::Disabled);
+  state_ = Open;
+}
+
 bool Freenect2DeviceImpl::startStreams(bool enable_rgb, bool enable_depth)
 {
   LOG_INFO << "starting...";
@@ -954,16 +976,32 @@ bool Freenect2DeviceImpl::startStreams(bool enable_rgb, bool enable_depth)
 
   CommandTransaction::Result serial_result, firmware_result, result;
 
-  if (usb_control_.setVideoTransferFunctionState(UsbControl::Enabled) != UsbControl::Success) return false;
+  if (usb_control_.setVideoTransferFunctionState(UsbControl::Enabled) != UsbControl::Success)
+  {
+    rollbackStreamStart();
+    return false;
+  }
 
-  if (!command_tx_.execute(ReadFirmwareVersionsCommand(nextCommandSeq()), firmware_result)) return false;
+  if (!command_tx_.execute(ReadFirmwareVersionsCommand(nextCommandSeq()), firmware_result))
+  {
+    rollbackStreamStart();
+    return false;
+  }
   firmware_ = FirmwareVersionResponse(firmware_result).toString();
 
-  if (!command_tx_.execute(ReadHardwareInfoCommand(nextCommandSeq()), result)) return false;
+  if (!command_tx_.execute(ReadHardwareInfoCommand(nextCommandSeq()), result))
+  {
+    rollbackStreamStart();
+    return false;
+  }
   //The hardware version is currently useless.  It is only used to select the
   //IR normalization table, but we don't have that.
 
-  if (!command_tx_.execute(ReadSerialNumberCommand(nextCommandSeq()), serial_result)) return false;
+  if (!command_tx_.execute(ReadSerialNumberCommand(nextCommandSeq()), serial_result))
+  {
+    rollbackStreamStart();
+    return false;
+  }
   std::string new_serial = SerialNumberResponse(serial_result).toString();
 
   if(serial_ != new_serial)
@@ -971,23 +1009,47 @@ bool Freenect2DeviceImpl::startStreams(bool enable_rgb, bool enable_depth)
     LOG_WARNING << "serial number reported by libusb " << serial_ << " differs from serial number " << new_serial << " in device protocol! ";
   }
 
-  if (!command_tx_.execute(ReadDepthCameraParametersCommand(nextCommandSeq()), result)) return false;
+  if (!command_tx_.execute(ReadDepthCameraParametersCommand(nextCommandSeq()), result))
+  {
+    rollbackStreamStart();
+    return false;
+  }
   setIrCameraParams(DepthCameraParamsResponse(result).toIrCameraParams());
 
-  if (!command_tx_.execute(ReadP0TablesCommand(nextCommandSeq()), result)) return false;
+  if (!command_tx_.execute(ReadP0TablesCommand(nextCommandSeq()), result))
+  {
+    rollbackStreamStart();
+    return false;
+  }
   if(pipeline_->getDepthPacketProcessor() != 0)
     pipeline_->getDepthPacketProcessor()->loadP0TablesFromCommandResponse(&result[0], result.size());
 
-  if (!command_tx_.execute(ReadRgbCameraParametersCommand(nextCommandSeq()), result)) return false;
+  if (!command_tx_.execute(ReadRgbCameraParametersCommand(nextCommandSeq()), result))
+  {
+    rollbackStreamStart();
+    return false;
+  }
   setColorCameraParams(RgbCameraParamsResponse(result).toColorCameraParams());
 
-  if (!command_tx_.execute(SetModeEnabledWith0x00640064Command(nextCommandSeq()), result)) return false;
-  if (!command_tx_.execute(SetModeDisabledCommand(nextCommandSeq()), result)) return false;
+  if (!command_tx_.execute(SetModeEnabledWith0x00640064Command(nextCommandSeq()), result))
+  {
+    rollbackStreamStart();
+    return false;
+  }
+  if (!command_tx_.execute(SetModeDisabledCommand(nextCommandSeq()), result))
+  {
+    rollbackStreamStart();
+    return false;
+  }
 
   int timeout = 50; // about 5 seconds (100ms x 50)
   for (uint32_t status = 0, last = 0; (status & 1) == 0 && 0 < timeout; last = status, timeout--)
   {
-    if (!command_tx_.execute(ReadStatus0x090000Command(nextCommandSeq()), result)) return false;
+    if (!command_tx_.execute(ReadStatus0x090000Command(nextCommandSeq()), result))
+    {
+      rollbackStreamStart();
+      return false;
+    }
     status = Status0x090000Response(result).toNumber();
     if (status != last)
       LOG_DEBUG << "status 0x090000: " << status;
@@ -998,14 +1060,30 @@ bool Freenect2DeviceImpl::startStreams(bool enable_rgb, bool enable_depth)
     LOG_DEBUG << "status 0x090000: timeout";
   }
 
-  if (!command_tx_.execute(InitStreamsCommand(nextCommandSeq()), result)) return false;
+  if (!command_tx_.execute(InitStreamsCommand(nextCommandSeq()), result))
+  {
+    rollbackStreamStart();
+    return false;
+  }
 
-  if (usb_control_.setIrInterfaceState(UsbControl::Enabled) != UsbControl::Success) return false;
+  if (usb_control_.setIrInterfaceState(UsbControl::Enabled) != UsbControl::Success)
+  {
+    rollbackStreamStart();
+    return false;
+  }
 
-  if (!command_tx_.execute(ReadStatus0x090000Command(nextCommandSeq()), result)) return false;
+  if (!command_tx_.execute(ReadStatus0x090000Command(nextCommandSeq()), result))
+  {
+    rollbackStreamStart();
+    return false;
+  }
   LOG_DEBUG << "status 0x090000: " << Status0x090000Response(result).toNumber();
 
-  if (!command_tx_.execute(SetStreamEnabledCommand(nextCommandSeq()), result)) return false;
+  if (!command_tx_.execute(SetStreamEnabledCommand(nextCommandSeq()), result))
+  {
+    rollbackStreamStart();
+    return false;
+  }
 
   //command_tx_.execute(Unknown0x47Command(nextCommandSeq()), result);
   //command_tx_.execute(Unknown0x46Command(nextCommandSeq()), result);
@@ -1028,14 +1106,22 @@ bool Freenect2DeviceImpl::startStreams(bool enable_rgb, bool enable_depth)
   {
     LOG_INFO << "submitting rgb transfers...";
     rgb_transfer_pool_.enableSubmission();
-    if (!rgb_transfer_pool_.submit()) return false;
+    if (!rgb_transfer_pool_.submit())
+    {
+      rollbackStreamStart();
+      return false;
+    }
   }
 
   if (enable_depth)
   {
     LOG_INFO << "submitting depth transfers...";
     ir_transfer_pool_.enableSubmission();
-    if (!ir_transfer_pool_.submit()) return false;
+    if (!ir_transfer_pool_.submit())
+    {
+      rollbackStreamStart();
+      return false;
+    }
   }
 
   state_ = Streaming;
