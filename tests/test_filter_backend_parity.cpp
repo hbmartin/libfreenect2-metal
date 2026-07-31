@@ -70,3 +70,44 @@ TEST(OpenCLCpuParity, SupportsEveryFilterCombination)
 }
 
 #endif
+
+#ifdef LIBFREENECT2_WITH_OPENGL_SUPPORT
+
+TEST(OpenGLCpuParity, SupportsEveryFilterCombination)
+{
+  libfreenect2::OpenGLDepthPacketProcessor opengl(0, false);
+  if(!opengl.good())
+    GTEST_SKIP() << "No usable OpenGL context on this machine";
+
+  const std::array<DepthFilterConfiguration, 4>& configurations =
+      depthFilterConfigurations();
+  for(size_t i = 0; i < configurations.size(); ++i)
+  {
+    const DepthFilterConfiguration& filter = configurations[i];
+    SCOPED_TRACE(filter.name);
+
+    CpuDepthPacketProcessor cpu;
+    CollectingFrameListener cpu_output;
+    CollectingFrameListener opengl_output;
+    runSyntheticDepthProcessor(cpu, filter.config(), 19, cpu_output);
+    runSyntheticDepthProcessor(opengl, filter.config(), 19, opengl_output);
+
+    ASSERT_NE(cpu_output.depth(), nullptr);
+    ASSERT_NE(opengl_output.depth(), nullptr);
+    EXPECT_GT(countValidDepthPixels(opengl_output.depth()), 0u);
+
+    const DepthFrameAgreement agreement = compareDepthFrames(
+        cpu_output.depth(), opengl_output.depth(), cpu_output.ir(), opengl_output.ir());
+    EXPECT_GT(agreement.ir_ratio, 0.99);
+    EXPECT_GT(agreement.depth_ratio, 0.95);
+  }
+}
+
+#else
+
+TEST(OpenGLCpuParity, SupportsEveryFilterCombination)
+{
+  GTEST_SKIP() << "Built without OpenGL support";
+}
+
+#endif

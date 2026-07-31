@@ -776,6 +776,15 @@ public:
       gl()->glBindVertexArray(square_vao);
       glDrawArrays(GL_TRIANGLES, 0, 6);
     }
+    else if(config.EnableEdgeAwareFilter)
+    {
+      // The bilateral pass is normally the sole writer of this integer mask.
+      // Edge-only filtering must see an explicit pass-through value rather
+      // than texture contents left by allocation or an earlier frame.
+      gl()->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, filter1_framebuffer);
+      const GLuint all_valid[4] = {1, 1, 1, 1};
+      gl()->glClearBufferuiv(GL_COLOR, 3, all_valid);
+    }
     // data processing 2
     gl()->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, stage2_framebuffer);
     glClear(GL_COLOR_BUFFER_BIT);
