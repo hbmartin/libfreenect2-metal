@@ -15,6 +15,7 @@
 #include <limits>
 #include <mutex>
 #include <sstream>
+#include <thread>
 
 #if defined(_WIN32)
 #include <direct.h>
@@ -248,6 +249,26 @@ TEST(RecordingManifest, RejectsMissingAndNonFiniteCalibration)
   EXPECT_NE(error.find("non-finite"), std::string::npos);
 }
 
+TEST(RecordingManifest, RejectsNonIntegerVersions)
+{
+  ManifestV1 parsed;
+  std::string error;
+  std::string text;
+  ASSERT_TRUE(serializeManifestV1(sampleManifest(), text, &error)) << error;
+  const std::string::size_type version = text.find("\"version\": 1");
+  ASSERT_NE(version, std::string::npos);
+
+  std::string huge = text;
+  huge.replace(version, 12, "\"version\": 1e30");
+  EXPECT_FALSE(parseManifestV1(huge, parsed, &error));
+  EXPECT_NE(error.find("unsupported"), std::string::npos);
+
+  std::string fractional = text;
+  fractional.replace(version, 12, "\"version\": 1.0");
+  EXPECT_FALSE(parseManifestV1(fractional, parsed, &error));
+  EXPECT_NE(error.find("unsupported"), std::string::npos);
+}
+
 TEST(RecordingManifest, RejectsUnsupportedClockSemantics)
 {
   ManifestV1 manifest = sampleManifest();
@@ -319,6 +340,33 @@ TEST(RecordingJournal, RejectsInvalidStreamsPathsAndMetadata)
   entry.path += ".jpg";
   EXPECT_FALSE(serializeJournalEntry(entry, line, &error));
   EXPECT_NE(error.find("serialize"), std::string::npos);
+}
+
+TEST(RecordingJournal, RejectsHostileNumericFields)
+{
+  JournalEntry entry;
+  std::string error;
+  EXPECT_FALSE(parseJournalEntry(
+      "{\"index\":-1.5,\"stream\":\"depth\",\"path\":\"frames/d.bin\",\"byte_count\":1,"
+      "\"device_timestamp\":0,\"sequence\":0,\"arrival_offset_us\":0}\n",
+      entry, &error));
+  EXPECT_NE(error.find("index"), std::string::npos);
+  EXPECT_FALSE(parseJournalEntry(
+      "{\"index\":0,\"stream\":\"depth\",\"path\":\"frames/d.bin\",\"byte_count\":-7,"
+      "\"device_timestamp\":0,\"sequence\":0,\"arrival_offset_us\":0}\n",
+      entry, &error));
+  EXPECT_NE(error.find("byte_count"), std::string::npos);
+  EXPECT_FALSE(parseJournalEntry(
+      "{\"index\":0,\"stream\":\"depth\",\"path\":\"frames/d.bin\",\"byte_count\":1,"
+      "\"device_timestamp\":4294967296,\"sequence\":0,\"arrival_offset_us\":0}\n",
+      entry, &error));
+  EXPECT_NE(error.find("device_timestamp"), std::string::npos);
+  EXPECT_FALSE(parseJournalEntry(
+      "{\"index\":0,\"stream\":\"color\",\"path\":\"frames/c.jpg\",\"byte_count\":1,"
+      "\"device_timestamp\":0,\"sequence\":0,\"arrival_offset_us\":0,"
+      "\"exposure\":1e300,\"gain\":1,\"gamma\":1}\n",
+      entry, &error));
+  EXPECT_NE(error.find("exposure"), std::string::npos);
 }
 
 TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)
@@ -583,6 +631,45 @@ TEST(RecordingReplay, HonorsRequestedStreamCombinations)
   depth_listener.release(frames);
   EXPECT_FALSE(color_listener.waitForNewFrame(frames, 20));
   EXPECT_TRUE(device->stop());
+  EXPECT_TRUE(device->close());
+  removeTestRecording(directory);
+}
+
+TEST(RecordingReplay, SurvivesConcurrentStopCalls)
+{
+  const std::string directory = uniqueRecordingDirectory();
+  RecordingWriter writer(directory, 2);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
+      << writer.getLastError();
+
+  Frame source(1, 1, 4);
+  source.format = Frame::Raw;
+  source.timestamp = 345;
+  source.sequence = 6;
+  source.arrival_timestamp_us = monotonicTimeMicroseconds();
+  std::memset(source.data, 0x44, 4);
+  EXPECT_FALSE(writer.onNewFrame(Frame::Color, &source));
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  Freenect2Replay replay;
+  Freenect2Device* device =
+      replay.openRecording(directory, new DumpPacketPipeline(), ReplayOptions());
+  ASSERT_NE(static_cast<Freenect2Device*>(0), device);
+  SyncMultiFrameListener listener(Frame::Color);
+  device->setColorFrameListener(&listener);
+
+  // Concurrent stop() calls must serialize on the worker-thread handle
+  // instead of both joining and deleting it.
+  for (int i = 0; i < 25; ++i)
+  {
+    ASSERT_TRUE(device->startStreams(true, false));
+    std::thread first([device]() { device->stop(); });
+    std::thread second([device]() { device->stop(); });
+    first.join();
+    second.join();
+    EXPECT_TRUE(device->stop());
+  }
   EXPECT_TRUE(device->close());
   removeTestRecording(directory);
 }

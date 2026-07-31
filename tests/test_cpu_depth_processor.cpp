@@ -28,11 +28,13 @@
 
 using libfreenect2::CpuDepthPacketProcessor;
 using libfreenect2::DepthPacket;
+using libfreenect2::DumpDepthPacketProcessor;
 using libfreenect2::Frame;
+using libfreenect2::FrameListener;
 using libfreenect2::Freenect2Device;
 using libfreenect2::testing::CollectingFrameListener;
-using libfreenect2::testing::DepthFilterConfiguration;
 using libfreenect2::testing::countValidDepthPixels;
+using libfreenect2::testing::DepthFilterConfiguration;
 using libfreenect2::testing::depthFilterConfigurations;
 using libfreenect2::testing::loadSyntheticTables;
 using libfreenect2::testing::makeIrParams;
@@ -54,6 +56,22 @@ DepthPacket makePacket(std::vector<unsigned char>& buffer)
   p.memory = 0;
   return p;
 }
+
+class IrOnlyRetainingListener : public FrameListener
+{
+public:
+  IrOnlyRetainingListener() : ir_frame(0) {}
+  ~IrOnlyRetainingListener() { delete ir_frame; }
+  bool onNewFrame(Frame::Type type, Frame* frame)
+  {
+    if (type != Frame::Ir)
+      return false;
+    delete ir_frame;
+    ir_frame = frame;
+    return true;
+  }
+  Frame* ir_frame;
+};
 
 } // namespace
 
@@ -151,6 +169,24 @@ TEST(CpuDepthProcessor, SupportsEveryFilterCombination)
     EXPECT_EQ(0, std::memcmp(first.depth()->data, second.depth()->data, bytes));
     EXPECT_EQ(0, std::memcmp(first.ir()->data, second.ir()->data, bytes));
   }
+}
+
+TEST(DumpDepthProcessor, IrFrameSurvivesRejectedDepthFrame)
+{
+  DumpDepthPacketProcessor proc;
+  IrOnlyRetainingListener listener;
+  proc.setFrameListener(&listener);
+
+  std::vector<unsigned char> buffer = makeSyntheticDepthBuffer();
+  DepthPacket packet = makePacket(buffer);
+  proc.process(packet);
+
+  // The listener kept the IR frame but rejected the depth frame, which the
+  // processor deleted. The IR frame must own its bytes so this read is valid;
+  // sanitizer builds fault here if the two frames share a buffer.
+  ASSERT_NE(listener.ir_frame, nullptr);
+  ASSERT_EQ(listener.ir_frame->bytes_per_pixel, buffer.size());
+  EXPECT_EQ(0, std::memcmp(listener.ir_frame->data, buffer.data(), buffer.size()));
 }
 
 TEST(CpuDepthProcessor, AcceptsUnalignedP0CommandResponse)

@@ -19,6 +19,8 @@ env:
 jobs:
   build-test-metal:
     name: AppleClang, Metal, C++11
+    # Fork PRs must never execute on the persistent self-hosted runner.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
@@ -451,7 +453,9 @@ jobs:
           if ! git cat-file -e "$base" 2>/dev/null; then
             base="HEAD~1"
           fi
-          format_diff=$(git clang-format --diff "$base" HEAD)
+          # git clang-format --diff exits 1 when formatting differs; keep the
+          # output and let the content check below decide pass/fail.
+          format_diff=$(git clang-format --diff "$base" HEAD || true)
           if [[ "$format_diff" == *"diff --git"* ]]; then
             echo "$format_diff"
             echo "Changed C++ lines are not clang-formatted." >&2

@@ -10,6 +10,8 @@
 
 #include <libfreenect2/rgb_packet_processor.h>
 
+#include <atomic>
+
 namespace libfreenect2
 {
 
@@ -33,7 +35,9 @@ protected:
 private:
   RgbPacketProcessor* primary_;
   RgbPacketProcessor* fallback_;
-  bool using_fallback_;
+  // Written by the async decode thread, read by the parser thread through
+  // getAllocator() and by user threads through good()/name().
+  std::atomic<bool> using_fallback_;
 };
 
 } // namespace libfreenect2

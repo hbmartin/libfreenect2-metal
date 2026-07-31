@@ -13,6 +13,7 @@
 #include <cmath>
 #include <exception>
 #include <limits>
+#include <stdexcept>
 
 namespace libfreenect2
 {
@@ -22,6 +23,37 @@ namespace
 {
 
 typedef nlohmann::json Json;
+
+// nlohmann's get<T>() is an unchecked static_cast from the stored numeric type;
+// negative or non-integer input would wrap or invoke undefined behavior, so
+// every numeric field is type- and range-checked before conversion.
+uint64_t requireUnsignedField(const Json& object, const char* name)
+{
+  const Json& value = object.at(name);
+  if (!value.is_number_unsigned())
+    throw std::domain_error(std::string("frame journal field is not an unsigned integer: ") + name);
+  return value.get<uint64_t>();
+}
+
+uint32_t requireUnsigned32Field(const Json& object, const char* name)
+{
+  const uint64_t value = requireUnsignedField(object, name);
+  if (value > std::numeric_limits<uint32_t>::max())
+    throw std::range_error(std::string("frame journal field is out of range: ") + name);
+  return static_cast<uint32_t>(value);
+}
+
+float requireFiniteFloatField(const Json& object, const char* name)
+{
+  const Json& value = object.at(name);
+  if (!value.is_number())
+    throw std::domain_error(std::string("frame journal field is not a number: ") + name);
+  const double parsed = value.get<double>();
+  if (!std::isfinite(parsed) || parsed < -std::numeric_limits<float>::max() ||
+      parsed > std::numeric_limits<float>::max())
+    throw std::domain_error(std::string("frame journal field is not representable: ") + name);
+  return static_cast<float>(parsed);
+}
 
 bool validateJournalEntry(const JournalEntry& entry, std::string* error)
 {
@@ -104,22 +136,22 @@ bool parseJournalEntry(const std::string& line, JournalEntry& entry, std::string
   {
     const Json value = Json::parse(line);
     JournalEntry parsed;
-    parsed.index = value.at("index").get<uint64_t>();
+    parsed.index = requireUnsignedField(value, "index");
     parsed.stream = value.at("stream").get<std::string>();
     parsed.path = value.at("path").get<std::string>();
-    const uint64_t byte_count = value.at("byte_count").get<uint64_t>();
+    const uint64_t byte_count = requireUnsignedField(value, "byte_count");
     if (byte_count > std::numeric_limits<size_t>::max())
       throw std::range_error("byte count is not representable");
     parsed.byte_count = static_cast<size_t>(byte_count);
-    parsed.device_timestamp = value.at("device_timestamp").get<uint32_t>();
-    parsed.sequence = value.at("sequence").get<uint32_t>();
-    parsed.arrival_offset_us = value.at("arrival_offset_us").get<uint64_t>();
+    parsed.device_timestamp = requireUnsigned32Field(value, "device_timestamp");
+    parsed.sequence = requireUnsigned32Field(value, "sequence");
+    parsed.arrival_offset_us = requireUnsignedField(value, "arrival_offset_us");
     parsed.has_rgb_metadata = parsed.stream == "color";
     if (parsed.has_rgb_metadata)
     {
-      parsed.exposure = value.at("exposure").get<float>();
-      parsed.gain = value.at("gain").get<float>();
-      parsed.gamma = value.at("gamma").get<float>();
+      parsed.exposure = requireFiniteFloatField(value, "exposure");
+      parsed.gain = requireFiniteFloatField(value, "gain");
+      parsed.gamma = requireFiniteFloatField(value, "gamma");
     }
     if (!validateJournalEntry(parsed, error))
       return false;

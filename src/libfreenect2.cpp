@@ -397,6 +397,9 @@ private:
 
   std::vector<std::string> frame_filenames_;
   libfreenect2::thread* t_;
+  // Serializes startStreams()/stop() so concurrent callers cannot join or
+  // delete t_ twice. Never taken by the worker thread itself.
+  libfreenect2::mutex thread_mutex_;
   std::atomic<bool> running_;
   libfreenect2::mutex timing_mutex_;
   libfreenect2::condition_variable timing_condition_;
@@ -2015,6 +2018,7 @@ bool Freenect2ReplayDevice::start()
 bool Freenect2ReplayDevice::startStreams(bool enable_rgb, bool enable_depth)
 {
   LOG_INFO << "Freenect2ReplayDevice: starting: rgb: " << enable_rgb << ", depth: " << enable_depth;
+  libfreenect2::lock_guard thread_guard(thread_mutex_);
   {
     libfreenect2::lock_guard guard(state_mutex_);
     if (state_ != DeviceOpen || running_.load() || (!enable_rgb && !enable_depth))
@@ -2042,6 +2046,7 @@ bool Freenect2ReplayDevice::startStreams(bool enable_rgb, bool enable_depth)
 
 bool Freenect2ReplayDevice::stop()
 {
+  libfreenect2::lock_guard thread_guard(thread_mutex_);
   {
     libfreenect2::lock_guard guard(timing_mutex_);
     running_.store(false);

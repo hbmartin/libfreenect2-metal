@@ -13,6 +13,8 @@
 #include <cmath>
 #include <cstring>
 #include <exception>
+#include <limits>
+#include <stdexcept>
 
 namespace libfreenect2
 {
@@ -79,10 +81,16 @@ Json irToJson(const Freenect2Device::IrCameraParams& value)
 
 float requireFiniteFloat(const Json& object, const char* name)
 {
-  const float value = object.at(name).get<float>();
-  if (!std::isfinite(value))
-    throw std::domain_error(std::string("non-finite camera parameter: ") + name);
-  return value;
+  // Convert through double with an explicit range check: nlohmann's get<float>()
+  // is an unchecked static_cast, which is undefined behavior for out-of-range input.
+  const Json& value = object.at(name);
+  if (!value.is_number())
+    throw std::domain_error(std::string("camera parameter is not a number: ") + name);
+  const double parsed = value.get<double>();
+  if (!std::isfinite(parsed) || parsed < -std::numeric_limits<float>::max() ||
+      parsed > std::numeric_limits<float>::max())
+    throw std::domain_error(std::string("camera parameter is not representable: ") + name);
+  return static_cast<float>(parsed);
 }
 
 void colorFromJson(const Json& object, Freenect2Device::ColorCameraParams& value)
@@ -219,7 +227,8 @@ bool parseManifestV1(const std::string& text, ManifestV1& manifest, std::string*
   try
   {
     const Json root = Json::parse(text);
-    if (root.at("version").get<int>() != 1)
+    const Json& version = root.at("version");
+    if (!version.is_number_integer() || version != 1)
     {
       if (error != 0)
         *error = "unsupported recording manifest version";
