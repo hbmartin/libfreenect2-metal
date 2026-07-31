@@ -188,7 +188,9 @@ public:
   struct jpeg_decompress_struct dinfo;
   struct jpeg_error_mgr jerr;
 
-  bool good;
+  bool display_initialized;
+  bool initialized;
+  bool healthy;
   std::string device_path;
 
   static const int WIDTH = 1920;
@@ -202,6 +204,18 @@ public:
   explicit VaapiRgbPacketProcessorImpl(const std::string &device_path):
     drm_fd(-1),
     display(NULL),
+    config(VA_INVALID_ID),
+    surface(VA_INVALID_SURFACE),
+    context(VA_INVALID_ID),
+    pic_param_buf(VA_INVALID_ID),
+    iq_buf(VA_INVALID_ID),
+    huff_buf(VA_INVALID_ID),
+    slice_param_buf(VA_INVALID_ID),
+    jpeg_first_packet(true),
+    jpeg_header_size(0),
+    display_initialized(false),
+    initialized(false),
+    healthy(false),
     device_path(device_path),
     frame(NULL),
     buffer_allocator(NULL),
@@ -210,8 +224,9 @@ public:
     dinfo.err = jpeg_std_error(&jerr);
     jpeg_create_decompress(&dinfo);
 
-    good = initializeVaapi();
-    if (!good)
+    initialized = initializeVaapi();
+    healthy = initialized;
+    if (!initialized)
       return;
 
     buffer_allocator = new PoolAllocator(new VaapiAllocator(display, context));
@@ -226,7 +241,6 @@ public:
 
     newFrame();
 
-    jpeg_first_packet = true;
   }
 
   ~VaapiRgbPacketProcessorImpl()
@@ -234,18 +248,22 @@ public:
     delete frame;
     delete buffer_allocator;
     delete image_allocator;
-    if (good && !jpeg_first_packet) {
+    if (pic_param_buf != VA_INVALID_ID)
       CALL_VA(vaDestroyBuffer(display, pic_param_buf));
+    if (iq_buf != VA_INVALID_ID)
       CALL_VA(vaDestroyBuffer(display, iq_buf));
+    if (huff_buf != VA_INVALID_ID)
       CALL_VA(vaDestroyBuffer(display, huff_buf));
+    if (slice_param_buf != VA_INVALID_ID)
       CALL_VA(vaDestroyBuffer(display, slice_param_buf));
-    }
-    if (good) {
+    if (context != VA_INVALID_ID)
       CALL_VA(vaDestroyContext(display, context));
+    if (surface != VA_INVALID_SURFACE)
       CALL_VA(vaDestroySurfaces(display, &surface, 1));
+    if (config != VA_INVALID_ID)
       CALL_VA(vaDestroyConfig(display, config));
+    if (display_initialized)
       CALL_VA(vaTerminate(display));
-    }
     if (drm_fd >= 0)
       close(drm_fd);
     jpeg_destroy_decompress(&dinfo);
@@ -297,6 +315,7 @@ public:
 
     drm_fd = candidate_fd;
     display = candidate_display;
+    display_initialized = true;
     LOG_INFO << "using VAAPI render node " << path;
     return true;
   }
@@ -530,12 +549,12 @@ VaapiRgbPacketProcessor::~VaapiRgbPacketProcessor()
 
 bool VaapiRgbPacketProcessor::good()
 {
-  return impl_->good;
+  return impl_->initialized && impl_->healthy;
 }
 
 void VaapiRgbPacketProcessor::process(const RgbPacket &packet)
 {
-  if (listener_ == 0)
+  if (listener_ == 0 || !impl_->initialized || !impl_->healthy || impl_->frame == NULL)
     return;
 
   impl_->startTiming();
@@ -550,12 +569,12 @@ void VaapiRgbPacketProcessor::process(const RgbPacket &packet)
   unsigned char *buf = packet.jpeg_buffer;
   size_t len = packet.jpeg_buffer_length;
   VaapiBuffer *vb = static_cast<VaapiBuffer *>(packet.memory);
-  impl_->good = impl_->decompress(buf, len, vb);
+  impl_->healthy = impl_->decompress(buf, len, vb);
 
   impl_->stopTiming(LOG_INFO);
 
-  if (!impl_->good)
-    impl_->frame->status = 1;
+  if (!impl_->healthy)
+    return;
 
   if (listener_->onNewFrame(Frame::Color, impl_->frame))
     impl_->newFrame();
