@@ -48,8 +48,10 @@ KinectDepthCalibration depth-profile.json \
   --recording 3000 calibration-3000
 ```
 
-The fitter replays depth through the CPU pipeline. It reads decoded frames but
-does not rewrite the JPEG, raw depth packets, journal, or calibration in any
+The fitter replays depth through the CPU pipeline by default. Pass
+`--pipeline metal` (or another compiled pipeline name) to validate or fit the
+same recordings through a different backend. It reads decoded frames but does
+not rewrite the JPEG, raw depth packets, journal, or calibration in any
 recording directory. All inputs must report the same serial and firmware.
 
 ## Fit from a live device
