@@ -36,6 +36,7 @@ ADD_EXECUTABLE(unit_tests
   test_concurrency.cpp
   test_protocol.cpp
   test_public_api.cpp
+  test_recording.cpp
   test_timing.cpp
 )
 

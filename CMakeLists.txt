@@ -189,6 +189,7 @@ SET(SOURCES
   include/internal/libfreenect2/packet_processor.h
   include/libfreenect2/registration.h
   include/internal/libfreenect2/resource.h
+  include/internal/libfreenect2/recording_utils.h
   include/internal/libfreenect2/rgb_packet_processor.h
   include/internal/libfreenect2/rgb_packet_stream_parser.h
   include/internal/libfreenect2/threading.h
@@ -205,6 +206,7 @@ SET(SOURCES
   src/depth_packet_processor.cpp
   src/cpu_depth_packet_processor.cpp
   src/resource.cpp
+  src/recording_utils.cpp
   src/command_transaction.cpp
   src/registration.cpp
   src/logging.cpp
