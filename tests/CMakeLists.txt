@@ -36,6 +36,7 @@ ADD_EXECUTABLE(unit_tests
   test_concurrency.cpp
   test_protocol.cpp
   test_public_api.cpp
+  test_timing.cpp
 )
 
 TARGET_INCLUDE_DIRECTORIES(unit_tests PRIVATE

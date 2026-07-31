@@ -208,6 +208,7 @@ SET(SOURCES
   src/command_transaction.cpp
   src/registration.cpp
   src/logging.cpp
+  src/timing.cpp
   src/libfreenect2.cpp
 
   ${RESOURCES_INC_FILE}
