@@ -24,6 +24,18 @@ namespace
 
 namespace lf = libfreenect2;
 
+void setRgbProcessorEnvironment(const char* value)
+{
+#if defined(_WIN32)
+  _putenv_s("LIBFREENECT2_RGB_PROCESSOR", value == NULL ? "" : value);
+#else
+  if (value == NULL)
+    unsetenv("LIBFREENECT2_RGB_PROCESSOR");
+  else
+    setenv("LIBFREENECT2_RGB_PROCESSOR", value, 1);
+#endif
+}
+
 // Internal parser exercised here because replay filenames are part of the
 // public Freenect2Replay contract even though the helper is not exported.
 namespace libfreenect2_detail
@@ -99,6 +111,21 @@ TEST(PublicApi, ConfiguresTheRgbDecoderPerPipeline)
   EXPECT_STREQ("TurboJPEG", factory->getRgbPacketProcessor()->name());
   EXPECT_TRUE(factory->good());
   delete factory;
+}
+
+TEST(PublicApi, ProgrammaticRgbSelectionOverridesTheEnvironment)
+{
+  setRgbProcessorEnvironment("vaapi");
+  lf::PacketPipelineConfig explicit_config;
+  explicit_config.rgb_decoder = lf::PacketPipelineConfig::TurboJPEG;
+  explicit_config.allow_fallback = false;
+  lf::CpuPacketPipeline explicit_pipeline(explicit_config);
+  EXPECT_STREQ("TurboJPEG", explicit_pipeline.getRgbPacketProcessor()->name());
+
+  setRgbProcessorEnvironment("turbojpeg");
+  lf::CpuPacketPipeline environment_pipeline;
+  EXPECT_STREQ("TurboJPEG", environment_pipeline.getRgbPacketProcessor()->name());
+  setRgbProcessorEnvironment(NULL);
 }
 
 TEST(PublicApi, ParsesReplayFilenameFromTheFinalTwoUnderscores)

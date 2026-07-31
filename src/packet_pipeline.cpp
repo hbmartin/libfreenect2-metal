@@ -34,6 +34,10 @@
 #include <libfreenect2/logging.h>
 #include <libfreenect2/protocol/response.h>
 
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
+
 namespace libfreenect2
 {
 
@@ -56,6 +60,44 @@ static RgbPacketProcessor *turboJpegOrUnavailable()
 #else
   return new UnavailableRgbPacketProcessor();
 #endif
+}
+
+static bool parseRgbDecoder(const std::string &text, PacketPipelineConfig::RgbDecoder &decoder)
+{
+  std::string normalized(text);
+  std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                 [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+  if(normalized == "auto")
+    decoder = PacketPipelineConfig::Auto;
+  else if(normalized == "turbojpeg" || normalized == "turbo")
+    decoder = PacketPipelineConfig::TurboJPEG;
+  else if(normalized == "videotoolbox" || normalized == "vt")
+    decoder = PacketPipelineConfig::VideoToolbox;
+  else if(normalized == "vaapi")
+    decoder = PacketPipelineConfig::VAAPI;
+  else if(normalized == "tegrajpeg" || normalized == "tegra")
+    decoder = PacketPipelineConfig::TegraJPEG;
+  else
+    return false;
+  return true;
+}
+
+static PacketPipelineConfig resolveRgbConfig(const PacketPipelineConfig &config)
+{
+  PacketPipelineConfig resolved = config;
+  if(config.rgb_decoder != PacketPipelineConfig::Auto)
+    return resolved;
+
+  const char *processor = std::getenv("LIBFREENECT2_RGB_PROCESSOR");
+  if(processor != 0 && !parseRgbDecoder(processor, resolved.rgb_decoder))
+  {
+    LOG_WARNING << "ignoring invalid LIBFREENECT2_RGB_PROCESSOR='" << processor << "'";
+    resolved.rgb_decoder = PacketPipelineConfig::Auto;
+  }
+  const char *vaapi_device = std::getenv("LIBFREENECT2_VAAPI_DEVICE");
+  if(resolved.vaapi_device.empty() && vaapi_device != 0)
+    resolved.vaapi_device = vaapi_device;
+  return resolved;
 }
 
 static RgbPacketProcessor *getDefaultRgbPacketProcessor()
@@ -85,11 +127,12 @@ static RgbPacketProcessor *getDefaultRgbPacketProcessor()
 
 static RgbPacketProcessor *getConfiguredRgbPacketProcessor(const PacketPipelineConfig &config)
 {
-  if(config.rgb_decoder == PacketPipelineConfig::Auto)
+  const PacketPipelineConfig resolved = resolveRgbConfig(config);
+  if(resolved.rgb_decoder == PacketPipelineConfig::Auto)
     return getDefaultRgbPacketProcessor();
 
   RgbPacketProcessor *processor = 0;
-  switch(config.rgb_decoder)
+  switch(resolved.rgb_decoder)
   {
   case PacketPipelineConfig::TurboJPEG:
 #if defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
@@ -118,7 +161,7 @@ static RgbPacketProcessor *getConfiguredRgbPacketProcessor(const PacketPipelineC
   if(processor != 0 && processor->good())
     return processor;
   delete processor;
-  if(config.allow_fallback)
+  if(resolved.allow_fallback)
   {
     LOG_WARNING << "requested RGB decoder is unavailable; falling back to TurboJPEG";
     return turboJpegOrUnavailable();
