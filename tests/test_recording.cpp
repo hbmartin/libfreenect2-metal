@@ -7,8 +7,11 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <condition_variable>
+#include <mutex>
 #include <sstream>
 
 #if defined(_WIN32)
@@ -76,6 +79,40 @@ CalibrationData sampleCalibrationData()
   calibration.p0_tables.resize(sizeof(protocol::P0TablesResponse), 0x2a);
   return calibration;
 }
+
+class OrderedFrameListener : public FrameListener
+{
+public:
+  virtual bool onNewFrame(Frame::Type type, Frame* frame)
+  {
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      if (type == Frame::Color || type == Frame::Depth)
+        types_.push_back(type);
+    }
+    delete frame;
+    condition_.notify_all();
+    return true;
+  }
+
+  bool waitForCount(size_t count)
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return condition_.wait_for(lock, std::chrono::seconds(1),
+                               [this, count] { return types_.size() >= count; });
+  }
+
+  std::vector<Frame::Type> types() const
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    return types_;
+  }
+
+private:
+  mutable std::mutex mutex_;
+  std::condition_variable condition_;
+  std::vector<Frame::Type> types_;
+};
 
 } // namespace
 
@@ -449,6 +486,47 @@ TEST(RecordingReplay, HonorsRequestedStreamCombinations)
   EXPECT_EQ(200u, frames[Frame::Depth]->timestamp);
   depth_listener.release(frames);
   EXPECT_FALSE(color_listener.waitForNewFrame(frames, 20));
+  EXPECT_TRUE(device->stop());
+  EXPECT_TRUE(device->close());
+  removeTestRecording(directory);
+}
+
+TEST(RecordingReplay, PreservesGlobalJournalOrderInFastMode)
+{
+  const std::string directory = uniqueRecordingDirectory();
+  RecordingWriter writer(directory, 4);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
+      << writer.getLastError();
+
+  Frame color(1, 1, 4);
+  color.format = Frame::Raw;
+  color.arrival_timestamp_us = monotonicTimeMicroseconds();
+  std::memset(color.data, 0x11, 4);
+  EXPECT_FALSE(writer.onNewFrame(Frame::Color, &color));
+  const size_t depth_size = 10 * (512 * 424 * 11 / 8);
+  Frame depth(1, 1, depth_size);
+  depth.format = Frame::Raw;
+  depth.arrival_timestamp_us = monotonicTimeMicroseconds();
+  std::memset(depth.data, 0x22, depth_size);
+  EXPECT_FALSE(writer.onNewFrame(Frame::Depth, &depth));
+  EXPECT_FALSE(writer.onNewFrame(Frame::Color, &color));
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  Freenect2Replay replay;
+  Freenect2Device* device =
+      replay.openRecording(directory, new DumpPacketPipeline(), ReplayOptions());
+  ASSERT_NE(static_cast<Freenect2Device*>(0), device);
+  OrderedFrameListener listener;
+  device->setColorFrameListener(&listener);
+  device->setIrAndDepthFrameListener(&listener);
+  ASSERT_TRUE(device->start());
+  ASSERT_TRUE(listener.waitForCount(3));
+  const std::vector<Frame::Type> types = listener.types();
+  ASSERT_GE(types.size(), 3u);
+  EXPECT_EQ(Frame::Color, types[0]);
+  EXPECT_EQ(Frame::Depth, types[1]);
+  EXPECT_EQ(Frame::Color, types[2]);
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
   removeTestRecording(directory);

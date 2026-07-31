@@ -2219,6 +2219,7 @@ void Freenect2ReplayDevice::run()
 
 void Freenect2ReplayDevice::runRecording()
 {
+  // The journal's global indices define cross-stream order in fast replay.
   for (std::vector<recording::JournalEntry>::const_iterator entry = recording_.entries.begin();
        entry != recording_.entries.end() && running_.load(); ++entry)
   {
