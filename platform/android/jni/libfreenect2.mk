@@ -40,7 +40,8 @@ LOCAL_SRC_FILES := \
   $(LIBFREENECT2_SRC)/timing.cpp \
   $(LIBFREENECT2_SRC)/transfer_pool.cpp \
   $(LIBFREENECT2_SRC)/turbo_jpeg_rgb_packet_processor.cpp \
-  $(LIBFREENECT2_SRC)/usb_control.cpp 
+  $(LIBFREENECT2_SRC)/usb_control.cpp \
+  $(LIBFREENECT2_SRC)/vision.cpp
 
 LOCAL_SHARED_LIBRARIES += libusb libturbojpeg
 

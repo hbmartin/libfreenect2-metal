@@ -74,7 +74,9 @@ class LIBFREENECT2_API Frame
   float gain;             ///< From 1.0 (bright) to 1.5 (covered)
   float gamma;            ///< From 1.0 (bright) to 6.4 (covered)
   uint32_t status;        ///< zero if ok; non-zero for errors.
-  Format format;          ///< Byte format. Informative only, doesn't indicate errors.
+  Format format;          ///< Byte format. Validated by consumers such as Registration::apply()
+                          ///< and the vision helpers; the constructor defaults it to Invalid, so
+                          ///< callers wrapping their own buffers must set it explicitly.
 
   /** Construct a new frame.
    * @param width_arg Width in pixel

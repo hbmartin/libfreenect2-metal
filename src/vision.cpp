@@ -137,6 +137,37 @@ int selectCandidate(const std::vector<Candidate>& candidates, float cluster_span
   return best->index;
 }
 
+/** Search for a depth pixel assuming validSearchArguments() already passed.
+ * The scratch vectors are cleared by collectCandidates() and exist so batch
+ * callers can reuse their capacity across points.
+ */
+int searchDepthPixel(float normalized_x, float normalized_y, const int32_t* color_to_depth,
+                     size_t color_width, size_t color_height, const Frame* undistorted_depth,
+                     const DepthSearchOptions& options, std::vector<Candidate>& primary,
+                     std::vector<Candidate>& fallback)
+{
+  if (!std::isfinite(normalized_x) || !std::isfinite(normalized_y) || normalized_x < 0.0f ||
+      normalized_x > 1.0f || normalized_y < 0.0f || normalized_y > 1.0f)
+    return -1;
+
+  const int center_x = static_cast<int>(std::lround(normalized_x * (color_width - 1)));
+  const int center_y = static_cast<int>(std::lround(normalized_y * (color_height - 1)));
+  collectCandidates(center_x, center_y, options.primary_radius, color_to_depth, color_width,
+                    color_height, undistorted_depth, primary);
+  int selected = selectCandidate(primary, options.cluster_span_mm, true);
+  if (selected >= 0)
+    return selected;
+
+  collectCandidates(center_x, center_y, options.fallback_radius, color_to_depth, color_width,
+                    color_height, undistorted_depth, fallback);
+  selected = selectCandidate(fallback, options.cluster_span_mm, true);
+  if (selected >= 0)
+    return selected;
+  if (!primary.empty())
+    return selectCandidate(primary, options.cluster_span_mm, false);
+  return selectCandidate(fallback, options.cluster_span_mm, false);
+}
+
 } // namespace
 
 DepthSearchOptions::DepthSearchOptions()
@@ -211,31 +242,14 @@ int findDepthPixel(float normalized_x, float normalized_y, const int32_t* color_
                    size_t color_pixel_count, size_t color_width, size_t color_height,
                    const Frame* undistorted_depth, const DepthSearchOptions& options)
 {
-  if (!std::isfinite(normalized_x) || !std::isfinite(normalized_y) ||
-      normalized_x < 0.0f || normalized_x > 1.0f || normalized_y < 0.0f ||
-      normalized_y > 1.0f ||
-      !validSearchArguments(color_to_depth, color_pixel_count, color_width, color_height,
+  if (!validSearchArguments(color_to_depth, color_pixel_count, color_width, color_height,
                             undistorted_depth, options))
     return -1;
 
-  const int center_x = static_cast<int>(std::lround(normalized_x * (color_width - 1)));
-  const int center_y = static_cast<int>(std::lround(normalized_y * (color_height - 1)));
   std::vector<Candidate> primary;
-  collectCandidates(center_x, center_y, options.primary_radius, color_to_depth, color_width,
-                    color_height, undistorted_depth, primary);
-  int selected = selectCandidate(primary, options.cluster_span_mm, true);
-  if (selected >= 0)
-    return selected;
-
   std::vector<Candidate> fallback;
-  collectCandidates(center_x, center_y, options.fallback_radius, color_to_depth, color_width,
-                    color_height, undistorted_depth, fallback);
-  selected = selectCandidate(fallback, options.cluster_span_mm, true);
-  if (selected >= 0)
-    return selected;
-  if (!primary.empty())
-    return selectCandidate(primary, options.cluster_span_mm, false);
-  return selectCandidate(fallback, options.cluster_span_mm, false);
+  return searchDepthPixel(normalized_x, normalized_y, color_to_depth, color_width, color_height,
+                          undistorted_depth, options, primary, fallback);
 }
 
 bool liftColorPoints(const Registration* registration, const Frame* undistorted_depth,
@@ -253,11 +267,14 @@ bool liftColorPoints(const Registration* registration, const Frame* undistorted_
     return false;
 
   const float nan = std::numeric_limits<float>::quiet_NaN();
+  const int depth_width = static_cast<int>(undistorted_depth->width);
+  std::vector<Candidate> primary;
+  std::vector<Candidate> fallback;
   for (size_t i = 0; i < landmark_count; ++i)
   {
-    const int depth_index = findDepthPixel(normalized_xy[i * 2], normalized_xy[i * 2 + 1],
-                                          color_to_depth, color_pixel_count, color_width,
-                                          color_height, undistorted_depth, options);
+    const int depth_index =
+        searchDepthPixel(normalized_xy[i * 2], normalized_xy[i * 2 + 1], color_to_depth,
+                         color_width, color_height, undistorted_depth, options, primary, fallback);
     depth_indices[i] = depth_index;
     valid[i] = 0;
     xyz_meters[i * 3] = nan;
@@ -269,7 +286,8 @@ bool liftColorPoints(const Registration* registration, const Frame* undistorted_
     float x = nan;
     float y = nan;
     float z = nan;
-    registration->getPointXYZ(undistorted_depth, depth_index / 512, depth_index % 512, x, y, z);
+    registration->getPointXYZ(undistorted_depth, depth_index / depth_width,
+                              depth_index % depth_width, x, y, z);
     if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z))
     {
       depth_indices[i] = -1;
