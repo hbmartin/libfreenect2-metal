@@ -73,14 +73,25 @@ TEST(OpenCLCpuParity, SupportsEveryFilterCombination)
 
 #ifdef LIBFREENECT2_WITH_OPENGL_SUPPORT
 
+TEST(OpenGLCpuParity, RepeatedConstructionAndTeardownIsStable)
+{
+  const size_t iterations = 25;
+  for (size_t iteration = 0; iteration < iterations; ++iteration)
+  {
+    libfreenect2::OpenGLDepthPacketProcessor opengl(0, false);
+    if (iteration == 0 && !opengl.good())
+      GTEST_SKIP() << "No usable OpenGL context on this machine";
+    ASSERT_TRUE(opengl.good()) << "iteration " << iteration;
+  }
+}
+
 TEST(OpenGLCpuParity, SupportsEveryFilterCombination)
 {
   libfreenect2::OpenGLDepthPacketProcessor opengl(0, false);
-  if(!opengl.good())
+  if (!opengl.good())
     GTEST_SKIP() << "No usable OpenGL context on this machine";
 
-  const std::array<DepthFilterConfiguration, 4>& configurations =
-      depthFilterConfigurations();
+  const std::array<DepthFilterConfiguration, 4>& configurations = depthFilterConfigurations();
   for(size_t i = 0; i < configurations.size(); ++i)
   {
     const DepthFilterConfiguration& filter = configurations[i];
