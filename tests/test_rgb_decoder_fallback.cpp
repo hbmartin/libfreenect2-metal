@@ -17,9 +17,11 @@ namespace
 class FakeRgbDecoder : public RgbPacketProcessor
 {
 public:
-  FakeRgbDecoder(const char* decoder_name, bool healthy, bool fail_on_process, bool emit_frames)
+  FakeRgbDecoder(const char* decoder_name, bool healthy, bool fail_on_process, bool emit_frames,
+                 bool mutate_packet = false)
       : decoder_name_(decoder_name), healthy_(healthy), fail_on_process_(fail_on_process),
-        emit_frames_(emit_frames), process_count_(0)
+        emit_frames_(emit_frames), mutate_packet_(mutate_packet), process_count_(0),
+        last_jpeg_byte_(0)
   {
   }
 
@@ -29,6 +31,12 @@ public:
   virtual void process(const RgbPacket& packet)
   {
     ++process_count_;
+    if (packet.jpeg_buffer != 0 && packet.jpeg_buffer_length != 0)
+    {
+      last_jpeg_byte_ = packet.jpeg_buffer[0];
+      if (mutate_packet_)
+        packet.jpeg_buffer[0] = 0xff;
+    }
     if (fail_on_process_)
     {
       healthy_ = false;
@@ -45,13 +53,16 @@ public:
   }
 
   int processCount() const { return process_count_; }
+  unsigned char lastJpegByte() const { return last_jpeg_byte_; }
 
 private:
   const char* decoder_name_;
   bool healthy_;
   bool fail_on_process_;
   bool emit_frames_;
+  bool mutate_packet_;
   int process_count_;
+  unsigned char last_jpeg_byte_;
 };
 
 class CountingColorListener : public FrameListener
@@ -117,6 +128,23 @@ TEST(RgbDecoderFallback, RetriesTheFailedPacketOnceThenStaysOnFallback)
   EXPECT_EQ(2, fallback->processCount());
   EXPECT_EQ(2, listener.count_);
   EXPECT_EQ(30u, listener.last_timestamp_);
+}
+
+TEST(RgbDecoderFallback, RetriesFromAStableCopyOfTheCompressedPacket)
+{
+  FakeRgbDecoder* primary = new FakeRgbDecoder("primary", true, true, false, true);
+  FakeRgbDecoder* fallback = new FakeRgbDecoder("fallback", true, false, false);
+  RgbDecoderFallback decoder(primary, fallback);
+
+  unsigned char jpeg[] = {0x2a, 0x43};
+  RgbPacket packet = samplePacket(40);
+  packet.jpeg_buffer = jpeg;
+  packet.jpeg_buffer_length = sizeof(jpeg);
+  decoder.process(packet);
+
+  EXPECT_TRUE(decoder.usingFallback());
+  EXPECT_EQ(0x2a, fallback->lastJpegByte());
+  EXPECT_EQ(0xff, jpeg[0]);
 }
 
 } // namespace

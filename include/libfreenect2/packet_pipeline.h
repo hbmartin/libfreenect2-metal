@@ -110,7 +110,14 @@ LIBFREENECT2_API PacketPipeline *createDefaultPacketPipeline(const PacketPipelin
 /** Canonical names of pipelines compiled into this library. */
 LIBFREENECT2_API std::vector<std::string> getCompiledPacketPipelines();
 
-/** Canonical names of compiled pipelines usable on this machine. */
+/**
+ * Canonical names of compiled pipelines usable on this machine.
+ *
+ * Availability probing constructs each compiled pipeline and can initialize
+ * graphics or compute runtimes and create a hidden OpenGL context. The call
+ * can therefore be relatively expensive and have process-global driver side
+ * effects; avoid using it on latency-sensitive paths.
+ */
 LIBFREENECT2_API std::vector<std::string> getAvailablePacketPipelines();
 
  class LIBFREENECT2_API DumpPacketPipeline: public PacketPipeline
@@ -145,8 +152,8 @@ protected:
   bool debug_;
 public:
   OpenGLPacketPipeline(void *parent_opengl_context = 0, bool debug = false);
-  OpenGLPacketPipeline(const PacketPipelineConfig &config,
-                       void *parent_opengl_context = 0, bool debug = false);
+  explicit OpenGLPacketPipeline(const PacketPipelineConfig &config,
+                                void *parent_opengl_context = 0, bool debug = false);
   virtual ~OpenGLPacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_OPENGL_SUPPORT
@@ -159,7 +166,7 @@ protected:
   const int deviceId;
 public:
   OpenCLPacketPipeline(const int deviceId = -1);
-  OpenCLPacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
+  explicit OpenCLPacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
   virtual ~OpenCLPacketPipeline();
 };
 
@@ -175,7 +182,7 @@ protected:
   const int deviceId;
 public:
   OpenCLKdePacketPipeline(const int deviceId = -1);
-  OpenCLKdePacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
+  explicit OpenCLKdePacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
   virtual ~OpenCLKdePacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_OPENCL_SUPPORT
@@ -187,7 +194,7 @@ protected:
   const int deviceId;
 public:
   CudaPacketPipeline(const int device_id = -1);
-  CudaPacketPipeline(const PacketPipelineConfig &config, const int device_id = -1);
+  explicit CudaPacketPipeline(const PacketPipelineConfig &config, const int device_id = -1);
   virtual ~CudaPacketPipeline();
 };
 
@@ -203,7 +210,7 @@ protected:
   const int deviceId;
 public:
   CudaKdePacketPipeline(const int device_id = -1);
-  CudaKdePacketPipeline(const PacketPipelineConfig &config, const int device_id = -1);
+  explicit CudaKdePacketPipeline(const PacketPipelineConfig &config, const int device_id = -1);
   virtual ~CudaKdePacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_CUDA_SUPPORT
@@ -216,7 +223,7 @@ protected:
   const int deviceId;
 public:
   MetalPacketPipeline(const int deviceId = -1);
-  MetalPacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
+  explicit MetalPacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
   virtual ~MetalPacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_METAL_SUPPORT

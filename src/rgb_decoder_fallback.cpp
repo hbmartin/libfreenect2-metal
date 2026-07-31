@@ -9,6 +9,8 @@
 
 #include <libfreenect2/logging.h>
 
+#include <vector>
+
 namespace libfreenect2
 {
 
@@ -52,13 +54,26 @@ void RgbDecoderFallback::process(const RgbPacket& packet)
     return;
   }
 
+  // VAAPI temporarily unmaps the allocator-owned JPEG buffer. A remap after
+  // failure may return a different address, so preserve the compressed bytes
+  // before invoking the primary decoder if this packet might need retrying.
+  std::vector<unsigned char> jpeg_copy;
+  if (fallback_ != 0 && packet.jpeg_buffer != 0 && packet.jpeg_buffer_length != 0)
+    jpeg_copy.assign(packet.jpeg_buffer, packet.jpeg_buffer + packet.jpeg_buffer_length);
+
   primary_->process(packet);
   if (!primary_->good())
   {
     using_fallback_ = true;
     LOG_WARNING << "primary RGB decoding failed; using the fallback for this and subsequent frames";
     if (fallback_ != 0)
-      fallback_->process(packet);
+    {
+      RgbPacket retry = packet;
+      if (!jpeg_copy.empty())
+        retry.jpeg_buffer = &jpeg_copy[0];
+      retry.memory = 0;
+      fallback_->process(retry);
+    }
   }
 }
 
