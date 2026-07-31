@@ -83,11 +83,33 @@ It has been reported to work for up to 5 devices on a high-end PC using multiple
 
 * OpenGL depth processing: OpenGL 3.1 (Windows, Linux, Mac OS X). OpenGL ES is not supported at the moment.
 * OpenCL depth processing: OpenCL 1.1
-* CUDA depth processing: CUDA (6.5 and 7.5 are tested; The minimum version is not clear.)
+* CUDA depth processing: CUDA Toolkit; CUDA 12.3 is covered by compile-only CI
 * VAAPI JPEG decoding: Intel (minimum Ivy Bridge or newer) and Linux only
 * VideoToolbox JPEG decoding: Mac OS X only
 * OpenNI2 integration: OpenNI2 2.2.0.33
 * Jetson TK1: Linux4Tegra 21.3 or later. Check [Jetson TK1 issues](https://github.com/OpenKinect/libfreenect2/wiki/Troubleshooting#jetson-tk1-issues) before installation. Jetson TX1 is not yet supported as the developers don't have one, but it may be easy to add the support.
+
+### Self-contained CUDA builds
+
+The `cuda` and `cuda_kde` depth pipelines depend only on headers and libraries
+from the CUDA Toolkit. NVIDIA's CUDA samples and their former `helper_math.h`
+header are not required, and CMake does not search sample installation paths.
+
+For a local build on a machine with an NVIDIA GPU:
+
+```sh
+cmake -S . -B build-cuda \
+  -DENABLE_CUDA=ON \
+  -DCMAKE_CUDA_ARCHITECTURES=native
+cmake --build build-cuda --target freenect2
+```
+
+For a GPU-less build host or container, specify the target architecture
+explicitly, for example `-DCMAKE_CUDA_ARCHITECTURES=75`. CMake 3.23 and newer
+otherwise defaults to `all-major` so configuration does not need to query a
+local GPU. Hosted CI compiles both pipelines with CUDA 12.3 but does not claim
+runtime validation; compare CUDA and CPU output on real hardware before a
+release.
 
 ## Troubleshooting and reporting bugs
 
@@ -151,7 +173,7 @@ When you report USB issues, please attach relevant debug log from running the pr
 * Install OpenCL (optional)
     1. Intel GPU: Download "Intel® SDK for OpenCL™ Applications 2016" from https://software.intel.com/en-us/intel-opencl (requires free registration) and install it.
 * Install CUDA (optional, Nvidia only)
-    1. Download CUDA Toolkit and install it. You MUST install the samples too.
+    1. Download and install the CUDA Toolkit. The CUDA samples are not required.
 * Install OpenNI2 (optional)
 
     Download OpenNI 2.2.0.33 (x64) from https://github.com/structureio/OpenNI2/releases (the former structure.io/openni download page is gone), install it to default locations (`C:\Program Files...`).
@@ -284,7 +306,7 @@ Note: Ubuntu 12.04 is too old to support. Debian jessie may also be too old, and
     - (Ubuntu 14.04 only) Download `cuda-repo-ubuntu1404...*.deb` ("deb (network)") from Nvidia website, follow their installation instructions, including `apt-get install cuda` which installs Nvidia graphics driver.
     - (Jetson TK1) It is preloaded.
     - (Nvidia/Intel dual GPUs) After `apt-get install cuda`, use `sudo prime-select intel` to use Intel GPU for desktop.
-    - (Other) Follow Nvidia website's instructions. You must install the samples package.
+    - (Other) Follow Nvidia website's toolkit and driver instructions. The samples package is not required.
 * Install VAAPI (optional, Intel only)
     1. (Ubuntu 14.04 only) `sudo dpkg -i debs/{libva,i965}*deb; sudo apt-get install -f`
     2. (Other) `sudo apt-get install libva-dev libjpeg-dev`
