@@ -43,13 +43,19 @@ namespace libfreenect2
 /** Data packet with depth information. */
 struct DepthPacket
 {
+  DepthPacket()
+      : sequence(0), timestamp(0), arrival_timestamp_us(0), buffer(NULL), buffer_length(0),
+        memory(NULL)
+  {
+  }
+
   uint32_t sequence;
   uint32_t timestamp;
   uint64_t arrival_timestamp_us;
-  unsigned char *buffer; ///< Depth data.
+  unsigned char* buffer; ///< Depth data.
   size_t buffer_length;  ///< Size of depth data.
 
-  Buffer *memory;
+  Buffer* memory;
 };
 
 /** Class for processing depth information. */
@@ -107,19 +113,19 @@ public:
   DepthPacketProcessor();
   virtual ~DepthPacketProcessor();
 
-  virtual void setFrameListener(libfreenect2::FrameListener *listener);
-  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config &config);
+  virtual void setFrameListener(libfreenect2::FrameListener* listener);
+  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config& config);
 
   virtual void loadP0TablesFromCommandResponse(unsigned char* buffer, size_t buffer_length) = 0;
 
-  static const size_t TABLE_SIZE = 512*424;
+  static const size_t TABLE_SIZE = 512 * 424;
   static const size_t LUT_SIZE = 2048;
-  virtual void loadXZTables(const float *xtable, const float *ztable) = 0;
-  virtual void loadLookupTable(const short *lut) = 0;
+  virtual void loadXZTables(const float* xtable, const float* ztable) = 0;
+  virtual void loadLookupTable(const short* lut) = 0;
 
 protected:
   libfreenect2::DepthPacketProcessor::Config config_;
-  libfreenect2::FrameListener *listener_;
+  libfreenect2::FrameListener* listener_;
 };
 
 #ifdef LIBFREENECT2_WITH_OPENGL_SUPPORT
@@ -129,20 +135,21 @@ class OpenGLDepthPacketProcessorImpl;
 class OpenGLDepthPacketProcessor : public DepthPacketProcessor
 {
 public:
-  OpenGLDepthPacketProcessor(void *parent_opengl_context_ptr, bool debug);
+  OpenGLDepthPacketProcessor(void* parent_opengl_context_ptr, bool debug);
   virtual ~OpenGLDepthPacketProcessor();
-  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config &config);
+  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config& config);
 
   virtual void loadP0TablesFromCommandResponse(unsigned char* buffer, size_t buffer_length);
 
-  virtual void loadXZTables(const float *xtable, const float *ztable);
-  virtual void loadLookupTable(const short *lut);
+  virtual void loadXZTables(const float* xtable, const float* ztable);
+  virtual void loadLookupTable(const short* lut);
 
   virtual bool good();
-  virtual const char *name() { return "OpenGL"; }
-  virtual void process(const DepthPacket &packet);
+  virtual const char* name() { return "OpenGL"; }
+  virtual void process(const DepthPacket& packet);
+
 private:
-  OpenGLDepthPacketProcessorImpl *impl_;
+  OpenGLDepthPacketProcessorImpl* impl_;
 };
 #endif // LIBFREENECT2_WITH_OPENGL_SUPPORT
 
@@ -155,17 +162,18 @@ class CpuDepthPacketProcessor : public DepthPacketProcessor
 public:
   CpuDepthPacketProcessor();
   virtual ~CpuDepthPacketProcessor();
-  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config &config);
+  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config& config);
 
   virtual void loadP0TablesFromCommandResponse(unsigned char* buffer, size_t buffer_length);
 
-  virtual void loadXZTables(const float *xtable, const float *ztable);
-  virtual void loadLookupTable(const short *lut);
+  virtual void loadXZTables(const float* xtable, const float* ztable);
+  virtual void loadLookupTable(const short* lut);
 
-  virtual const char *name() { return "CPU"; }
-  virtual void process(const DepthPacket &packet);
+  virtual const char* name() { return "CPU"; }
+  virtual void process(const DepthPacket& packet);
+
 private:
-  CpuDepthPacketProcessorImpl *impl_;
+  CpuDepthPacketProcessorImpl* impl_;
 };
 
 #ifdef LIBFREENECT2_WITH_OPENCL_SUPPORT
@@ -177,21 +185,23 @@ class OpenCLDepthPacketProcessor : public DepthPacketProcessor
 public:
   OpenCLDepthPacketProcessor(const int deviceId = -1);
   virtual ~OpenCLDepthPacketProcessor();
-  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config &config);
+  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config& config);
 
   virtual void loadP0TablesFromCommandResponse(unsigned char* buffer, size_t buffer_length);
 
-  virtual void loadXZTables(const float *xtable, const float *ztable);
-  virtual void loadLookupTable(const short *lut);
+  virtual void loadXZTables(const float* xtable, const float* ztable);
+  virtual void loadLookupTable(const short* lut);
 
   virtual bool good();
-  virtual const char *name() { return "OpenCL"; }
+  virtual const char* name() { return "OpenCL"; }
 
-  virtual void process(const DepthPacket &packet);
+  virtual void process(const DepthPacket& packet);
+
 protected:
-  virtual Allocator *getAllocator();
+  virtual Allocator* getAllocator();
+
 private:
-  OpenCLDepthPacketProcessorImpl *impl_;
+  OpenCLDepthPacketProcessorImpl* impl_;
 };
 
 /*
@@ -208,21 +218,23 @@ class OpenCLKdeDepthPacketProcessor : public DepthPacketProcessor
 public:
   OpenCLKdeDepthPacketProcessor(const int deviceId = -1);
   virtual ~OpenCLKdeDepthPacketProcessor();
-  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config &config);
+  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config& config);
 
   virtual void loadP0TablesFromCommandResponse(unsigned char* buffer, size_t buffer_length);
 
-  virtual void loadXZTables(const float *xtable, const float *ztable);
-  virtual void loadLookupTable(const short *lut);
+  virtual void loadXZTables(const float* xtable, const float* ztable);
+  virtual void loadLookupTable(const short* lut);
 
   virtual bool good();
-  virtual const char *name() { return "OpenCLKde"; }
+  virtual const char* name() { return "OpenCLKde"; }
 
-  virtual void process(const DepthPacket &packet);
+  virtual void process(const DepthPacket& packet);
+
 protected:
-  virtual Allocator *getAllocator();
+  virtual Allocator* getAllocator();
+
 private:
-  OpenCLKdeDepthPacketProcessorImpl *impl_;
+  OpenCLKdeDepthPacketProcessorImpl* impl_;
 };
 #endif // LIBFREENECT2_WITH_OPENCL_SUPPORT
 
@@ -234,21 +246,23 @@ class CudaDepthPacketProcessor : public DepthPacketProcessor
 public:
   CudaDepthPacketProcessor(const int deviceId = -1);
   virtual ~CudaDepthPacketProcessor();
-  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config &config);
+  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config& config);
 
   virtual void loadP0TablesFromCommandResponse(unsigned char* buffer, size_t buffer_length);
 
-  virtual void loadXZTables(const float *xtable, const float *ztable);
-  virtual void loadLookupTable(const short *lut);
+  virtual void loadXZTables(const float* xtable, const float* ztable);
+  virtual void loadLookupTable(const short* lut);
 
   virtual bool good();
-  virtual const char *name() { return "CUDA"; }
+  virtual const char* name() { return "CUDA"; }
 
-  virtual void process(const DepthPacket &packet);
+  virtual void process(const DepthPacket& packet);
+
 protected:
-  virtual Allocator *getAllocator();
+  virtual Allocator* getAllocator();
+
 private:
-  CudaDepthPacketProcessorImpl *impl_;
+  CudaDepthPacketProcessorImpl* impl_;
 };
 
 /*
@@ -264,21 +278,23 @@ class CudaKdeDepthPacketProcessor : public DepthPacketProcessor
 public:
   CudaKdeDepthPacketProcessor(const int deviceId = -1);
   virtual ~CudaKdeDepthPacketProcessor();
-  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config &config);
+  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config& config);
 
   virtual void loadP0TablesFromCommandResponse(unsigned char* buffer, size_t buffer_length);
 
-  virtual void loadXZTables(const float *xtable, const float *ztable);
-  virtual void loadLookupTable(const short *lut);
+  virtual void loadXZTables(const float* xtable, const float* ztable);
+  virtual void loadLookupTable(const short* lut);
 
   virtual bool good();
-  virtual const char *name() { return "CUDAKde"; }
+  virtual const char* name() { return "CUDAKde"; }
 
-  virtual void process(const DepthPacket &packet);
+  virtual void process(const DepthPacket& packet);
+
 protected:
-  virtual Allocator *getAllocator();
+  virtual Allocator* getAllocator();
+
 private:
-  CudaKdeDepthPacketProcessorImpl *impl_;
+  CudaKdeDepthPacketProcessorImpl* impl_;
 };
 #endif // LIBFREENECT2_WITH_CUDA_SUPPORT
 
@@ -291,33 +307,34 @@ class MetalDepthPacketProcessor : public DepthPacketProcessor
 public:
   MetalDepthPacketProcessor(const int deviceIndex = -1);
   virtual ~MetalDepthPacketProcessor();
-  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config &config);
+  virtual void setConfiguration(const libfreenect2::DepthPacketProcessor::Config& config);
 
-  virtual void loadP0TablesFromCommandResponse(unsigned char *buffer, size_t buffer_length);
+  virtual void loadP0TablesFromCommandResponse(unsigned char* buffer, size_t buffer_length);
 
-  virtual void loadXZTables(const float *xtable, const float *ztable);
-  virtual void loadLookupTable(const short *lut);
+  virtual void loadXZTables(const float* xtable, const float* ztable);
+  virtual void loadLookupTable(const short* lut);
 
   virtual bool good();
-  virtual const char *name() { return "Metal"; }
+  virtual const char* name() { return "Metal"; }
 
-  virtual void process(const DepthPacket &packet);
+  virtual void process(const DepthPacket& packet);
+
 private:
-  MetalDepthPacketProcessorImpl *impl_;
+  MetalDepthPacketProcessorImpl* impl_;
 };
 #endif // LIBFREENECT2_WITH_METAL_SUPPORT
 
 class DumpDepthPacketProcessor : public DepthPacketProcessor
 {
- public:
+public:
   DumpDepthPacketProcessor();
   virtual ~DumpDepthPacketProcessor();
 
-  virtual void process(const DepthPacket &packet);
+  virtual void process(const DepthPacket& packet);
 
   virtual void loadP0TablesFromCommandResponse(unsigned char* buffer, size_t buffer_length);
-  virtual void loadXZTables(const float *xtable, const float *ztable);
-  virtual void loadLookupTable(const short *lut);
+  virtual void loadXZTables(const float* xtable, const float* ztable);
+  virtual void loadLookupTable(const short* lut);
 
   const unsigned char* getP0Tables();
 
@@ -326,12 +343,12 @@ class DumpDepthPacketProcessor : public DepthPacketProcessor
 
   const short* getLookupTable();
 
- protected:
+protected:
   unsigned char* p0table_;
 
   float* xtable_;
   float* ztable_;
-  
+
   short* lut_;
 };
 

@@ -18,6 +18,7 @@ namespace libfreenect2
 class RgbDecoderFallback : public RgbPacketProcessor
 {
 public:
+  /** Take ownership of both decoder pointers. Either pointer may be null. */
   RgbDecoderFallback(RgbPacketProcessor* primary, RgbPacketProcessor* fallback);
   virtual ~RgbDecoderFallback();
 
@@ -35,9 +36,10 @@ protected:
 private:
   RgbPacketProcessor* primary_;
   RgbPacketProcessor* fallback_;
-  // Written by the async decode thread, read by the parser thread through
-  // getAllocator() and by user threads through good()/name().
+  // Child decoder health is read only by the decode thread and published
+  // through these atomics for parser and user threads.
   std::atomic<bool> using_fallback_;
+  std::atomic<bool> good_;
 };
 
 } // namespace libfreenect2

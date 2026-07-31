@@ -39,11 +39,9 @@
 #include <fstream>
 #include <sstream>
 
-#define WRITE_LIBUSB_ERROR(__RESULT)                                                               \
-  libusb_error_name((__RESULT)) << " " << libusb_strerror(static_cast<libusb_error>((__RESULT)))
-
 #include <libfreenect2/libfreenect2.hpp>
 
+#include <libfreenect2/usb/error.h>
 #include <libfreenect2/usb/event_loop.h>
 #include <libfreenect2/usb/transfer_pool.h>
 #include <libfreenect2/depth_packet_processor.h>
@@ -290,7 +288,6 @@ private:
   Freenect2Device::ColorCameraParams rgb_camera_params_;
   void rollbackStreamStart();
   void setOperationalState(DeviceState state, const std::string& error = std::string());
-  void setClosedState(const std::string& error = std::string());
   virtual void onTransferPoolEvent(TransferPoolEventListener::Event event, unsigned char endpoint);
 
 public:
@@ -388,6 +385,7 @@ private:
   void run();
   void runRecording();
   bool waitForRecordedOffset(uint64_t replay_start_us, uint64_t offset_us);
+  void stopWorkerLocked();
   static void static_execute(void* arg);
 
   Freenect2ReplayImpl* context_;
@@ -397,8 +395,9 @@ private:
 
   std::vector<std::string> frame_filenames_;
   libfreenect2::thread* t_;
-  // Serializes startStreams()/stop() so concurrent callers cannot join or
-  // delete t_ twice. Never taken by the worker thread itself.
+  // Serializes startStreams()/stop()/close() so concurrent callers cannot
+  // create, join, or delete t_ during another lifecycle transition. Never
+  // taken by the worker thread itself.
   libfreenect2::mutex thread_mutex_;
   std::atomic<bool> running_;
   libfreenect2::mutex timing_mutex_;
@@ -433,7 +432,7 @@ std::ostream& operator<<(std::ostream& out, const PrintBusAndDevice& dev)
   out << "@" << int(libusb_get_bus_number(dev.dev_)) << ":"
       << int(libusb_get_device_address(dev.dev_));
   if (dev.status_)
-    out << " " << WRITE_LIBUSB_ERROR(dev.status_);
+    out << " " << usb::formatLibusbError(dev.status_);
   return out;
 }
 
@@ -478,7 +477,7 @@ public:
       int r = libusb_init(&usb_context_);
       if (r != 0)
       {
-        LOG_ERROR << "failed to create usb context: " << WRITE_LIBUSB_ERROR(r);
+        LOG_ERROR << "failed to create usb context: " << usb::formatLibusbError(r);
         return;
       }
 
@@ -748,7 +747,8 @@ Freenect2DeviceImpl::Freenect2DeviceImpl(Freenect2Impl* context, const PacketPip
       context_(context), usb_device_(usb_device), usb_device_handle_(usb_device_handle),
       rgb_transfer_pool_(usb_device_handle, 0x83), ir_transfer_pool_(usb_device_handle, 0x84),
       usb_control_(usb_device_handle_), command_tx_(usb_device_handle_, 0x81, 0x02),
-      command_seq_(0), pipeline_(pipeline), serial_(serial), firmware_("<unknown>")
+      command_seq_(0), pipeline_(pipeline), serial_(serial), firmware_("<unknown>"),
+      ir_camera_params_(), rgb_camera_params_()
 {
   rgb_transfer_pool_.setCallback(pipeline_->getRgbPacketParser());
   ir_transfer_pool_.setCallback(pipeline_->getIrPacketParser());
@@ -802,32 +802,26 @@ void Freenect2DeviceImpl::setOperationalState(DeviceState state, const std::stri
   last_error_ = error;
 }
 
-void Freenect2DeviceImpl::setClosedState(const std::string& error)
-{
-  libfreenect2::lock_guard guard(state_mutex_);
-  if (!error.empty() && state_ != DeviceDisconnected && state_ != DeviceError)
-    last_error_ = error;
-  state_ = DeviceClosed;
-}
-
 bool Freenect2DeviceImpl::isSameUsbDevice(libusb_device* other)
 {
-  bool result = false;
-
-  const DeviceState state = getState();
-  if (state != DeviceClosed && state != DeviceDisconnected && state != DeviceError &&
-      usb_device_ != 0)
+  libusb_device* self = 0;
   {
-    unsigned char bus = libusb_get_bus_number(usb_device_);
-    unsigned char address = libusb_get_device_address(usb_device_);
-
-    unsigned char other_bus = libusb_get_bus_number(other);
-    unsigned char other_address = libusb_get_device_address(other);
-
-    result = (bus == other_bus) && (address == other_address);
+    libfreenect2::lock_guard guard(state_mutex_);
+    if (state_ != DeviceClosed && state_ != DeviceDisconnected && state_ != DeviceError &&
+        usb_device_ != 0)
+      self = libusb_ref_device(usb_device_);
   }
 
-  return result;
+  if (self == 0 || other == 0)
+    return false;
+
+  const unsigned char bus = libusb_get_bus_number(self);
+  const unsigned char address = libusb_get_device_address(self);
+  const unsigned char other_bus = libusb_get_bus_number(other);
+  const unsigned char other_address = libusb_get_device_address(other);
+
+  libusb_unref_device(self);
+  return bus == other_bus && address == other_address;
 }
 
 std::string Freenect2DeviceImpl::getSerialNumber()
@@ -1388,10 +1382,16 @@ bool Freenect2DeviceImpl::close()
 
   if (usb_device_handle_ != 0)
     libusb_close(usb_device_handle_);
-  usb_device_handle_ = 0;
-  usb_device_ = 0;
-
-  setClosedState(success ? std::string() : "device closed with shutdown errors");
+  {
+    // Publish the terminal state and clear the USB pointers atomically with
+    // respect to isSameUsbDevice().
+    libfreenect2::lock_guard guard(state_mutex_);
+    usb_device_handle_ = 0;
+    usb_device_ = 0;
+    if (!success && state_ != DeviceDisconnected && state_ != DeviceError)
+      last_error_ = "device closed with shutdown errors";
+    state_ = DeviceClosed;
+  }
   LOG_INFO << (success ? "closed" : "closed with shutdown errors");
   return success;
 }
@@ -1401,8 +1401,8 @@ PacketPipeline* createPacketPipeline(const std::string& name, int device_id)
   return createPacketPipeline(name, PacketPipelineConfig(), device_id);
 }
 
-PacketPipeline* createPacketPipeline(const std::string& name,
-                                     const PacketPipelineConfig& config, int device_id)
+PacketPipeline* createPacketPipeline(const std::string& name, const PacketPipelineConfig& config,
+                                     int device_id)
 {
   (void)device_id;
 #if defined(LIBFREENECT2_WITH_OPENGL_SUPPORT)
@@ -1558,7 +1558,7 @@ std::string Freenect2::getDeviceSerialNumber(int idx)
   if (idx >= impl_->getNumDevices() || idx < 0)
     return std::string();
 
-  return impl_->enumerated_devices_[idx].serial;
+  return impl_->enumerated_devices_.at(static_cast<size_t>(idx)).serial;
 }
 
 std::string Freenect2::getDefaultDeviceSerialNumber()
@@ -1609,7 +1609,7 @@ Freenect2Device* Freenect2Impl::openDevice(int idx, const PacketPipeline* pipeli
   int num_devices = getNumDevices();
   Freenect2DeviceImpl* device = 0;
 
-  if (idx >= num_devices)
+  if (idx < 0 || idx >= num_devices)
   {
     LOG_ERROR << "requested device " << idx << " is not connected!";
     delete pipeline;
@@ -1617,7 +1617,7 @@ Freenect2Device* Freenect2Impl::openDevice(int idx, const PacketPipeline* pipeli
     return device;
   }
 
-  Freenect2Impl::UsbDeviceWithSerial& dev = enumerated_devices_[idx];
+  Freenect2Impl::UsbDeviceWithSerial& dev = enumerated_devices_.at(static_cast<size_t>(idx));
   libusb_device_handle* dev_handle;
 
   if (tryGetDevice(dev.dev, &device))
@@ -1714,7 +1714,7 @@ Freenect2Device* Freenect2::openDevice(const std::string& serial, const PacketPi
 
   for (int idx = 0; idx < num_devices; ++idx)
   {
-    if (impl_->enumerated_devices_[idx].serial == serial)
+    if (impl_->enumerated_devices_.at(static_cast<size_t>(idx)).serial == serial)
     {
       return openDevice(idx, pipeline);
     }
@@ -1741,7 +1741,7 @@ Freenect2ReplayDevice::Freenect2ReplayDevice(Freenect2ReplayImpl* context,
     : context_(context), pipeline_(pipeline), frame_filenames_(frame_filenames), t_(NULL),
       running_(false), state_(DeviceCreated), enable_rgb_(true), enable_depth_(true),
       has_calibration_(calibration != NULL), recording_mode_(false), serial_(LIBFREENECT2_VERSION),
-      firmware_(LIBFREENECT2_VERSION)
+      firmware_(LIBFREENECT2_VERSION), ir_camera_params_(), rgb_camera_params_()
 {
   if (calibration != NULL)
     calibration_ = *calibration;
@@ -1758,7 +1758,7 @@ Freenect2ReplayDevice::Freenect2ReplayDevice(Freenect2ReplayImpl* context,
     : context_(context), pipeline_(pipeline), t_(NULL), running_(false), state_(DeviceCreated),
       enable_rgb_(true), enable_depth_(true), has_calibration_(true), recording_mode_(true),
       replay_options_(options), recording_(recording), serial_(recording.manifest.serial),
-      firmware_(recording.manifest.firmware)
+      firmware_(recording.manifest.firmware), ir_camera_params_(), rgb_camera_params_()
 {
   calibration_.color = recording.calibration.color;
   calibration_.ir = recording.calibration.ir;
@@ -1927,15 +1927,19 @@ bool Freenect2ReplayDevice::open()
 
 bool Freenect2ReplayDevice::close()
 {
+  libfreenect2::lock_guard thread_guard(thread_mutex_);
   LOG_INFO << "closing...";
 
-  if (getState() == DeviceClosed)
   {
-    LOG_INFO << "already closed, doing nothing";
-    return true;
+    libfreenect2::lock_guard guard(state_mutex_);
+    if (state_ == DeviceClosed)
+    {
+      LOG_INFO << "already closed, doing nothing";
+      return true;
+    }
   }
 
-  stop();
+  stopWorkerLocked();
 
   if (pipeline_ != NULL && pipeline_->getRgbPacketProcessor() != 0)
     pipeline_->getRgbPacketProcessor()->setFrameListener(0);
@@ -2017,8 +2021,8 @@ bool Freenect2ReplayDevice::start()
 
 bool Freenect2ReplayDevice::startStreams(bool enable_rgb, bool enable_depth)
 {
-  LOG_INFO << "Freenect2ReplayDevice: starting: rgb: " << enable_rgb << ", depth: " << enable_depth;
   libfreenect2::lock_guard thread_guard(thread_mutex_);
+  LOG_INFO << "Freenect2ReplayDevice: starting: rgb: " << enable_rgb << ", depth: " << enable_depth;
   {
     libfreenect2::lock_guard guard(state_mutex_);
     if (state_ != DeviceOpen || running_.load() || (!enable_rgb && !enable_depth))
@@ -2047,6 +2051,12 @@ bool Freenect2ReplayDevice::startStreams(bool enable_rgb, bool enable_depth)
 bool Freenect2ReplayDevice::stop()
 {
   libfreenect2::lock_guard thread_guard(thread_mutex_);
+  stopWorkerLocked();
+  return true;
+}
+
+void Freenect2ReplayDevice::stopWorkerLocked()
+{
   {
     libfreenect2::lock_guard guard(timing_mutex_);
     running_.store(false);
@@ -2067,7 +2077,6 @@ bool Freenect2ReplayDevice::stop()
     }
   }
   LOG_INFO << "replay stopped";
-  return true;
 }
 
 bool hasSuffix(const std::string& str, const std::string& suffix)
@@ -2257,9 +2266,15 @@ void Freenect2ReplayDevice::runRecording()
     std::vector<unsigned char> data;
     std::string error;
     const std::string path = recording::joinPath(recording_.directory, entry->path);
-    if (!recording::readFile(path, data, &error) || data.size() != entry->byte_count)
+    if (!recording::readFile(path, data, &error))
     {
       LOG_ERROR << error;
+      continue;
+    }
+    if (data.size() != entry->byte_count)
+    {
+      LOG_ERROR << "recorded frame " << entry->path << " has " << data.size() << " bytes, expected "
+                << entry->byte_count;
       continue;
     }
 

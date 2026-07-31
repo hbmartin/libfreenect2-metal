@@ -32,6 +32,7 @@
 #include <libfreenect2/logging.h>
 
 #include <algorithm>
+#include <cstring>
 #include <fstream>
 
 #include <limits>
@@ -48,8 +49,7 @@
  * @tparam ScalarT Type of the elements.
  * @tparam Size Number of elements in the vector.
  */
-template<typename ScalarT, int Size>
-struct Vec
+template <typename ScalarT, int Size> struct Vec
 {
   ScalarT val[Size];
 };
@@ -58,17 +58,17 @@ struct Vec
  * Matrix class.
  * @tparam ScalarT Eelement type of the matrix.
  */
-template<typename ScalarT>
-struct Mat
+template <typename ScalarT> struct Mat
 {
 private:
-  bool owns_buffer; ///< Whether the matrix owns the data buffer (and should dispose it when deleted).
-  unsigned char *buffer_; ///< Data buffer of the matrix (row major).
-  unsigned char *buffer_end_; ///< End of the buffer (just after the last element).
-  int width_;  ///< Number of elements in the matrix.
-  int height_; ///< Number of rows in the matrix.
-  int x_step;  ///< Number of bytes in one element.
-  int y_step;  ///< Number of bytes in one row.
+  bool owns_buffer;       ///< Whether the matrix owns the data buffer (and should dispose it when
+                          ///< deleted).
+  unsigned char* buffer_; ///< Data buffer of the matrix (row major).
+  unsigned char* buffer_end_; ///< End of the buffer (just after the last element).
+  int width_;                 ///< Number of elements in the matrix.
+  int height_;                ///< Number of rows in the matrix.
+  int x_step;                 ///< Number of bytes in one element.
+  int y_step;                 ///< Number of bytes in one row.
 
   /**
    * Allocate a buffer.
@@ -76,7 +76,7 @@ private:
    * @param height Height of the matrix.
    * @param external_buffer If not \c null, use the provided buffer, else make a new one.
    */
-  void allocate(int width, int height, unsigned char *external_buffer = 0)
+  void allocate(int width, int height, unsigned char* external_buffer = 0)
   {
     this->width_ = width;
     this->height_ = height;
@@ -85,7 +85,7 @@ private:
 
     owns_buffer = external_buffer == 0;
 
-    if(owns_buffer)
+    if (owns_buffer)
     {
       buffer_ = new unsigned char[y_step * height];
     }
@@ -98,7 +98,7 @@ private:
 
   void deallocate()
   {
-    if(owns_buffer && buffer_ != 0)
+    if (owns_buffer && buffer_ != 0)
     {
       delete[] buffer_;
       owns_buffer = false;
@@ -109,19 +109,14 @@ private:
 
 public:
   /** Default constructor. */
-  Mat():owns_buffer(false), buffer_(0), buffer_end_(0)
-  {
-  }
+  Mat() : owns_buffer(false), buffer_(0), buffer_end_(0) {}
 
   /**
    * Constructor with locally allocated buffer.
    * @param height Height of the image.
    * @param width Width of the image.
    */
-  Mat(int height, int width) : owns_buffer(false), buffer_(0)
-  {
-    create(height, width);
-  }
+  Mat(int height, int width) : owns_buffer(false), buffer_(0) { create(height, width); }
 
   /**
    * Constructor with external buffer.
@@ -130,35 +125,25 @@ public:
    * @param width Width of the image.
    * @param external_buffer Provided buffer.
    */
-  template<typename DataT>
-  Mat(int height, int width, DataT *external_buffer)
+  template <typename DataT> Mat(int height, int width, DataT* external_buffer)
   {
-    allocate(width, height, reinterpret_cast<unsigned char *>(external_buffer));
+    allocate(width, height, reinterpret_cast<unsigned char*>(external_buffer));
   }
 
   /** Destructor. */
-  ~Mat()
-  {
-    deallocate();
-  }
+  ~Mat() { deallocate(); }
 
   /**
    * Get the width of the image.
    * @return Width of the image.
    */
-  int width() const
-  {
-    return width_;
-  }
+  int width() const { return width_; }
 
   /**
    * Get the height of the image.
    * @return height of the image.
    */
-  int height() const
-  {
-    return height_;
-  }
+  int height() const { return height_; }
 
   /**
    * Construct a new image buffer
@@ -175,7 +160,7 @@ public:
    * Copy image data to the provided matrix.
    * @param other Destination to copy to.
    */
-  void copyTo(Mat<ScalarT> &other) const
+  void copyTo(Mat<ScalarT>& other) const
   {
     other.create(height(), width());
     std::copy(buffer_, buffer_end_, other.buffer_);
@@ -187,10 +172,7 @@ public:
    * @param x Horizontal position.
    * @return Data at the given position.
    */
-  const ScalarT &at(int y, int x) const
-  {
-    return *ptr(y, x);
-  }
+  const ScalarT& at(int y, int x) const { return *ptr(y, x); }
 
   /**
    * Get a reference to the image data at the requested point \a x, \a y.
@@ -198,38 +180,29 @@ public:
    * @param x Horizontal position.
    * @return Reference to the data at the given position.
    */
-  ScalarT &at(int y, int x)
+  ScalarT& at(int y, int x) { return *ptr(y, x); }
+
+  const ScalarT* ptr(int y, int x) const
   {
-    return *ptr(y, x);
+    return reinterpret_cast<const ScalarT*>(buffer_ + y_step * y + x_step * x);
   }
 
-  const ScalarT *ptr(int y, int x) const
+  ScalarT* ptr(int y, int x)
   {
-    return reinterpret_cast<const ScalarT *>(buffer_ + y_step * y + x_step * x);
-  }
-
-  ScalarT *ptr(int y, int x)
-  {
-    return reinterpret_cast<ScalarT *>(buffer_ + y_step * y + x_step * x);
+    return reinterpret_cast<ScalarT*>(buffer_ + y_step * y + x_step * x);
   }
 
   /**
    * Get the buffer.
    * @return The buffer.
    */
-  unsigned char* buffer()
-  {
-    return buffer_;
-  }
+  unsigned char* buffer() { return buffer_; }
 
   /**
    * Get the size of the buffer.
    * @return Number of bytes in the buffer.
    */
-  int sizeInBytes() const
-  {
-    return buffer_end_ - buffer_;
-  }
+  int sizeInBytes() const { return buffer_end_ - buffer_; }
 };
 
 /**
@@ -238,21 +211,20 @@ public:
  * @param in Source buffer.
  * @param [out] out Destination buffer to be filled with flipped \a in data.
  */
-template<typename ScalarT>
-void flipHorizontal(const Mat<ScalarT> &in, Mat<ScalarT>& out)
+template <typename ScalarT> void flipHorizontal(const Mat<ScalarT>& in, Mat<ScalarT>& out)
 {
   in.copyTo(out);
-  
+
   typedef unsigned char type;
 
   int linestep = out.sizeInBytes() / out.height() / sizeof(type);
 
-  type *first_line = reinterpret_cast<type *>(out.buffer()), *last_line = reinterpret_cast<type *>(out.buffer()) + (out.height() - 1) * linestep;
+  type *first_line = reinterpret_cast<type*>(out.buffer()),
+       *last_line = reinterpret_cast<type*>(out.buffer()) + (out.height() - 1) * linestep;
 
-
-  for(int y = 0; y < out.height() / 2; ++y)
+  for (int y = 0; y < out.height() / 2; ++y)
   {
-    for(int x = 0; x < linestep; ++x, ++first_line, ++last_line)
+    for (int x = 0; x < linestep; ++x, ++first_line, ++last_line)
     {
       std::swap(*first_line, *last_line);
     }
@@ -260,14 +232,15 @@ void flipHorizontal(const Mat<ScalarT> &in, Mat<ScalarT>& out)
   }
 }
 
-static void loadP0Table(const unsigned char *buffer, size_t offset, bool flip, Mat<uint16_t> &output)
+static void loadP0Table(const unsigned char* buffer, size_t offset, bool flip,
+                        Mat<uint16_t>& output)
 {
   // Command responses are byte buffers and are not guaranteed to meet the
   // alignment required by uint16_t. Copy into aligned matrix storage before
   // decoding or flipping the table.
   Mat<uint16_t> input(424, 512);
   memcpy(input.buffer(), buffer + offset, input.sizeInBytes());
-  if(flip)
+  if (flip)
     flipHorizontal(input, output);
   else
     input.copyTo(output);
@@ -278,11 +251,11 @@ namespace libfreenect2
 
 inline int bfi(int width, int offset, int src2, int src3)
 {
-  int bitmask = (((1 << width)-1) << offset) & 0xffffffff;
+  int bitmask = (((1 << width) - 1) << offset) & 0xffffffff;
   return ((src2 << offset) & bitmask) | (src3 & ~bitmask);
 }
 
-class CpuDepthPacketProcessorImpl: public WithPerfLogging
+class CpuDepthPacketProcessorImpl : public WithPerfLogging
 {
 public:
   Mat<uint16_t> p0_table0, p0_table1, p0_table2;
@@ -290,9 +263,9 @@ public:
 
   int16_t lut11to16[2048];
 
-  float trig_table0[512*424][6];
-  float trig_table1[512*424][6];
-  float trig_table2[512*424][6];
+  float trig_table0[512 * 424][6];
+  float trig_table1[512 * 424][6];
+  float trig_table2[512 * 424][6];
 
   bool enable_bilateral_filter, enable_edge_filter;
   DepthPacketProcessor::Parameters params;
@@ -317,7 +290,7 @@ public:
   {
     ir_frame = new Frame(512, 424, 4);
     ir_frame->format = Frame::Float;
-    //ir_frame = new Frame(512, 424, 12);
+    // ir_frame = new Frame(512, 424, 12);
   }
 
   ~CpuDepthPacketProcessorImpl()
@@ -341,12 +314,12 @@ public:
     }
 
     int r1zi = (x >> 2) + ((x & 0x3) << 7); // Range 1..510
-    r1zi = r1zi * 11L; // Range 11..5610
+    r1zi = r1zi * 11L;                      // Range 11..5610
 
     // 298496 = 512 * 424 * 11 / 8 = number of bytes per sub image
-    uint16_t *ptr = reinterpret_cast<uint16_t *>(data + 298496 * sub);
+    uint16_t* ptr = reinterpret_cast<uint16_t*>(data + 298496 * sub);
     int i = y < 212 ? y + 212 : 423 - y;
-    ptr += 352*i;
+    ptr += 352 * i;
 
     int r1yi = r1zi >> 4; // Range 0..350
     r1zi = r1zi & 15;
@@ -364,12 +337,12 @@ public:
    * @param p0table Angle at every (x, y) position.
    * @param [out] trig_tables (3 cos tables, followed by 3 sin tables for the three phases.
    */
-  void fillTrigTable(Mat<uint16_t> &p0table, float trig_table[512*424][6])
+  void fillTrigTable(Mat<uint16_t>& p0table, float trig_table[512 * 424][6])
   {
     int i = 0;
 
-    for(int y = 0; y < 424; ++y)
-      for(int x = 0; x < 512; ++x, ++i)
+    for (int y = 0; y < 424; ++y)
+      for (int x = 0; x < 512; ++x, ++i)
       {
         float p0 = -((float)p0table.at(y, x)) * 0.000031 * M_PI;
 
@@ -396,7 +369,8 @@ public:
    * @param m Measurement.
    * @param [out] m_out Processed measurement (IR a, IR b, IR amplitude).
    */
-  void processMeasurementTriple(float trig_table[512*424][6], float abMultiplierPerFrq, int x, int y, const int32_t* m, float* m_out)
+  void processMeasurementTriple(float trig_table[512 * 424][6], float abMultiplierPerFrq, int x,
+                                int y, const int32_t* m, float* m_out)
   {
     float zmultiplier = z_table.at(y, x);
     if (0 < zmultiplier)
@@ -418,12 +392,13 @@ public:
         float ir_image_b = sin_negtmp0 * m[0] + sin_negtmp1 * m[1] + sin_negtmp2 * m[2];
 
         // only if modeMask & 32 != 0;
-        if(true)//(modeMask & 32) != 0)
+        if (true) //(modeMask & 32) != 0)
         {
-            ir_image_a *= abMultiplierPerFrq;
-            ir_image_b *= abMultiplierPerFrq;
+          ir_image_a *= abMultiplierPerFrq;
+          ir_image_b *= abMultiplierPerFrq;
         }
-        float ir_amplitude = std::sqrt(ir_image_a * ir_image_a + ir_image_b * ir_image_b) * params.ab_multiplier;
+        float ir_amplitude =
+            std::sqrt(ir_image_a * ir_image_a + ir_image_b * ir_image_b) * params.ab_multiplier;
 
         m_out[0] = ir_image_a;
         m_out[1] = ir_image_b;
@@ -471,7 +446,8 @@ public:
    * @param [out] m1_out Second layer output.
    * @param [out] m2_out Third layer output.
    */
-  void processPixelStage1(int x, int y, unsigned char* data, float *m0_out, float *m1_out, float *m2_out)
+  void processPixelStage1(int x, int y, unsigned char* data, float* m0_out, float* m1_out,
+                          float* m2_out)
   {
     int32_t m0_raw[3], m1_raw[3], m2_raw[3];
 
@@ -496,16 +472,18 @@ public:
    * @param y Vertical position.
    * @param m Input data?
    * @param [out] Output data.
-   * @param [out] bilateral_max_edge_test Whether the accumulated distance of each image stayed within limits.
+   * @param [out] bilateral_max_edge_test Whether the accumulated distance of each image stayed
+   * within limits.
    */
-  void filterPixelStage1(int x, int y, const Mat<Vec<float, 9> >& m, float* m_out, bool& bilateral_max_edge_test)
+  void filterPixelStage1(int x, int y, const Mat<Vec<float, 9>>& m, float* m_out,
+                         bool& bilateral_max_edge_test)
   {
-    const float *m_ptr = (m.ptr(y, x)->val);
+    const float* m_ptr = (m.ptr(y, x)->val);
     bilateral_max_edge_test = true;
 
-    if(x < 1 || y < 1 || x > 510 || y > 422)
+    if (x < 1 || y < 1 || x > 510 || y > 422)
     {
-      for(int i = 0; i < 9; ++i)
+      for (int i = 0; i < 9; ++i)
         m_out[i] = m_ptr[i];
     }
     else
@@ -515,7 +493,7 @@ public:
 
       int offset = 0;
 
-      for(int i = 0; i < 3; ++i, m_ptr += 3, m_out += 3, offset += 3)
+      for (int i = 0; i < 3; ++i, m_ptr += 3, m_out += 3, offset += 3)
       {
         float norm2 = m_ptr[0] * m_ptr[0] + m_ptr[1] * m_ptr[1];
         float inv_norm = 1.0f / std::sqrt(norm2);
@@ -529,10 +507,12 @@ public:
         float weight_acc = 0.0f;
         float weighted_m_acc[2] = {0.0f, 0.0f};
 
-        float threshold = (params.joint_bilateral_ab_threshold * params.joint_bilateral_ab_threshold) / (params.ab_multiplier * params.ab_multiplier);
+        float threshold =
+            (params.joint_bilateral_ab_threshold * params.joint_bilateral_ab_threshold) /
+            (params.ab_multiplier * params.ab_multiplier);
         float joint_bilateral_exp = params.joint_bilateral_exp;
 
-        if(norm2 < threshold)
+        if (norm2 < threshold)
         {
           threshold = 0.0f;
           joint_bilateral_exp = 0.0f;
@@ -540,11 +520,11 @@ public:
 
         float dist_acc = 0.0f;
 
-        for(int yi = -1; yi < 2; ++yi)
+        for (int yi = -1; yi < 2; ++yi)
         {
-          for(int xi = -1; xi < 2; ++xi, ++j)
+          for (int xi = -1; xi < 2; ++xi, ++j)
           {
-            if(yi == 0 && xi == 0)
+            if (yi == 0 && xi == 0)
             {
               weight_acc += params.gaussian_kernel[j];
 
@@ -553,24 +533,29 @@ public:
               continue;
             }
 
-            const float *other_m_ptr = (m.ptr(y + yi, x + xi)->val) + offset;
+            const float* other_m_ptr = (m.ptr(y + yi, x + xi)->val) + offset;
             float other_norm2 = other_m_ptr[0] * other_m_ptr[0] + other_m_ptr[1] * other_m_ptr[1];
-            // TODO: maybe fix numeric problems when norm = 0 - original code uses reciprocal square root, which returns +inf for +0
+            // TODO: maybe fix numeric problems when norm = 0 - original code uses reciprocal square
+            // root, which returns +inf for +0
             float other_inv_norm = 1.0f / std::sqrt(other_norm2);
-            other_inv_norm = (other_inv_norm == other_inv_norm) ? other_inv_norm : std::numeric_limits<float>::infinity();
+            other_inv_norm = (other_inv_norm == other_inv_norm)
+                                 ? other_inv_norm
+                                 : std::numeric_limits<float>::infinity();
 
             other_m_normalized[0] = other_m_ptr[0] * other_inv_norm;
             other_m_normalized[1] = other_m_ptr[1] * other_inv_norm;
 
-            float dist = -(other_m_normalized[0] * m_normalized[0] + other_m_normalized[1] * m_normalized[1]);
+            float dist = -(other_m_normalized[0] * m_normalized[0] +
+                           other_m_normalized[1] * m_normalized[1]);
             dist += 1.0f;
             dist *= 0.5f;
 
             float weight = 0.0f;
 
-            if(other_norm2 >= threshold)
+            if (other_norm2 >= threshold)
             {
-              weight = (params.gaussian_kernel[j] * std::exp(-1.442695f * joint_bilateral_exp * dist));
+              weight =
+                  (params.gaussian_kernel[j] * std::exp(-1.442695f * joint_bilateral_exp * dist));
               dist_acc += dist;
             }
 
@@ -581,7 +566,8 @@ public:
           }
         }
 
-        bilateral_max_edge_test = bilateral_max_edge_test && dist_acc < params.joint_bilateral_max_edge;
+        bilateral_max_edge_test =
+            bilateral_max_edge_test && dist_acc < params.joint_bilateral_max_edge;
 
         m_out[0] = 0.0f < weight_acc ? weighted_m_acc[0] / weight_acc : 0.0f;
         m_out[1] = 0.0f < weight_acc ? weighted_m_acc[1] / weight_acc : 0.0f;
@@ -590,27 +576,28 @@ public:
     }
   }
 
-  void processPixelStage2(int x, int y, float *m0, float *m1, float *m2, float *ir_out, float *depth_out, float *ir_sum_out)
+  void processPixelStage2(int x, int y, float* m0, float* m1, float* m2, float* ir_out,
+                          float* depth_out, float* ir_sum_out)
   {
     //// 10th measurement
-    //float m9 = 1; // decodePixelMeasurement(data, 9, x, y);
+    // float m9 = 1; // decodePixelMeasurement(data, 9, x, y);
     //
     //// WTF?
-    //bool cond0 = zmultiplier == 0 || (m9 >= 0 && m9 < 32767);
-    //m9 = std::max(-m9, m9);
-    //// if m9 is positive or pixel is invalid (zmultiplier) we set it to 0 otherwise to its absolute value O.o
-    //m9 = cond0 ? 0 : m9;
+    // bool cond0 = zmultiplier == 0 || (m9 >= 0 && m9 < 32767);
+    // m9 = std::max(-m9, m9);
+    //// if m9 is positive or pixel is invalid (zmultiplier) we set it to 0 otherwise to its
+    ///absolute value O.o
+    // m9 = cond0 ? 0 : m9;
 
     transformMeasurements(m0);
     transformMeasurements(m1);
     transformMeasurements(m2);
 
-
     float ir_sum = m0[1] + m1[1] + m2[1];
 
     float phase;
     // if(DISABLE_DISAMBIGUATION)
-    if(false)
+    if (false)
     {
 #if 0
         //r0.yz = r3.zx + r4.zx // add
@@ -661,7 +648,9 @@ public:
         t6 *= 0.333333f; // = / 3
         t7 *= 0.066667f; // = / 15
 
-        float t9 = (t8 + t6 + t7); // transformed phase measurements (they are transformed and divided by the values the original values were multiplied with)
+        float t9 =
+            (t8 + t6 + t7); // transformed phase measurements (they are transformed and divided by
+                            // the values the original values were multiplied with)
         float t10 = t9 * 0.333333f; // some avg
 
         t6 *= 2.0f * M_PI;
@@ -689,9 +678,11 @@ public:
         float ir_x = slope_positive ? ir_min_ : ir_max_;
 
         ir_x = std::log(ir_x);
-        ir_x = (ir_x * params.ab_confidence_slope * 0.301030f + params.ab_confidence_offset) * 3.321928f;
+        ir_x = (ir_x * params.ab_confidence_slope * 0.301030f + params.ab_confidence_offset) *
+               3.321928f;
         ir_x = std::exp(ir_x);
-        ir_x = std::min(params.max_dealias_confidence, std::max(params.min_dealias_confidence, ir_x));
+        ir_x =
+            std::min(params.max_dealias_confidence, std::max(params.min_dealias_confidence, ir_x));
         ir_x *= ir_x;
 
         float mask2 = ir_x >= norm ? 1.0f : 0.0f;
@@ -700,7 +691,7 @@ public:
 
         // The mode mask is fixed to the first branch in this implementation.
         // Do not compute the unused alternate result here.
-        phase = true/*(modeMask & 2) != 0*/ ? t11 : t10;
+        phase = true /*(modeMask & 2) != 0*/ ? t11 : t10;
       }
     }
 
@@ -722,10 +713,9 @@ public:
     depth_fit = depth_fit < 0 ? 0 : depth_fit;
     float depth = cond1 ? depth_fit : depth_linear; // r1.y -> later r2.z
 
-
     // depth
     *depth_out = depth;
-    if(ir_sum_out != 0)
+    if (ir_sum_out != 0)
     {
       *ir_sum_out = ir_sum;
     }
@@ -733,39 +723,43 @@ public:
     // ir
     //*ir_out = std::min((m1[2]) * ab_output_multiplier, 65535.0f);
     // ir avg
-    *ir_out = std::min((m0[2] + m1[2] + m2[2]) * 0.3333333f * params.ab_output_multiplier, 65535.0f);
-    //ir_out[0] = std::min(m0[2] * ab_output_multiplier, 65535.0f);
-    //ir_out[1] = std::min(m1[2] * ab_output_multiplier, 65535.0f);
-    //ir_out[2] = std::min(m2[2] * ab_output_multiplier, 65535.0f);
+    *ir_out =
+        std::min((m0[2] + m1[2] + m2[2]) * 0.3333333f * params.ab_output_multiplier, 65535.0f);
+    // ir_out[0] = std::min(m0[2] * ab_output_multiplier, 65535.0f);
+    // ir_out[1] = std::min(m1[2] * ab_output_multiplier, 65535.0f);
+    // ir_out[2] = std::min(m2[2] * ab_output_multiplier, 65535.0f);
   }
 
-  void filterPixelStage2(int x, int y, Mat<Vec<float, 3> > &m, bool max_edge_test_ok, float *depth_out)
+  void filterPixelStage2(int x, int y, Mat<Vec<float, 3>>& m, bool max_edge_test_ok,
+                         float* depth_out)
   {
-    Vec<float, 3> &depth_and_ir_sum = m.at(y, x);
+    Vec<float, 3>& depth_and_ir_sum = m.at(y, x);
     float &raw_depth = depth_and_ir_sum.val[0], &ir_sum = depth_and_ir_sum.val[2];
 
-    if(raw_depth >= params.min_depth && raw_depth <= params.max_depth)
+    if (raw_depth >= params.min_depth && raw_depth <= params.max_depth)
     {
-      if(x < 1 || y < 1 || x > 510 || y > 422)
+      if (x < 1 || y < 1 || x > 510 || y > 422)
       {
         *depth_out = raw_depth;
       }
       else
       {
-        float ir_sum_acc = ir_sum, squared_ir_sum_acc = ir_sum * ir_sum, min_depth = raw_depth, max_depth = raw_depth;
+        float ir_sum_acc = ir_sum, squared_ir_sum_acc = ir_sum * ir_sum, min_depth = raw_depth,
+              max_depth = raw_depth;
 
-        for(int yi = -1; yi < 2; ++yi)
+        for (int yi = -1; yi < 2; ++yi)
         {
-          for(int xi = -1; xi < 2; ++xi)
+          for (int xi = -1; xi < 2; ++xi)
           {
-            if(yi == 0 && xi == 0) continue;
+            if (yi == 0 && xi == 0)
+              continue;
 
-            Vec<float, 3> &other = m.at(y + yi, x + xi);
+            Vec<float, 3>& other = m.at(y + yi, x + xi);
 
             ir_sum_acc += other.val[2];
             squared_ir_sum_acc += other.val[2] * other.val[2];
 
-            if(0.0f < other.val[1])
+            if (0.0f < other.val[1])
             {
               min_depth = std::min(min_depth, other.val[1]);
               max_depth = std::max(max_depth, other.val[1]);
@@ -783,21 +777,19 @@ public:
         float avg_diff = (abs_min_diff + abs_max_diff) * 0.5f;
         float max_abs_diff = std::max(abs_min_diff, abs_max_diff);
 
-        bool cond0 =
-            0.0f < raw_depth &&
-            tmp0 >= params.edge_ab_std_dev_threshold &&
-            params.edge_close_delta_threshold < abs_min_diff &&
-            params.edge_far_delta_threshold < abs_max_diff &&
-            params.edge_max_delta_threshold < max_abs_diff &&
-            params.edge_avg_delta_threshold < avg_diff;
+        bool cond0 = 0.0f < raw_depth && tmp0 >= params.edge_ab_std_dev_threshold &&
+                     params.edge_close_delta_threshold < abs_min_diff &&
+                     params.edge_far_delta_threshold < abs_max_diff &&
+                     params.edge_max_delta_threshold < max_abs_diff &&
+                     params.edge_avg_delta_threshold < avg_diff;
 
         *depth_out = cond0 ? 0.0f : raw_depth;
 
-        if(!cond0)
+        if (!cond0)
         {
-          if(max_edge_test_ok)
+          if (max_edge_test_ok)
           {
-            //float tmp1 = 1500.0f > raw_depth ? 30.0f : 0.02f * raw_depth;
+            // float tmp1 = 1500.0f > raw_depth ? 30.0f : 0.02f * raw_depth;
             float edge_count = 0.0f;
 
             *depth_out = edge_count > params.max_edge_count ? 0.0f : raw_depth;
@@ -820,20 +812,18 @@ public:
   }
 };
 
-CpuDepthPacketProcessor::CpuDepthPacketProcessor() :
-    impl_(new CpuDepthPacketProcessorImpl())
-{
-}
+CpuDepthPacketProcessor::CpuDepthPacketProcessor() : impl_(new CpuDepthPacketProcessorImpl()) {}
 
 CpuDepthPacketProcessor::~CpuDepthPacketProcessor()
 {
   delete impl_;
 }
 
-void CpuDepthPacketProcessor::setConfiguration(const libfreenect2::DepthPacketProcessor::Config &config)
+void CpuDepthPacketProcessor::setConfiguration(
+    const libfreenect2::DepthPacketProcessor::Config& config)
 {
   DepthPacketProcessor::setConfiguration(config);
-  
+
   impl_->params.min_depth = config.MinDepth * 1000.0f;
   impl_->params.max_depth = config.MaxDepth * 1000.0f;
   impl_->enable_bilateral_filter = config.EnableBilateralFilter;
@@ -845,9 +835,10 @@ void CpuDepthPacketProcessor::setConfiguration(const libfreenect2::DepthPacketPr
  * @param buffer Buffer containing the response.
  * @param buffer_length Length of the response data.
  */
-void CpuDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char* buffer, size_t buffer_length)
+void CpuDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char* buffer,
+                                                              size_t buffer_length)
 {
-  if(buffer == 0 || buffer_length < sizeof(libfreenect2::protocol::P0TablesResponse))
+  if (buffer == 0 || buffer_length < sizeof(libfreenect2::protocol::P0TablesResponse))
   {
     LOG_ERROR << "P0Table response too short!";
     return;
@@ -866,16 +857,16 @@ void CpuDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char* buf
   impl_->fillTrigTable(impl_->p0_table2, impl_->trig_table2);
 }
 
-void CpuDepthPacketProcessor::loadXZTables(const float *xtable, const float *ztable)
+void CpuDepthPacketProcessor::loadXZTables(const float* xtable, const float* ztable)
 {
   impl_->x_table.create(424, 512);
-  std::copy(xtable, xtable + TABLE_SIZE, impl_->x_table.ptr(0,0));
+  std::copy(xtable, xtable + TABLE_SIZE, impl_->x_table.ptr(0, 0));
 
   impl_->z_table.create(424, 512);
-  std::copy(ztable, ztable + TABLE_SIZE, impl_->z_table.ptr(0,0));
+  std::copy(ztable, ztable + TABLE_SIZE, impl_->z_table.ptr(0, 0));
 }
 
-void CpuDepthPacketProcessor::loadLookupTable(const short *lut)
+void CpuDepthPacketProcessor::loadLookupTable(const short* lut)
 {
   std::copy(lut, lut + LUT_SIZE, impl_->lut11to16);
 }
@@ -884,9 +875,10 @@ void CpuDepthPacketProcessor::loadLookupTable(const short *lut)
  * Process a packet.
  * @param packet Packet to process.
  */
-void CpuDepthPacketProcessor::process(const DepthPacket &packet)
+void CpuDepthPacketProcessor::process(const DepthPacket& packet)
 {
-  if(listener_ == 0) return;
+  if (listener_ == 0)
+    return;
 
   impl_->startTiming();
 
@@ -897,26 +889,24 @@ void CpuDepthPacketProcessor::process(const DepthPacket &packet)
   impl_->ir_frame->sequence = packet.sequence;
   impl_->depth_frame->sequence = packet.sequence;
 
-  Mat<Vec<float, 9> >
-      m(424, 512),
-      m_filtered(424, 512)
-  ;
+  Mat<Vec<float, 9>> m(424, 512), m_filtered(424, 512);
   Mat<unsigned char> m_max_edge_test(424, 512);
   std::fill(m_max_edge_test.ptr(0, 0), m_max_edge_test.ptr(0, 0) + 424 * 512, 1);
 
-  for(int y = 0; y < 424; ++y)
-    for(int x = 0; x < 512; ++x)
+  for (int y = 0; y < 424; ++y)
+    for (int x = 0; x < 512; ++x)
     {
-      float *measurements = m.ptr(y, x)->val;
-      impl_->processPixelStage1(x, y, packet.buffer, measurements + 0, measurements + 3, measurements + 6);
+      float* measurements = m.ptr(y, x)->val;
+      impl_->processPixelStage1(x, y, packet.buffer, measurements + 0, measurements + 3,
+                                measurements + 6);
     }
 
   // bilateral filtering
-  Mat<Vec<float, 9> > *processed_measurements = &m;
-  if(impl_->enable_bilateral_filter)
+  Mat<Vec<float, 9>>* processed_measurements = &m;
+  if (impl_->enable_bilateral_filter)
   {
-    for(int y = 0; y < 424; ++y)
-      for(int x = 0; x < 512; ++x)
+    for (int y = 0; y < 424; ++y)
+      for (int x = 0; x < 512; ++x)
       {
         bool max_edge_test_val = true;
         impl_->filterPixelStage1(x, y, m, m_filtered.ptr(y, x)->val, max_edge_test_val);
@@ -928,53 +918,56 @@ void CpuDepthPacketProcessor::process(const DepthPacket &packet)
 
   Mat<float> out_ir(424, 512, impl_->ir_frame->data), out_depth(424, 512, impl_->depth_frame->data);
 
-  if(impl_->enable_edge_filter)
+  if (impl_->enable_edge_filter)
   {
-    Mat<Vec<float, 3> > depth_ir_sum(424, 512);
-    for(int y = 0; y < 424; ++y)
-      for(int x = 0; x < 512; ++x)
+    Mat<Vec<float, 3>> depth_ir_sum(424, 512);
+    for (int y = 0; y < 424; ++y)
+      for (int x = 0; x < 512; ++x)
       {
         float raw_depth, ir_sum;
-        float *measurements = processed_measurements->ptr(y, x)->val;
+        float* measurements = processed_measurements->ptr(y, x)->val;
 
-        impl_->processPixelStage2(x, y, measurements + 0, measurements + 3, measurements + 6, out_ir.ptr(423 - y, x), &raw_depth, &ir_sum);
+        impl_->processPixelStage2(x, y, measurements + 0, measurements + 3, measurements + 6,
+                                  out_ir.ptr(423 - y, x), &raw_depth, &ir_sum);
 
-        Vec<float, 3> &depth_values = depth_ir_sum.at(y, x);
+        Vec<float, 3>& depth_values = depth_ir_sum.at(y, x);
         depth_values.val[0] = raw_depth;
         depth_values.val[1] = m_max_edge_test.at(y, x) == 1 ? raw_depth : 0;
         depth_values.val[2] = ir_sum;
       }
 
-    for(int y = 0; y < 424; ++y)
-      for(int x = 0; x < 512; ++x)
+    for (int y = 0; y < 424; ++y)
+      for (int x = 0; x < 512; ++x)
       {
-        impl_->filterPixelStage2(x, y, depth_ir_sum, m_max_edge_test.at(y, x) == 1, out_depth.ptr(423 - y, x));
+        impl_->filterPixelStage2(x, y, depth_ir_sum, m_max_edge_test.at(y, x) == 1,
+                                 out_depth.ptr(423 - y, x));
       }
   }
   else
   {
-    for(int y = 0; y < 424; ++y)
-      for(int x = 0; x < 512; ++x)
+    for (int y = 0; y < 424; ++y)
+      for (int x = 0; x < 512; ++x)
       {
-        float *measurements = processed_measurements->ptr(y, x)->val;
-        impl_->processPixelStage2(x, y, measurements + 0, measurements + 3, measurements + 6, out_ir.ptr(423 - y, x), out_depth.ptr(423 - y, x), 0);
+        float* measurements = processed_measurements->ptr(y, x)->val;
+        impl_->processPixelStage2(x, y, measurements + 0, measurements + 3, measurements + 6,
+                                  out_ir.ptr(423 - y, x), out_depth.ptr(423 - y, x), 0);
       }
   }
 
   impl_->stopTiming(LOG_INFO);
 
-  if (listener_ != 0 ){
-    if(listener_->onNewFrame(Frame::Ir, impl_->ir_frame))
+  if (listener_ != 0)
+  {
+    if (listener_->onNewFrame(Frame::Ir, impl_->ir_frame))
     {
       impl_->newIrFrame();
     }
 
-    if(listener_->onNewFrame(Frame::Depth, impl_->depth_frame))
+    if (listener_->onNewFrame(Frame::Depth, impl_->depth_frame))
     {
       impl_->newDepthFrame();
     }
   }
-
 }
 
 } /* namespace libfreenect2 */

@@ -7,6 +7,10 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
+#include <thread>
+
 #include <libfreenect2/rgb_decoder_fallback.h>
 
 namespace libfreenect2
@@ -85,6 +89,33 @@ public:
   uint32_t last_timestamp_;
 };
 
+class ConcurrentHealthRgbDecoder : public RgbPacketProcessor
+{
+public:
+  ConcurrentHealthRgbDecoder() : healthy_(true), processing_(false), finish_(false) {}
+
+  virtual bool good() { return healthy_; }
+
+  virtual void process(const RgbPacket&)
+  {
+    processing_.store(true);
+    while (!finish_.load())
+    {
+      healthy_ = !healthy_;
+      std::this_thread::yield();
+    }
+    healthy_ = false;
+  }
+
+  bool processing() const { return processing_.load(); }
+  void finish() { finish_.store(true); }
+
+private:
+  volatile bool healthy_;
+  std::atomic<bool> processing_;
+  std::atomic<bool> finish_;
+};
+
 RgbPacket samplePacket(uint32_t timestamp)
 {
   RgbPacket packet = {};
@@ -145,6 +176,39 @@ TEST(RgbDecoderFallback, RetriesFromAStableCopyOfTheCompressedPacket)
   EXPECT_TRUE(decoder.usingFallback());
   EXPECT_EQ(0x2a, fallback->lastJpegByte());
   EXPECT_EQ(0xff, jpeg[0]);
+}
+
+TEST(RgbDecoderFallback, PublishesHealthWithoutReadingPrimaryAcrossThreads)
+{
+  ConcurrentHealthRgbDecoder* primary = new ConcurrentHealthRgbDecoder();
+  FakeRgbDecoder* fallback = new FakeRgbDecoder("fallback", true, false, false);
+  RgbDecoderFallback decoder(primary, fallback);
+  RgbPacket packet = samplePacket(50);
+
+  std::thread worker([&decoder, &packet]() { decoder.process(packet); });
+  const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!primary->processing() && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::yield();
+  if (!primary->processing())
+  {
+    primary->finish();
+    worker.join();
+    ADD_FAILURE() << "primary decoder did not start processing before the deadline";
+    return;
+  }
+
+  bool remained_good = true;
+  for (int i = 0; i < 1000; ++i)
+    remained_good = decoder.good() && remained_good;
+
+  primary->finish();
+  worker.join();
+
+  EXPECT_TRUE(remained_good);
+  EXPECT_TRUE(decoder.usingFallback());
+  EXPECT_TRUE(decoder.good());
+  EXPECT_EQ(1, fallback->processCount());
 }
 
 } // namespace

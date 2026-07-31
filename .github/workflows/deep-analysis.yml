@@ -56,8 +56,8 @@ jobs:
         with:
           category: /language:c-cpp
 
-  gcc-analyzer:
-    name: GCC path-sensitive analyzer
+  clang-analyzer:
+    name: Clang path-sensitive analyzer
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
@@ -68,16 +68,16 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes ninja-build g++ pkg-config libusb-1.0-0-dev libturbojpeg0-dev
+          sudo apt-get install --yes ninja-build clang clang-tools pkg-config \
+            libusb-1.0-0-dev libturbojpeg0-dev
 
       - name: Analyze while compiling
         env:
-          CC: gcc
-          CXX: g++
+          CC: clang
+          CXX: clang++
         run: |
           cmake -S . -B build-analyzer -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_FLAGS=-fanalyzer \
             -DENABLE_WARNINGS_AS_ERRORS=ON \
             -DBUILD_EXAMPLES=OFF \
             -DBUILD_OPENNI2_DRIVER=OFF \
@@ -87,7 +87,7 @@ jobs:
             -DENABLE_OPENGL=OFF \
             -DENABLE_VAAPI=OFF \
             -DENABLE_TEGRAJPEG=OFF
-          cmake --build build-analyzer -j 2
+          scan-build --status-bugs cmake --build build-analyzer -j 2
 
   strict-ubsan:
     name: UBSan implicit conversions

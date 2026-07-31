@@ -29,16 +29,14 @@ TEST(ProtocolResponse, EmptyAndShortRepliesHaveSafeDefaults)
 
 TEST(ProtocolResponse, ParsesLittleEndianStatusReply)
 {
-  const uint32_t expected = 0x12345678u;
-  std::vector<unsigned char> reply(sizeof(expected), 0);
-  std::memcpy(&reply[0], &expected, sizeof(expected));
-  EXPECT_EQ(Status0x090000Response(reply).toNumber(), expected);
+  const std::vector<unsigned char> reply = {0x78, 0x56, 0x34, 0x12};
+  EXPECT_EQ(Status0x090000Response(reply).toNumber(), 0x12345678u);
 }
 
 TEST(ProtocolResponse, FormatsTheMainFirmwareVersion)
 {
   std::vector<unsigned char> reply(4 * 4 * sizeof(uint32_t), 0);
-  const uint32_t version[4] = { 0x00010002u, 3u, 4u, 0u };
+  const uint32_t version[4] = {0x00010002u, 3u, 4u, 0u};
   std::memcpy(&reply[3 * 4 * sizeof(uint32_t)], version, sizeof(version));
   EXPECT_EQ(FirmwareVersionResponse(reply).toString(), "1.2.3.4");
 }

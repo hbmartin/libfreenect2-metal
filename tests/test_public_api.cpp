@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -59,7 +60,41 @@ void setPipelineEnvironment(const char* value)
     setenv("LIBFREENECT2_PIPELINE", value, 1);
 #endif
 }
+
+class ScopedPipelineEnvironment
+{
+public:
+  explicit ScopedPipelineEnvironment(const char* value) : had_previous_(false)
+  {
+    const char* previous = std::getenv("LIBFREENECT2_PIPELINE");
+    if (previous != NULL)
+    {
+      had_previous_ = true;
+      previous_ = previous;
+    }
+    setPipelineEnvironment(value);
+  }
+
+  ~ScopedPipelineEnvironment() { setPipelineEnvironment(had_previous_ ? previous_.c_str() : NULL); }
+
+private:
+  bool had_previous_;
+  std::string previous_;
+};
 #endif
+
+bool waitForDeviceState(lf::Freenect2Device* device, lf::DeviceState expected,
+                        std::chrono::milliseconds timeout)
+{
+  const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline)
+  {
+    if (device->getState() == expected)
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return device->getState() == expected;
+}
 TEST(PublicApi, ReportsRuntimeIdentity)
 {
   EXPECT_EQ(std::string(LIBFREENECT2_VERSION), libfreenect2::getVersion());
@@ -72,6 +107,13 @@ TEST(PublicApi, WaitForDeviceTimesOutForAnUnknownSerial)
   libfreenect2::Freenect2 freenect2;
   EXPECT_FALSE(freenect2.waitForDevice("__libfreenect2_missing_serial__", 5, 1));
   EXPECT_FALSE(freenect2.waitForDevice("", 5, 1));
+}
+
+TEST(PublicApi, RejectsNegativeDeviceIndex)
+{
+  libfreenect2::Freenect2 freenect2;
+  EXPECT_EQ(static_cast<libfreenect2::Freenect2Device*>(NULL),
+            freenect2.openDevice(-1, new libfreenect2::DumpPacketPipeline()));
 }
 
 TEST(PublicApi, ExposesCanonicalPipelineFactories)
@@ -165,24 +207,20 @@ TEST(PublicApi, ParsesReplayFilenameFromTheFinalTwoUnderscores)
 #if defined(LIBFREENECT2_WITH_OPENGL_SUPPORT)
 TEST(PublicApi, PreservesGlAsEnvironmentAlias)
 {
-  setPipelineEnvironment("gl");
-  lf::PacketPipeline* pipeline = lf::createDefaultPacketPipeline();
-  ASSERT_NE(static_cast<lf::PacketPipeline*>(NULL), pipeline);
+  ScopedPipelineEnvironment environment("gl");
+  const std::unique_ptr<lf::PacketPipeline> pipeline(lf::createDefaultPacketPipeline());
+  ASSERT_NE(static_cast<lf::PacketPipeline*>(NULL), pipeline.get());
   EXPECT_EQ("opengl", pipeline->getName());
-  delete pipeline;
-  setPipelineEnvironment(NULL);
 }
 #endif
 
 #if defined(LIBFREENECT2_WITH_OPENCL_SUPPORT)
 TEST(PublicApi, PreservesClAsEnvironmentAlias)
 {
-  setPipelineEnvironment("cl");
-  lf::PacketPipeline* pipeline = lf::createDefaultPacketPipeline();
-  ASSERT_NE(static_cast<lf::PacketPipeline*>(NULL), pipeline);
+  ScopedPipelineEnvironment environment("cl");
+  const std::unique_ptr<lf::PacketPipeline> pipeline(lf::createDefaultPacketPipeline());
+  ASSERT_NE(static_cast<lf::PacketPipeline*>(NULL), pipeline.get());
   EXPECT_EQ("opencl", pipeline->getName());
-  delete pipeline;
-  setPipelineEnvironment(NULL);
 }
 #endif
 
@@ -241,7 +279,7 @@ TEST(PublicApi, ReplayStartStopCloseIsRepeatable)
   EXPECT_EQ(lf::DeviceOpen, device->getState());
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->startStreams(true, false));
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  EXPECT_TRUE(waitForDeviceState(device, lf::DeviceOpen, std::chrono::seconds(2)));
   EXPECT_TRUE(device->startStreams(true, false));
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
@@ -259,6 +297,8 @@ TEST(PublicApi, LegacyFilenameReplayRetainsSoftwareIdentityAndNeedsNoManifest)
   ASSERT_NE(static_cast<lf::Freenect2Device*>(NULL), device);
   EXPECT_EQ(std::string(LIBFREENECT2_VERSION), device->getSerialNumber());
   EXPECT_EQ(std::string(LIBFREENECT2_VERSION), device->getFirmwareVersion());
+  EXPECT_FLOAT_EQ(0.0f, device->getColorCameraParams().fx);
+  EXPECT_FLOAT_EQ(0.0f, device->getIrCameraParams().fx);
   lf::CalibrationData calibration;
   EXPECT_FALSE(device->getCalibrationData(calibration));
   EXPECT_TRUE(device->startStreams(true, false));

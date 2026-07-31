@@ -45,21 +45,20 @@ class SerialNumberResponse
 {
 private:
   std::string serial_;
+
 public:
-  SerialNumberResponse(const std::vector<unsigned char> &data)
+  SerialNumberResponse(const std::vector<unsigned char>& data)
   {
-    for(size_t i = 0; i < data.size(); i += 2)
+    for (size_t i = 0; i < data.size(); i += 2)
     {
       const char character = static_cast<char>(data[i]);
-      if(character == 0) break;
+      if (character == 0)
+        break;
       serial_.push_back(character);
     }
   }
 
-  std::string toString()
-  {
-    return serial_;
-  }
+  std::string toString() { return serial_; }
 };
 
 class FirmwareVersionResponse
@@ -82,11 +81,12 @@ private:
   };
 
   std::vector<FWSubsystemVersion> versions_;
+
 public:
-  FirmwareVersionResponse(const std::vector<unsigned char> &data)
+  FirmwareVersionResponse(const std::vector<unsigned char>& data)
   {
     const size_t count = std::min<size_t>(7, data.size() / sizeof(FWSubsystemVersion));
-    for(size_t i = 0; i < count; ++i)
+    for (size_t i = 0; i < count; ++i)
     {
       FWSubsystemVersion version;
       std::memcpy(&version, &data[i * sizeof(FWSubsystemVersion)], sizeof(version));
@@ -102,8 +102,9 @@ public:
     size_t i = 3;
     if (i < versions_.size())
     {
-      const FWSubsystemVersion &ver = versions_[i];
-      version_string << (ver.maj_min >> 16) << "." << (ver.maj_min & 0xffff) << "." << ver.revision << "." << ver.build;
+      const FWSubsystemVersion& ver = versions_[i];
+      version_string << (ver.maj_min >> 16) << "." << (ver.maj_min & 0xffff) << "." << ver.revision
+                     << "." << ver.build;
     }
 
     return version_string.str();
@@ -114,46 +115,48 @@ class Status0x090000Response
 {
 private:
   uint32_t status_;
+
 public:
-  Status0x090000Response(const std::vector<unsigned char> &data) : status_(0)
+  Status0x090000Response(const std::vector<unsigned char>& data) : status_(0)
   {
-    if(data.size() >= sizeof(status_))
+    if (data.size() >= sizeof(status_))
       std::memcpy(&status_, &data[0], sizeof(status_));
   }
 
-  uint32_t toNumber()
-  {
-    return status_;
-  }
+  uint32_t toNumber() { return status_; }
 };
 
 class GenericResponse
 {
 private:
   std::string dump_;
+
 public:
-  GenericResponse(const std::vector<unsigned char> &data)
+  GenericResponse(const std::vector<unsigned char>& data)
   {
     int length = data.size();
     std::stringstream dump;
     dump << length << " bytes of raw data" << std::endl;
 
     int lines = length >> 4;
-    if (length % 16 != 0) lines += 1;
+    if (length % 16 != 0)
+      lines += 1;
 
     for (int i = 0; i < lines; i++)
     {
-      dump << "0x" << std::hex << std::setfill('0') << std::setw(4) << (i*16) << ":  ";
+      dump << "0x" << std::hex << std::setfill('0') << std::setw(4) << (i * 16) << ":  ";
       for (int j = 0; j < 16; j++)
       {
-        if (j < length) dump << std::hex << std::setfill('0') << std::setw(2) << int(data[i*16+j]) << " ";
-        else dump << "   ";
+        if (j < length)
+          dump << std::hex << std::setfill('0') << std::setw(2) << int(data[i * 16 + j]) << " ";
+        else
+          dump << "   ";
       }
       dump << "   ";
       for (int j = 0; (j < 16) && (j < length); j++)
       {
-        unsigned char c = data[i*16+j];
-        dump << (((c<32)||(c>128))?'.':c);
+        unsigned char c = data[i * 16 + j];
+        dump << (((c < 32) || (c > 128)) ? '.' : c);
       }
       dump << std::endl;
       length -= 16;
@@ -162,15 +165,11 @@ public:
     dump_ = dump.str();
   }
 
-  std::string toString()
-  {
-    return dump_;
-  }
+  std::string toString() { return dump_; }
 };
 
 // probably some combination of color camera intrinsics + depth coefficient tables
-LIBFREENECT2_PACK(struct RgbCameraParamsResponse
-{
+LIBFREENECT2_PACK(struct RgbCameraParamsResponse {
   // unknown, always seen as 1 so far
   uint8_t table_id;
 
@@ -210,10 +209,10 @@ LIBFREENECT2_PACK(struct RgbCameraParamsResponse
   float table1[28 * 23 * 4];
   float table2[28 * 23];
 
-  RgbCameraParamsResponse(const std::vector<unsigned char> &data)
+  RgbCameraParamsResponse(const std::vector<unsigned char>& data)
   {
-    std::fill_n(reinterpret_cast<unsigned char *>(this), sizeof(*this), 0);
-    if(!data.empty())
+    std::fill_n(reinterpret_cast<unsigned char*>(this), sizeof(*this), 0);
+    if (!data.empty())
       std::memcpy(this, &data[0], std::min(data.size(), sizeof(*this)));
   }
 
@@ -253,10 +252,8 @@ LIBFREENECT2_PACK(struct RgbCameraParamsResponse
   }
 });
 
-
 // depth camera intrinsic & distortion parameters
-LIBFREENECT2_PACK(struct DepthCameraParamsResponse
-{
+LIBFREENECT2_PACK(struct DepthCameraParamsResponse {
   // intrinsics (this is pretty certain)
   float fx;
   float fy;
@@ -273,10 +270,10 @@ LIBFREENECT2_PACK(struct DepthCameraParamsResponse
 
   float unknown1[13]; // assumed to be always zero
 
-  DepthCameraParamsResponse(const std::vector<unsigned char> &data)
+  DepthCameraParamsResponse(const std::vector<unsigned char>& data)
   {
-    std::fill_n(reinterpret_cast<unsigned char *>(this), sizeof(*this), 0);
-    if(!data.empty())
+    std::fill_n(reinterpret_cast<unsigned char*>(this), sizeof(*this), 0);
+    if (!data.empty())
       std::memcpy(this, &data[0], std::min(data.size(), sizeof(*this)));
   }
 
@@ -297,8 +294,7 @@ LIBFREENECT2_PACK(struct DepthCameraParamsResponse
 });
 
 // "P0" coefficient tables, input to the deconvolution code
-LIBFREENECT2_PACK(struct P0TablesResponse
-{
+LIBFREENECT2_PACK(struct P0TablesResponse {
   uint32_t headersize;
   uint32_t unknown1;
   uint32_t unknown2;
@@ -309,21 +305,23 @@ LIBFREENECT2_PACK(struct P0TablesResponse
   uint32_t unknown6;
 
   uint16_t unknown7;
-  uint16_t p0table0[512*424]; // row[0] == row[511] == 0x2c9a
+  uint16_t p0table0[512 * 424]; // row[0] == row[511] == 0x2c9a
   uint16_t unknown8;
 
   uint16_t unknown9;
-  uint16_t p0table1[512*424]; // row[0] == row[511] == 0x08ec
+  uint16_t p0table1[512 * 424]; // row[0] == row[511] == 0x08ec
   uint16_t unknownA;
 
   uint16_t unknownB;
-  uint16_t p0table2[512*424]; // row[0] == row[511] == 0x42e8
+  uint16_t p0table2[512 * 424]; // row[0] == row[511] == 0x42e8
   uint16_t unknownC;
 
-  uint8_t  unknownD[];
+  uint8_t unknownD[];
 });
 
-inline uint16_t readP0TableValue(const unsigned char *buffer, size_t table_offset,
+/** Read one native-endian P0 table value from a validated command response.
+ * @pre buffer points to at least table_offset + (value_index + 1) * sizeof(uint16_t) bytes. */
+inline uint16_t readP0TableValue(const unsigned char* buffer, size_t table_offset,
                                  size_t value_index)
 {
   uint16_t value;
@@ -333,12 +331,12 @@ inline uint16_t readP0TableValue(const unsigned char *buffer, size_t table_offse
 
 // RGB camera settings reply for a single setting change.
 // Equivalent of NUISENSOR_RGB_CHANGE_STREAM_SETTING_REPLY in NuiSensorLib.h
-LIBFREENECT2_PACK(struct ColorSettingResponse
-{
+LIBFREENECT2_PACK(struct ColorSettingResponse {
   uint32_t NumStatus;
   uint32_t CommandListStatus;
   // Result of the first command -- we only send one at a time for now.
-  // Equivalent of a fixed-length array of NUISENSOR_RGB_CHANGE_STREAM_SETTING_REPLY_STATUS in NuiSensorLib.h
+  // Equivalent of a fixed-length array of NUISENSOR_RGB_CHANGE_STREAM_SETTING_REPLY_STATUS in
+  // NuiSensorLib.h
   uint32_t Status;
   uint32_t Data;
 });

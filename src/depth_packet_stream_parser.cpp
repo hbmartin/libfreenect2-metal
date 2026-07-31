@@ -28,22 +28,19 @@
 
 #include <libfreenect2/depth_packet_stream_parser.h>
 #include <libfreenect2/logging.h>
+#include <libfreenect2/timing.h>
 #include <memory.h>
 
 namespace libfreenect2
 {
 
-DepthPacketStreamParser::DepthPacketStreamParser() :
-    processor_(noopProcessor<DepthPacket>()),
-    processed_packets_(UINT32_MAX),
-    current_sequence_(0),
-    current_subsequence_(0),
-    current_timestamp_(0),
-    current_arrival_timestamp_us_(0),
-    work_buffer_arrival_timestamp_us_(0),
-    null_buffer_logged_(false)
+DepthPacketStreamParser::DepthPacketStreamParser()
+    : processor_(noopProcessor<DepthPacket>()), processed_packets_(UINT32_MAX),
+      current_sequence_(0), current_subsequence_(0), current_timestamp_(0),
+      current_arrival_timestamp_us_(0), work_buffer_arrival_timestamp_us_(0),
+      sequence_started_(false), null_buffer_logged_(false)
 {
-  size_t single_image = 512*424*11/8;
+  size_t single_image = 512 * 424 * 11 / 8;
   buffer_size_ = 10 * single_image;
 
   processor_->allocateBuffer(packet_, buffer_size_);
@@ -59,7 +56,7 @@ DepthPacketStreamParser::~DepthPacketStreamParser()
   delete[] work_buffer_.data;
 }
 
-void DepthPacketStreamParser::setPacketProcessor(libfreenect2::BaseDepthPacketProcessor *processor)
+void DepthPacketStreamParser::setPacketProcessor(libfreenect2::BaseDepthPacketProcessor* processor)
 {
   processor_->releaseBuffer(packet_);
   processor_ = (processor != 0) ? processor : noopProcessor<DepthPacket>();
@@ -83,30 +80,30 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
     }
     return;
   }
-  Buffer &wb = work_buffer_;
+  Buffer& wb = work_buffer_;
 
-  if(in_length == 0)
+  if (in_length == 0)
   {
-    //synchronize to subpacket boundary
+    // synchronize to subpacket boundary
     wb.length = 0;
     work_buffer_arrival_timestamp_us_ = 0;
   }
   else
   {
-    if(wb.length == 0)
+    if (wb.length == 0)
       work_buffer_arrival_timestamp_us_ = arrival_timestamp_us;
 
-    DepthSubPacketFooter *footer = 0;
+    DepthSubPacketFooter* footer = 0;
     bool footer_found = false;
 
-    if(wb.length + in_length == wb.capacity + sizeof(DepthSubPacketFooter))
+    if (wb.length + in_length == wb.capacity + sizeof(DepthSubPacketFooter))
     {
       in_length -= sizeof(DepthSubPacketFooter);
-      footer = reinterpret_cast<DepthSubPacketFooter *>(&buffer[in_length]);
+      footer = reinterpret_cast<DepthSubPacketFooter*>(&buffer[in_length]);
       footer_found = true;
     }
 
-    if(wb.length + in_length > wb.capacity)
+    if (wb.length + in_length > wb.capacity)
     {
       LOG_DEBUG << "subpacket too large";
       wb.length = 0;
@@ -117,13 +114,13 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
     memcpy(wb.data + wb.length, buffer, in_length);
     wb.length += in_length;
 
-    if(footer_found)
+    if (footer_found)
     {
-      if(footer->length != wb.length)
+      if (footer->length != wb.length)
       {
         LOG_DEBUG << "image data too short!";
       }
-      else if(footer->subsequence >= 10)
+      else if (footer->subsequence >= 10)
       {
         // A packet has exactly 10 subsequences (see the 0x3ff completeness
         // mask). A corrupted footer with a larger value would shift out of
@@ -132,13 +129,20 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
       }
       else
       {
-        if(current_sequence_ != footer->sequence)
+        if (!sequence_started_)
         {
-          if(current_subsequence_ == 0x3ff)
+          sequence_started_ = true;
+          current_sequence_ = footer->sequence;
+          current_timestamp_ = footer->timestamp;
+          current_arrival_timestamp_us_ = work_buffer_arrival_timestamp_us_;
+        }
+        else if (current_sequence_ != footer->sequence)
+        {
+          if (current_subsequence_ == 0x3ff)
           {
-            if(processor_->ready())
+            if (processor_->ready())
             {
-              DepthPacket &packet = packet_;
+              DepthPacket& packet = packet_;
               packet.sequence = current_sequence_;
               packet.timestamp = current_timestamp_;
               packet.arrival_timestamp_us = current_arrival_timestamp_us_;
@@ -151,7 +155,7 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
               processed_packets_++;
               if (processed_packets_ == 0)
                 processed_packets_ = current_sequence_;
-              const int32_t diff = static_cast<int32_t>(current_sequence_ - processed_packets_);
+              const int32_t diff = deviceTimestampDelta(current_sequence_, processed_packets_);
               const int interval = 30;
               if ((current_sequence_ % interval == 0 && diff != 0) || diff >= interval)
               {
@@ -175,7 +179,7 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
           current_arrival_timestamp_us_ = work_buffer_arrival_timestamp_us_;
         }
 
-        Buffer &fb = *packet_.memory;
+        Buffer& fb = *packet_.memory;
 
         // set the bit corresponding to the subsequence number to 1
         current_subsequence_ |= 1 << footer->subsequence;
@@ -184,7 +188,7 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
         // a corrupted footer, and the copied range must end inside the
         // front buffer.
         uint64_t offset = static_cast<uint64_t>(footer->subsequence) * footer->length;
-        if(offset + footer->length > fb.capacity)
+        if (offset + footer->length > fb.capacity)
         {
           LOG_DEBUG << "front buffer too short! subsequence number is " << footer->subsequence;
         }

@@ -82,10 +82,12 @@ jobs:
           sudo apt-get install --yes ninja-build pkg-config libusb-1.0-0-dev libturbojpeg0-dev
 
       - name: Configure
+        env:
+          BUILD_SHARED_LIBS: ${{ matrix.shared }}
         run: >-
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
-          -DBUILD_SHARED_LIBS=${{ matrix.shared }}
+          -DBUILD_SHARED_LIBS="$BUILD_SHARED_LIBS"
           -DBUILD_TESTING=ON
           -DBUILD_EXAMPLES=ON
           -DBUILD_OPENNI2_DRIVER=OFF
@@ -235,8 +237,16 @@ jobs:
         run: cmake --build build-cuda -j 2 --target freenect2
 
   windows-msvc:
-    name: MSVC, static, C++11
+    name: MSVC, ${{ matrix.linkage }}, C++11
     runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - linkage: static
+            shared: OFF
+          - linkage: shared
+            shared: ON
     steps:
       - uses: actions/checkout@v4
         with:
@@ -250,11 +260,13 @@ jobs:
 
       - name: Configure
         shell: pwsh
+        env:
+          BUILD_SHARED_LIBS: ${{ matrix.shared }}
         run: >-
           cmake -S . -B build-msvc -A x64
           -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           -DVCPKG_TARGET_TRIPLET=x64-windows
-          -DBUILD_SHARED_LIBS=OFF
+          -DBUILD_SHARED_LIBS="$env:BUILD_SHARED_LIBS"
           -DBUILD_TESTING=ON
           -DBUILD_EXAMPLES=ON
           -DBUILD_OPENNI2_DRIVER=OFF
@@ -453,21 +465,43 @@ jobs:
           if ! git cat-file -e "$base" 2>/dev/null; then
             base="HEAD~1"
           fi
-          # git clang-format --diff exits 1 when formatting differs; keep the
-          # output and let the content check below decide pass/fail.
-          format_diff=$(git clang-format --diff "$base" HEAD || true)
+          # git clang-format --diff may exit 1 when formatting differs. Capture
+          # that status without allowing unrelated execution failures to pass.
+          set +e
+          format_diff=$(git clang-format --diff "$base" HEAD)
+          format_status=$?
+          set -e
           if [[ "$format_diff" == *"diff --git"* ]]; then
             echo "$format_diff"
             echo "Changed C++ lines are not clang-formatted." >&2
             exit 1
           fi
+          if (( format_status != 0 )); then
+            echo "git clang-format failed with status $format_status." >&2
+            exit "$format_status"
+          fi
+
+  semgrep:
+    name: Semgrep policy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install semgrep
+        run: pipx install semgrep
+
+      - name: Run focused policy
+        run: semgrep scan --config tools/quality/semgrep.yml --error --metrics=off
 
   static-analysis:
-    name: clang-tidy
+    name: clang-tidy 18
     runs-on: ubuntu-24.04
     env:
-      CC: clang
-      CXX: clang++
+      CC: clang-18
+      CXX: clang++-18
+      CLANG_TIDY: clang-tidy-18
     steps:
       - uses: actions/checkout@v4
         with:
@@ -476,7 +510,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes ninja-build clang clang-tidy pkg-config python3 \
+          sudo apt-get install --yes ninja-build clang-18 clang-tidy-18 pkg-config python3 \
             libusb-1.0-0-dev libturbojpeg0-dev
 
       - name: Configure compile database

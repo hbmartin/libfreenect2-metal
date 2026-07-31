@@ -34,6 +34,13 @@ public:
     uint64_t written_bytes;
   };
 
+  /**
+   * Create the recording directory tree and start the writer thread.
+   *
+   * Ordinary setup failures leave the writer closed and are reported through
+   * getLastError(). Check isOpen() immediately after construction before
+   * registering the writer as a frame listener.
+   */
   explicit RecordingWriter(const std::string& directory, size_t queue_capacity = 32);
   virtual ~RecordingWriter();
 

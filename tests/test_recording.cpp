@@ -29,6 +29,7 @@
 #include <libfreenect2/recording_loader.h>
 #include <libfreenect2/recording_manifest.h>
 #include <libfreenect2/recording_utils.h>
+#include <libfreenect2/rgb_packet_processor.h>
 #include <libfreenect2/timing.h>
 
 #include "support/synthetic.h"
@@ -50,8 +51,7 @@ std::string uniqueRecordingDirectory()
   {
     temporary_root = std::getenv("TMP");
   }
-  const std::string root =
-      temporary_root != 0 && temporary_root[0] != '\0' ? temporary_root : ".";
+  const std::string root = temporary_root != 0 && temporary_root[0] != '\0' ? temporary_root : ".";
 #else
   temporary_root = std::getenv("TMPDIR");
   const std::string root =
@@ -95,6 +95,20 @@ void removeTestRecording(const std::string& directory)
   rmdir(directory.c_str());
 #endif
 }
+
+class ScopedRecordingDirectory
+{
+public:
+  ScopedRecordingDirectory() : path_(uniqueRecordingDirectory()) {}
+  ~ScopedRecordingDirectory() { removeTestRecording(path_); }
+
+  const std::string& path() const { return path_; }
+
+private:
+  ScopedRecordingDirectory(const ScopedRecordingDirectory&);
+  ScopedRecordingDirectory& operator=(const ScopedRecordingDirectory&);
+  std::string path_;
+};
 
 CalibrationData sampleCalibrationData()
 {
@@ -151,6 +165,82 @@ private:
   std::vector<uint64_t> delivery_times_;
 };
 
+class CloseBlockingRgbProcessor : public RgbPacketProcessor
+{
+public:
+  CloseBlockingRgbProcessor()
+      : clearing_listener_(false), allow_clear_(false), listener_clear_timed_out_(false),
+        processed_(false)
+  {
+  }
+
+  virtual void setFrameListener(FrameListener* listener)
+  {
+    if (listener == 0)
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      clearing_listener_ = true;
+      condition_.notify_all();
+      if (!condition_.wait_for(lock, std::chrono::seconds(5), [this] { return allow_clear_; }))
+        listener_clear_timed_out_ = true;
+    }
+    RgbPacketProcessor::setFrameListener(listener);
+  }
+
+  virtual void process(const RgbPacket&)
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    processed_ = true;
+    condition_.notify_all();
+  }
+
+  bool waitForListenerClear()
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return condition_.wait_for(lock, std::chrono::seconds(1),
+                               [this] { return clearing_listener_; });
+  }
+
+  void allowListenerClear()
+  {
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      allow_clear_ = true;
+    }
+    condition_.notify_all();
+  }
+
+  bool processed() const
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    return processed_;
+  }
+
+  bool listenerClearTimedOut() const
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    return listener_clear_timed_out_;
+  }
+
+private:
+  mutable std::mutex mutex_;
+  std::condition_variable condition_;
+  bool clearing_listener_;
+  bool allow_clear_;
+  bool listener_clear_timed_out_;
+  bool processed_;
+};
+
+class CloseBlockingPacketPipeline : public DumpPacketPipeline
+{
+public:
+  virtual RgbPacketProcessor* getRgbPacketProcessor() const { return &rgb_processor_; }
+  CloseBlockingRgbProcessor* rgbProcessor() { return &rgb_processor_; }
+
+private:
+  mutable CloseBlockingRgbProcessor rgb_processor_;
+};
+
 } // namespace
 
 TEST(RecordingPaths, AcceptsCanonicalRecordingPaths)
@@ -169,9 +259,14 @@ TEST(RecordingPaths, RejectsAbsoluteAndTraversalPaths)
   EXPECT_FALSE(isSafeRelativePath("C:\\absolute\\path"));
   EXPECT_FALSE(isSafeRelativePath("../manifest.json"));
   EXPECT_FALSE(isSafeRelativePath("frames/../manifest.json"));
+  EXPECT_FALSE(isSafeRelativePath("..\\manifest.json"));
+  EXPECT_FALSE(isSafeRelativePath("frames\\..\\manifest.json"));
+  EXPECT_FALSE(isSafeRelativePath("frames\\.\\color.jpg"));
+  EXPECT_FALSE(isSafeRelativePath("frames\\\\color.jpg"));
   EXPECT_FALSE(isSafeRelativePath("frames/./color.jpg"));
   EXPECT_FALSE(isSafeRelativePath("frames//color.jpg"));
   EXPECT_FALSE(isSafeRelativePath("frames/color.jpg/"));
+  EXPECT_FALSE(isSafeRelativePath("frames\\color.jpg\\"));
   EXPECT_FALSE(isSafeRelativePath("frames/color/data:stream"));
   EXPECT_FALSE(isSafeRelativePath(std::string("frames/color.jpg\0ignored", 24)));
 }
@@ -371,7 +466,8 @@ TEST(RecordingJournal, RejectsHostileNumericFields)
 
 TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -424,12 +520,12 @@ TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)
   size_t complete_size = 0;
   EXPECT_TRUE(regularFileSize(joinPath(directory, "recording.complete"), complete_size));
   EXPECT_GT(complete_size, 0u);
-  removeTestRecording(directory);
 }
 
 TEST(RecordingWriter, PersistsRawDepthAndP0Calibration)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
 
@@ -460,24 +556,24 @@ TEST(RecordingWriter, PersistsRawDepthAndP0Calibration)
   EXPECT_TRUE(regularFileSize(joinPath(directory, "recording.complete"), complete_size));
   EXPECT_GT(complete_size, 0u);
   EXPECT_TRUE(writer.close());
-  removeTestRecording(directory);
 }
 
 TEST(RecordingWriter, LeavesAnIncompleteRecordingWithoutCalibration)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 1);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   EXPECT_FALSE(writer.close());
   EXPECT_NE(std::string::npos, writer.getLastError().find("calibration"));
   size_t unused = 0;
   EXPECT_FALSE(regularFileSize(joinPath(directory, "recording.complete"), unused));
-  removeTestRecording(directory);
 }
 
 TEST(RecordingLoader, LoadsIdentityAndCalibrationAndEnforcesCompletion)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 1);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   const CalibrationData expected = sampleCalibrationData();
@@ -498,12 +594,12 @@ TEST(RecordingLoader, LoadsIdentityAndCalibrationAndEnforcesCompletion)
 
   ASSERT_EQ(0, std::remove(joinPath(directory, "calibration/p0.bin").c_str()));
   EXPECT_FALSE(loadRecordingMetadata(directory, true, metadata, &error));
-  removeTestRecording(directory);
 }
 
 TEST(RecordingLoader, SalvagesOnlyCompleteFinalJournalLines)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -530,12 +626,12 @@ TEST(RecordingLoader, SalvagesOnlyCompleteFinalJournalLines)
   ASSERT_TRUE(writeFileAtomically(journal_path, valid + "not-json\n{\"truncated\"", &error))
       << error;
   EXPECT_FALSE(loadRecordingData(directory, true, recording, &error));
-  removeTestRecording(directory);
 }
 
 TEST(RecordingReplay, ReplaysJournaledColorWithRecordedMetadata)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -579,12 +675,12 @@ TEST(RecordingReplay, ReplaysJournaledColorWithRecordedMetadata)
   listener.release(frames);
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
-  removeTestRecording(directory);
 }
 
 TEST(RecordingReplay, HonorsRequestedStreamCombinations)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 4);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -632,12 +728,12 @@ TEST(RecordingReplay, HonorsRequestedStreamCombinations)
   EXPECT_FALSE(color_listener.waitForNewFrame(frames, 20));
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
-  removeTestRecording(directory);
 }
 
 TEST(RecordingReplay, SurvivesConcurrentStopCalls)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -671,12 +767,91 @@ TEST(RecordingReplay, SurvivesConcurrentStopCalls)
     EXPECT_TRUE(device->stop());
   }
   EXPECT_TRUE(device->close());
-  removeTestRecording(directory);
+}
+
+TEST(RecordingReplay, CloseSerializesAConcurrentStart)
+{
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
+  RecordingWriter writer(directory, 2);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
+      << writer.getLastError();
+
+  Frame source(1, 1, 4);
+  source.format = Frame::Raw;
+  source.timestamp = 345;
+  source.sequence = 6;
+  source.arrival_timestamp_us = monotonicTimeMicroseconds();
+  std::memset(source.data, 0x44, 4);
+  EXPECT_FALSE(writer.onNewFrame(Frame::Color, &source));
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  Freenect2Replay replay;
+  CloseBlockingPacketPipeline* pipeline = new CloseBlockingPacketPipeline();
+  CloseBlockingRgbProcessor* processor = pipeline->rgbProcessor();
+  Freenect2Device* device = replay.openRecording(directory, pipeline, ReplayOptions());
+  ASSERT_NE(static_cast<Freenect2Device*>(0), device);
+
+  bool close_result = false;
+  std::thread closer([&]() { close_result = device->close(); });
+  const bool close_reached_listener_clear = processor->waitForListenerClear();
+  if (!close_reached_listener_clear)
+  {
+    processor->allowListenerClear();
+    closer.join();
+    ADD_FAILURE() << "close() did not reach listener teardown";
+    return;
+  }
+
+  std::mutex start_mutex;
+  std::condition_variable start_condition;
+  bool start_entered = false;
+  bool start_complete = false;
+  bool start_result = true;
+  std::thread starter(
+      [&]()
+      {
+        {
+          std::lock_guard<std::mutex> guard(start_mutex);
+          start_entered = true;
+        }
+        start_condition.notify_all();
+        const bool result = device->startStreams(true, false);
+        {
+          std::lock_guard<std::mutex> guard(start_mutex);
+          start_result = result;
+          start_complete = true;
+        }
+        start_condition.notify_all();
+      });
+
+  bool completed_while_close_was_blocked = false;
+  {
+    std::unique_lock<std::mutex> lock(start_mutex);
+    EXPECT_TRUE(
+        start_condition.wait_for(lock, std::chrono::seconds(1), [&]() { return start_entered; }));
+    completed_while_close_was_blocked = start_condition.wait_for(
+        lock, std::chrono::milliseconds(200), [&]() { return start_complete; });
+  }
+
+  processor->allowListenerClear();
+  closer.join();
+  starter.join();
+  EXPECT_TRUE(device->stop());
+
+  EXPECT_FALSE(completed_while_close_was_blocked);
+  EXPECT_TRUE(close_result);
+  EXPECT_FALSE(start_result);
+  EXPECT_FALSE(processor->listenerClearTimedOut());
+  EXPECT_FALSE(processor->processed());
+  EXPECT_EQ(DeviceClosed, device->getState());
 }
 
 TEST(RecordingReplay, PreservesGlobalJournalOrderInFastMode)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 4);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -712,12 +887,12 @@ TEST(RecordingReplay, PreservesGlobalJournalOrderInFastMode)
   EXPECT_EQ(Frame::Color, types[2]);
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
-  removeTestRecording(directory);
 }
 
 TEST(RecordingReplay, ReproducesRecordedOffsetsAndInterruptsLongWaits)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 4);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -752,12 +927,12 @@ TEST(RecordingReplay, ReproducesRecordedOffsetsAndInterruptsLongWaits)
   EXPECT_LT(stop_elapsed, 250000u);
   EXPECT_EQ(2u, listener.types().size());
   EXPECT_TRUE(device->close());
-  removeTestRecording(directory);
 }
 
 TEST(RecordingReplay, RoundTripsSyntheticRawDepthThroughCpuReplay)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(
@@ -792,7 +967,6 @@ TEST(RecordingReplay, RoundTripsSyntheticRawDepthThroughCpuReplay)
   listener.release(frames);
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
-  removeTestRecording(directory);
 }
 
 } // namespace recording

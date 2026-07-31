@@ -444,11 +444,15 @@ IF(ENABLE_OPENCL)
       src/opencl_kde_depth_packet_processor.cl
     )
 
-    # Major Linux distro stable releases have buggy OpenCL ICD loader.
-    # The workaround of disabling exceptions can only be set up during compile time.
-    # Diabling it for all should be harmless. The flag is the same for GCC/Clang/ICC.
+    # Some stable-distribution OpenCL ICD loaders require the OpenCL translation
+    # units to be compiled without exception support. Do not leak that setting
+    # into recording, calibration, or other exception-using project sources.
     IF(UNIX AND NOT APPLE)
-      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
+      SET_PROPERTY(SOURCE
+        src/opencl_depth_packet_processor.cpp
+        src/opencl_kde_depth_packet_processor.cpp
+        APPEND PROPERTY COMPILE_OPTIONS -fno-exceptions
+      )
     ENDIF()
   ENDIF(OpenCL_FOUND)
 ENDIF(ENABLE_OPENCL)

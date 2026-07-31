@@ -22,8 +22,7 @@ namespace libfreenect2
 struct LIBFREENECT2_API DepthCalibrationRoi
 {
   DepthCalibrationRoi();
-  DepthCalibrationRoi(uint32_t x_arg, uint32_t y_arg, uint32_t width_arg,
-                      uint32_t height_arg);
+  DepthCalibrationRoi(uint32_t x_arg, uint32_t y_arg, uint32_t width_arg, uint32_t height_arg);
 
   uint32_t x;
   uint32_t y;
@@ -53,7 +52,10 @@ struct LIBFREENECT2_API DepthCalibrationSample
 };
 
 /** Opt-in linear correction for decoded depth measurements in millimeters. */
-struct LIBFREENECT2_API DepthCorrectionProfile
+// The struct itself is deliberately not exported: exporting its std::string
+// and std::vector members gives MSVC clients an unstable DLL data layout.
+// Export only the operations implemented by libfreenect2.
+struct DepthCorrectionProfile
 {
   enum Model
   {
@@ -61,7 +63,7 @@ struct LIBFREENECT2_API DepthCorrectionProfile
     Linear
   };
 
-  DepthCorrectionProfile();
+  LIBFREENECT2_API DepthCorrectionProfile();
 
   uint32_t version;
   std::string serial;
@@ -75,32 +77,31 @@ struct LIBFREENECT2_API DepthCorrectionProfile
   std::vector<double> residuals_mm;
 
   /** A profile is usable only when its coefficients are finite and scale is positive. */
-  bool isValid() const;
+  LIBFREENECT2_API bool isValid() const;
 
   /** Return `scale * measured_mm + offset_mm`, preserving invalid measurements. */
-  float correct(float measured_mm) const;
+  LIBFREENECT2_API float correct(float measured_mm) const;
 
   /** Apply this profile to a decoded float depth frame. Invalid pixels are unchanged. */
-  bool apply(Frame& depth) const;
+  LIBFREENECT2_API bool apply(Frame& depth) const;
 
   /** Atomically save a versioned JSON profile. */
-  bool save(const std::string& path, std::string* error = 0) const;
+  LIBFREENECT2_API bool save(const std::string& path, std::string* error = 0) const;
 
   /** Load and validate a versioned JSON profile. */
-  static bool load(const std::string& path, DepthCorrectionProfile& profile,
-                   std::string* error = 0);
+  static LIBFREENECT2_API bool load(const std::string& path, DepthCorrectionProfile& profile,
+                                    std::string* error = 0);
 };
 
 /** Compute the median and median absolute deviation for one decoded depth frame. */
-LIBFREENECT2_API bool computeDepthRoiStatistics(const Frame& depth,
-                                                const DepthCalibrationRoi& roi,
+LIBFREENECT2_API bool computeDepthRoiStatistics(const Frame& depth, const DepthCalibrationRoi& roi,
                                                 DepthRoiStatistics& statistics,
                                                 std::string* error = 0);
 
 /** Fit an offset-only profile for one distance or a linear profile for two or more. */
-LIBFREENECT2_API bool fitDepthCorrectionProfile(
-    const std::vector<DepthCalibrationSample>& samples, DepthCorrectionProfile& profile,
-    std::string* error = 0);
+LIBFREENECT2_API bool fitDepthCorrectionProfile(const std::vector<DepthCalibrationSample>& samples,
+                                                DepthCorrectionProfile& profile,
+                                                std::string* error = 0);
 
 } // namespace libfreenect2
 

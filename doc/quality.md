@@ -87,8 +87,8 @@ The workflow publishes the complete `llvm-cov` text and LCOV reports as artifact
 
 The required CI job runs `.clang-tidy` over every first-party translation unit in CMake's compile
 database. It enables Clang Static Analyzer, bug-prone, concurrency, performance, and portability
-checks. CodeQL's `security-extended` query suite runs independently. A scheduled GCC `-fanalyzer`
-build provides a third path-sensitive implementation.
+checks. CodeQL's `security-extended` query suite runs independently. The scheduled deep-analysis
+workflow also runs Clang `scan-build` over a C++11 configuration.
 
 For a local run:
 
@@ -98,6 +98,13 @@ cmake -S . -B build-tidy -G Ninja \
 cmake --build build-tidy
 CLANG_TIDY=/path/to/clang-tidy \
   python3 tools/quality/run_clang_tidy.py build-tidy
+```
+
+The focused Semgrep policy prevents direct signed indexing of the enumerated-device collection.
+The `Semgrep policy` CI job enforces it on every push; for a local run:
+
+```sh
+semgrep scan --config tools/quality/semgrep.yml --error
 ```
 
 ## Hardware soak

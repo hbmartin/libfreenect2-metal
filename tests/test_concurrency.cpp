@@ -30,7 +30,7 @@ bool waitForValue(const std::atomic<int>& value, int expected)
 {
   const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now() + std::chrono::seconds(2);
-  while(value.load() != expected && std::chrono::steady_clock::now() < deadline)
+  while (value.load() != expected && std::chrono::steady_clock::now() < deadline)
     std::this_thread::yield();
   return value.load() == expected;
 }
@@ -85,22 +85,34 @@ TEST(PoolAllocator, BlocksUntilABufferIsReleased)
   std::future<Buffer*> first_result = first_promise.get_future();
   std::future<Buffer*> second_result = second_promise.get_future();
   std::future<Buffer*> result = result_promise.get_future();
-  std::thread waiter([&]() {
-    first_promise.set_value(allocator.allocate(64));
-    second_promise.set_value(allocator.allocate(64));
-    entered.store(true);
-    result_promise.set_value(allocator.allocate(64));
-  });
+  std::thread waiter(
+      [&]()
+      {
+        first_promise.set_value(allocator.allocate(64));
+        second_promise.set_value(allocator.allocate(64));
+        entered.store(true);
+        result_promise.set_value(allocator.allocate(64));
+      });
 
   Buffer* first = first_result.get();
   Buffer* second = second_result.get();
-  while(!entered.load())
+  const std::chrono::steady_clock::time_point entered_deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!entered.load() && std::chrono::steady_clock::now() < entered_deadline)
     std::this_thread::yield();
+  if (!entered.load())
+  {
+    allocator.free(first);
+    allocator.free(second);
+    waiter.join();
+    ADD_FAILURE() << "waiter did not start the blocking allocation before the deadline";
+    return;
+  }
   EXPECT_EQ(result.wait_for(std::chrono::milliseconds(25)), std::future_status::timeout);
 
   allocator.free(first);
   std::future_status status = result.wait_for(std::chrono::seconds(2));
-  if(status != std::future_status::ready)
+  if (status != std::future_status::ready)
   {
     allocator.free(second);
     waiter.join();
@@ -122,9 +134,9 @@ TEST(AsyncPacketProcessor, ProcessesAndReleasesPacketsUnderLoad)
   CountingProcessor processor;
   {
     AsyncPacketProcessor<TestPacket> async(&processor);
-    for(int value = 1; value <= 200; ++value)
+    for (int value = 1; value <= 200; ++value)
     {
-      while(!async.ready())
+      while (!async.ready())
         std::this_thread::yield();
 
       TestPacket packet;
@@ -143,10 +155,12 @@ TEST(AsyncPacketProcessor, ProcessesAndReleasesPacketsUnderLoad)
 TEST(SyncMultiFrameListener, CoordinatesProducerAndConsumerThreads)
 {
   SyncMultiFrameListener listener(Frame::Color | Frame::Depth);
-  std::thread producer([&]() {
-    EXPECT_TRUE(listener.onNewFrame(Frame::Color, new Frame(1, 1, 4)));
-    EXPECT_TRUE(listener.onNewFrame(Frame::Depth, new Frame(1, 1, 4)));
-  });
+  std::thread producer(
+      [&]()
+      {
+        EXPECT_TRUE(listener.onNewFrame(Frame::Color, new Frame(1, 1, 4)));
+        EXPECT_TRUE(listener.onNewFrame(Frame::Depth, new Frame(1, 1, 4)));
+      });
 
   FrameMap frames;
   listener.waitForNewFrame(frames);

@@ -28,22 +28,19 @@
 
 #include <libfreenect2/protocol/command_transaction.h>
 #include <libfreenect2/logging.h>
+#include <libfreenect2/usb/error.h>
 
 #include <cstring>
 #include <stdint.h>
-
-#define WRITE_LIBUSB_ERROR(__RESULT) \
-  libusb_error_name((__RESULT)) << " " << libusb_strerror(static_cast<libusb_error>((__RESULT)))
 
 namespace libfreenect2
 {
 namespace protocol
 {
-CommandTransaction::CommandTransaction(libusb_device_handle *handle, int inbound_endpoint, int outbound_endpoint) :
-  handle_(handle),
-  inbound_endpoint_(inbound_endpoint),
-  outbound_endpoint_(outbound_endpoint),
-  timeout_(1000)
+CommandTransaction::CommandTransaction(libusb_device_handle* handle, int inbound_endpoint,
+                                       int outbound_endpoint)
+    : handle_(handle), inbound_endpoint_(inbound_endpoint), outbound_endpoint_(outbound_endpoint),
+      timeout_(1000)
 {
 }
 
@@ -59,7 +56,7 @@ bool CommandTransaction::execute(const CommandBase& command, Result& result)
     return false;
 
   // receive response data
-  if(command.maxResponseLength() > 0)
+  if (command.maxResponseLength() > 0)
   {
     if (!receive(result, command.minResponseLength()))
       return false;
@@ -85,17 +82,19 @@ bool CommandTransaction::execute(const CommandBase& command, Result& result)
 bool CommandTransaction::send(const CommandBase& command)
 {
   int transferred_bytes = 0;
-  int r = libusb_bulk_transfer(handle_, outbound_endpoint_, const_cast<uint8_t *>(command.data()), command.size(), &transferred_bytes, timeout_);
+  int r = libusb_bulk_transfer(handle_, outbound_endpoint_, const_cast<uint8_t*>(command.data()),
+                               command.size(), &transferred_bytes, timeout_);
 
-  if(r != LIBUSB_SUCCESS)
+  if (r != LIBUSB_SUCCESS)
   {
-    LOG_ERROR << "bulk transfer failed: " << WRITE_LIBUSB_ERROR(r);
+    LOG_ERROR << "bulk transfer failed: " << usb::formatLibusbError(r);
     return false;
   }
 
-  if((size_t)transferred_bytes != command.size())
+  if ((size_t)transferred_bytes != command.size())
   {
-    LOG_ERROR << "sent number of bytes differs from expected number! expected: " << command.size() << " got: " << transferred_bytes;
+    LOG_ERROR << "sent number of bytes differs from expected number! expected: " << command.size()
+              << " got: " << transferred_bytes;
     return false;
   }
 
@@ -106,17 +105,18 @@ bool CommandTransaction::receive(CommandTransaction::Result& result, uint32_t mi
 {
   int length = 0;
   const size_t capacity = result.size();
-  unsigned char *buffer = result.empty() ? NULL : &result[0];
+  unsigned char* buffer = result.empty() ? NULL : &result[0];
 
-  int r = libusb_bulk_transfer(handle_, inbound_endpoint_, buffer, static_cast<int>(capacity), &length, timeout_);
+  int r = libusb_bulk_transfer(handle_, inbound_endpoint_, buffer, static_cast<int>(capacity),
+                               &length, timeout_);
 
-  if(r != LIBUSB_SUCCESS)
+  if (r != LIBUSB_SUCCESS)
   {
-    LOG_ERROR << "bulk transfer failed: " << WRITE_LIBUSB_ERROR(r);
+    LOG_ERROR << "bulk transfer failed: " << usb::formatLibusbError(r);
     return false;
   }
 
-  if(length < 0 || static_cast<size_t>(length) > capacity)
+  if (length < 0 || static_cast<size_t>(length) > capacity)
   {
     LOG_ERROR << "bulk transfer returned invalid length: " << length;
     return false;
@@ -126,25 +126,28 @@ bool CommandTransaction::receive(CommandTransaction::Result& result, uint32_t mi
 
   if ((uint32_t)length < min_length)
   {
-    LOG_ERROR << "bulk transfer too short! expected at least: " << min_length << " got : " << length;
+    LOG_ERROR << "bulk transfer too short! expected at least: " << min_length
+              << " got : " << length;
     return false;
   }
 
   return true;
 }
 
-bool CommandTransaction::isResponseCompleteResult(CommandTransaction::Result& result, uint32_t sequence)
+bool CommandTransaction::isResponseCompleteResult(CommandTransaction::Result& result,
+                                                  uint32_t sequence)
 {
-  if(result.size() == ResponseCompleteLength)
+  if (result.size() == ResponseCompleteLength)
   {
     uint32_t data[ResponseCompleteLength / sizeof(uint32_t)];
     std::memcpy(data, &result[0], sizeof(data));
 
-    if(data[0] == ResponseCompleteMagic)
+    if (data[0] == ResponseCompleteMagic)
     {
-      if(data[1] != sequence)
+      if (data[1] != sequence)
       {
-        LOG_ERROR << "response complete with wrong sequence number! expected: " << sequence << " got: " << data[1];
+        LOG_ERROR << "response complete with wrong sequence number! expected: " << sequence
+                  << " got: " << data[1];
       }
       return true;
     }
@@ -152,7 +155,6 @@ bool CommandTransaction::isResponseCompleteResult(CommandTransaction::Result& re
 
   return false;
 }
-
 
 } /* namespace protocol */
 } /* namespace libfreenect2 */

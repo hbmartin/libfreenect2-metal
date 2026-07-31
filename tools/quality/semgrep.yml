@@ -1,0 +1,11 @@
+rules:
+  - id: libfreenect2-no-direct-enumerated-device-indexing
+    languages: [cpp]
+    severity: ERROR
+    message: >-
+      Use a bounds-checked access path for enumerated_devices_; signed device
+      indices must be rejected before conversion to size_t.
+    paths:
+      include:
+        - /src/libfreenect2.cpp
+    pattern-regex: 'enumerated_devices_\s*\['
