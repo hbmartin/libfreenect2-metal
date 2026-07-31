@@ -72,11 +72,12 @@ jobs:
             libusb-1.0-0-dev libturbojpeg0-dev
 
       - name: Analyze while compiling
-        env:
-          CC: clang
-          CXX: clang++
         run: |
-          cmake -S . -B build-analyzer -G Ninja \
+          # scan-build must wrap the configure step too: CMake caches the
+          # compiler it detects there and Ninja invokes that cached path
+          # directly, so wrapping only the build would analyze nothing.
+          scan-build --use-cc=clang --use-c++=clang++ \
+            cmake -S . -B build-analyzer -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DENABLE_WARNINGS_AS_ERRORS=ON \
             -DBUILD_EXAMPLES=OFF \
@@ -87,7 +88,8 @@ jobs:
             -DENABLE_OPENGL=OFF \
             -DENABLE_VAAPI=OFF \
             -DENABLE_TEGRAJPEG=OFF
-          scan-build --status-bugs cmake --build build-analyzer -j 2
+          scan-build --use-cc=clang --use-c++=clang++ --status-bugs \
+            cmake --build build-analyzer -j 2
 
   strict-ubsan:
     name: UBSan implicit conversions

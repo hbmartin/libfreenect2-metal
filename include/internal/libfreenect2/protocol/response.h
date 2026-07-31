@@ -120,7 +120,10 @@ public:
   Status0x090000Response(const std::vector<unsigned char>& data) : status_(0)
   {
     if (data.size() >= sizeof(status_))
-      std::memcpy(&status_, &data[0], sizeof(status_));
+    {
+      status_ = static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8) |
+                (static_cast<uint32_t>(data[2]) << 16) | (static_cast<uint32_t>(data[3]) << 24);
+    }
   }
 
   uint32_t toNumber() { return status_; }

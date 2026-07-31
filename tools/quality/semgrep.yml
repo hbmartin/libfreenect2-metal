@@ -9,3 +9,23 @@ rules:
       include:
         - /src/libfreenect2.cpp
     pattern-regex: 'enumerated_devices_\s*\['
+  - id: libfreenect2-rgb-health-state-must-be-atomic
+    languages: [cpp]
+    severity: ERROR
+    message: >-
+      RGB decoder health shared across decode and user threads must use
+      std::atomic<bool>.
+    paths:
+      include:
+        - /src/vaapi_rgb_packet_processor.cpp
+    pattern-regex: '\bbool\s+(?:initialized|healthy)\s*;'
+  - id: libfreenect2-initialize-libusb-config-descriptors
+    languages: [cpp]
+    severity: ERROR
+    message: >-
+      Initialize libusb configuration descriptor pointers before lookup so an
+      error path cannot observe or free an indeterminate pointer.
+    paths:
+      include:
+        - /src/usb_control.cpp
+    pattern-regex: 'libusb_config_descriptor\s*\*\s*[A-Za-z_][A-Za-z0-9_]*\s*;'

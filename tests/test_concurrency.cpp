@@ -116,6 +116,8 @@ TEST(PoolAllocator, BlocksUntilABufferIsReleased)
   {
     allocator.free(second);
     waiter.join();
+    Buffer* recovered = result.get();
+    allocator.free(recovered);
     ASSERT_EQ(status, std::future_status::ready);
     return;
   }
