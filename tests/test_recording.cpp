@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 
+#include <libfreenect2/recording_manifest.h>
 #include <libfreenect2/recording_utils.h>
 
 namespace libfreenect2
@@ -34,6 +35,71 @@ TEST(RecordingPaths, RejectsAbsoluteAndTraversalPaths)
   EXPECT_FALSE(isSafeRelativePath("frames//color.jpg"));
   EXPECT_FALSE(isSafeRelativePath("frames/color.jpg/"));
   EXPECT_FALSE(isSafeRelativePath(std::string("frames/color.jpg\0ignored", 24)));
+}
+
+ManifestV1 sampleManifest()
+{
+  ManifestV1 manifest;
+  manifest.serial = "123456789";
+  manifest.firmware = "4.0.3912.0";
+  manifest.color.fx = 1081.0f;
+  manifest.ir.fx = 365.0f;
+  return manifest;
+}
+
+TEST(RecordingManifest, RoundTripsVersionOne)
+{
+  const ManifestV1 expected = sampleManifest();
+  std::string text;
+  std::string error;
+  ASSERT_TRUE(serializeManifestV1(expected, text, &error)) << error;
+
+  ManifestV1 actual;
+  ASSERT_TRUE(parseManifestV1(text, actual, &error)) << error;
+  EXPECT_EQ(actual.serial, expected.serial);
+  EXPECT_EQ(actual.firmware, expected.firmware);
+  EXPECT_EQ(actual.color_encoding, "jpeg");
+  EXPECT_EQ(actual.depth_encoding, "kinect-v2-raw");
+  EXPECT_FLOAT_EQ(actual.color.fx, expected.color.fx);
+  EXPECT_FLOAT_EQ(actual.ir.fx, expected.ir.fx);
+  EXPECT_EQ(actual.p0_path, "calibration/p0.bin");
+}
+
+TEST(RecordingManifest, RejectsUnsupportedVersionsAndUnsafeCalibrationPaths)
+{
+  std::string text;
+  std::string error;
+  ASSERT_TRUE(serializeManifestV1(sampleManifest(), text, &error)) << error;
+
+  ManifestV1 parsed;
+  std::string unsupported = text;
+  const std::string::size_type version = unsupported.find("\"version\": 1");
+  ASSERT_NE(version, std::string::npos);
+  unsupported.replace(version, 12, "\"version\": 2");
+  EXPECT_FALSE(parseManifestV1(unsupported, parsed, &error));
+  EXPECT_NE(error.find("unsupported"), std::string::npos);
+
+  std::string unsafe = text;
+  const std::string safe_path = "calibration/p0.bin";
+  const std::string::size_type path = unsafe.find(safe_path);
+  ASSERT_NE(path, std::string::npos);
+  unsafe.replace(path, safe_path.size(), "../p0.bin");
+  EXPECT_FALSE(parseManifestV1(unsafe, parsed, &error));
+  EXPECT_NE(error.find("unsafe"), std::string::npos);
+}
+
+TEST(RecordingManifest, RejectsMissingAndNonFiniteCalibration)
+{
+  ManifestV1 parsed;
+  std::string error;
+  EXPECT_FALSE(parseManifestV1("{}", parsed, &error));
+
+  std::string text;
+  ASSERT_TRUE(serializeManifestV1(sampleManifest(), text, &error)) << error;
+  const std::string::size_type fx = text.find("1081.0");
+  ASSERT_NE(fx, std::string::npos);
+  text.replace(fx, 6, "1e4000");
+  EXPECT_FALSE(parseManifestV1(text, parsed, &error));
 }
 
 } // namespace recording

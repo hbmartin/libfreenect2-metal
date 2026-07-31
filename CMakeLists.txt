@@ -207,6 +207,7 @@ SET(SOURCES
   src/cpu_depth_packet_processor.cpp
   src/resource.cpp
   src/recording_utils.cpp
+  src/recording_manifest.cpp
   src/command_transaction.cpp
   src/registration.cpp
   src/logging.cpp
