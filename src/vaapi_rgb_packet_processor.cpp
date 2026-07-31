@@ -26,6 +26,7 @@
 
 #include <libfreenect2/rgb_packet_processor.h>
 
+#include <atomic>
 #include <cstring>
 #include <cstdio> //jpeglib.h does not include stdio.h
 #include <jpeglib.h>
@@ -281,8 +282,8 @@ public:
   struct jpeg_error_mgr jerr;
 
   bool display_initialized;
-  bool initialized;
-  bool healthy;
+  std::atomic<bool> initialized;
+  std::atomic<bool> healthy;
   std::string device_path;
 
   static const int WIDTH = 1920;
@@ -303,9 +304,10 @@ public:
     dinfo.err = jpeg_std_error(&jerr);
     jpeg_create_decompress(&dinfo);
 
-    initialized = initializeVaapi();
-    healthy = initialized;
-    if (!initialized)
+    const bool initialized_ok = initializeVaapi();
+    initialized.store(initialized_ok);
+    healthy.store(initialized_ok);
+    if (!initialized_ok)
       return;
 
     buffer_allocator = new PoolAllocator(new VaapiAllocator(display, context));
@@ -687,12 +689,13 @@ VaapiRgbPacketProcessor::~VaapiRgbPacketProcessor()
 
 bool VaapiRgbPacketProcessor::good()
 {
-  return impl_->initialized && impl_->healthy;
+  return impl_->initialized.load() && impl_->healthy.load();
 }
 
 void VaapiRgbPacketProcessor::process(const RgbPacket& packet)
 {
-  if (listener_ == 0 || !impl_->initialized || !impl_->healthy || impl_->frame == NULL)
+  if (listener_ == 0 || !impl_->initialized.load() || !impl_->healthy.load() ||
+      impl_->frame == NULL)
     return;
 
   impl_->startTiming();
@@ -709,7 +712,7 @@ void VaapiRgbPacketProcessor::process(const RgbPacket& packet)
   VaapiBuffer* vb = static_cast<VaapiBuffer*>(packet.memory);
   const VaapiRgbPacketProcessorImpl::DecodeResult result = impl_->decompress(buf, len, vb);
   if (result == VaapiRgbPacketProcessorImpl::DecodeFatalError)
-    impl_->healthy = false;
+    impl_->healthy.store(false);
 
   impl_->stopTiming(LOG_INFO);
 

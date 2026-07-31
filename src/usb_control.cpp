@@ -137,10 +137,10 @@ int set_feature_function_suspend(libusb_device_handle* handle, int timeout, bool
 int get_max_iso_packet_size(libusb_device* device, int configuration, int alternate_setting,
                             int endpoint)
 {
-  libusb_config_descriptor* config_desc;
-  int r = LIBUSB_ERROR_NOT_FOUND;
-
-  r = libusb_get_config_descriptor_by_value(device, configuration, &config_desc);
+  libusb_config_descriptor* config_desc = 0;
+  int r = libusb_get_config_descriptor_by_value(device, configuration, &config_desc);
+  if (r != LIBUSB_SUCCESS)
+    return r;
 
   if (r == LIBUSB_SUCCESS)
   {
