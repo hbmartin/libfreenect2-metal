@@ -82,10 +82,12 @@ jobs:
           sudo apt-get install --yes ninja-build pkg-config libusb-1.0-0-dev libturbojpeg0-dev
 
       - name: Configure
+        env:
+          BUILD_SHARED_LIBS: ${{ matrix.shared }}
         run: >-
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
-          -DBUILD_SHARED_LIBS=${{ matrix.shared }}
+          -DBUILD_SHARED_LIBS="$BUILD_SHARED_LIBS"
           -DBUILD_TESTING=ON
           -DBUILD_EXAMPLES=ON
           -DBUILD_OPENNI2_DRIVER=OFF
@@ -258,11 +260,13 @@ jobs:
 
       - name: Configure
         shell: pwsh
+        env:
+          BUILD_SHARED_LIBS: ${{ matrix.shared }}
         run: >-
           cmake -S . -B build-msvc -A x64
           -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           -DVCPKG_TARGET_TRIPLET=x64-windows
-          -DBUILD_SHARED_LIBS=${{ matrix.shared }}
+          -DBUILD_SHARED_LIBS="$env:BUILD_SHARED_LIBS"
           -DBUILD_TESTING=ON
           -DBUILD_EXAMPLES=ON
           -DBUILD_OPENNI2_DRIVER=OFF
@@ -476,6 +480,20 @@ jobs:
             echo "git clang-format failed with status $format_status." >&2
             exit "$format_status"
           fi
+
+  semgrep:
+    name: Semgrep policy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install semgrep
+        run: pipx install semgrep
+
+      - name: Run focused policy
+        run: semgrep scan --config tools/quality/semgrep.yml --error --metrics=off
 
   static-analysis:
     name: clang-tidy 18

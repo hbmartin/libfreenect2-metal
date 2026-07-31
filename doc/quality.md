@@ -100,10 +100,11 @@ CLANG_TIDY=/path/to/clang-tidy \
   python3 tools/quality/run_clang_tidy.py build-tidy
 ```
 
-The focused Semgrep policy prevents direct signed indexing of the enumerated-device collection:
+The focused Semgrep policy prevents direct signed indexing of the enumerated-device collection.
+The `Semgrep policy` CI job enforces it on every push; for a local run:
 
 ```sh
-semgrep --config tools/quality/semgrep.yml
+semgrep scan --config tools/quality/semgrep.yml --error
 ```
 
 ## Hardware soak
