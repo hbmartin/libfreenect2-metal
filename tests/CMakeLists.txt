@@ -31,6 +31,7 @@ ADD_EXECUTABLE(unit_tests
   test_depth_stream_parser.cpp
   test_rgb_stream_parser.cpp
   test_cpu_depth_processor.cpp
+  test_filter_backend_parity.cpp
   test_metal_cpu_parity.cpp
   test_concurrency.cpp
   test_protocol.cpp
@@ -53,11 +54,11 @@ INCLUDE(GoogleTest)
 # be excluded under sanitizers (which don't mix cleanly with the Metal
 # framework) via `ctest -LE gpu`, while still running in the main build.
 gtest_discover_tests(unit_tests
-  TEST_FILTER "MetalCpuParity.*"
+  TEST_FILTER "MetalCpuParity.*:OpenCLCpuParity.*:OpenGLCpuParity.*"
   PROPERTIES LABELS "gpu"
 )
 gtest_discover_tests(unit_tests
-  TEST_FILTER "-MetalCpuParity.*"
+  TEST_FILTER "-MetalCpuParity.*:OpenCLCpuParity.*:OpenGLCpuParity.*"
   PROPERTIES LABELS "unit"
 )
 

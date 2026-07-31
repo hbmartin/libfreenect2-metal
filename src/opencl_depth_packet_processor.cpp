@@ -227,6 +227,7 @@ public:
   cl::Buffer buf_depth;
   cl::Buffer buf_ir_sum;
   cl::Buffer buf_filtered;
+  std::vector<cl_uchar> all_valid_edge_mask;
 
   bool deviceInitialized;
   bool programBuilt;
@@ -240,7 +241,8 @@ public:
 #endif
 
   OpenCLDepthPacketProcessorImpl(const int deviceId = -1)
-    : deviceInitialized(false)
+    : all_valid_edge_mask(IMAGE_SIZE, 1)
+    , deviceInitialized(false)
     , programBuilt(false)
     , programInitialized(false)
     , runtimeOk(true)
@@ -575,7 +577,8 @@ public:
     }
     else
     {
-      eventFPS1[0] = eventPPS1[0];
+      CHECK_CL_RETURN(queue.enqueueWriteBuffer(buf_edge_test, CL_FALSE, 0,
+          buf_edge_test_size, &all_valid_edge_mask[0], &eventPPS1, &eventFPS1[0]));
     }
 
     CHECK_CL_RETURN(queue.enqueueNDRangeKernel(kernel_processPixelStage2, cl::NullRange, cl::NDRange(IMAGE_SIZE), cl::NullRange, &eventFPS1, &eventPPS2[0]));
