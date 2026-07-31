@@ -407,30 +407,6 @@ void phaseUnWrapper(float t0, float t1,float t2, float* phase_first, float* phas
 }
 
 /*******************************************************************************
- * Predict phase variance from amplitude direct quadratic model
- ******************************************************************************/
-static __device__
-void calculatePhaseUnwrappingVarDirect(float3 ir, float3* var)
-{
-  //Model: sigma = 1/(gamma0*a+gamma1*a^2+gamma2). Possibly better than calculatePhaseUnwrappingVar
-  //The gammas are optimized using lsqnonlin in matlab.
-  //For more details see the paper "Efficient Phase Unwrapping using Kernel Density Estimation"
-  //section 3.3 and 4.4.
-  float sigma_max = 0.5f * M_PI_F;
-
-  //Set sigma = pi/2 as a maximum standard deviation of the phase. Cut off function after root
-  float q0 = ir.x > 5.244404f ? 0.7919451669f * ir.x - 0.002363097609f * ir.x * ir.x - 3.088285897f : 1.0f / sigma_max;
-  float q1 = ir.y > 4.084835f ? 1.214266794f * ir.y - 0.00581082634f * ir.y * ir.y - 3.863119924f : 1.0f / sigma_max;
-  float q2 = ir.z > 6.379475f ? 0.6101457464f * ir.z - 0.00113679233f * ir.z * ir.z - 2.84614442f : 1.0f / sigma_max;
-  float3 q = make_float3(q0, q1, q2);
-  float3 roots = make_float3(5.244404f, 4.084835f, 6.379475f);
-  float3 sigma = make_float3(1.0f)/q;
-  sigma = select(sigma, make_float3(sigma_max), isless(make_float3(sigma_max), sigma));
-  *var = sigma;
-}
-
-
-/*******************************************************************************
  * Predict phase variance from amplitude (quadratic atan model)
  ******************************************************************************/
 static __device__
@@ -445,7 +421,6 @@ void calculatePhaseUnwrappingVar(float3 ir, float3 *var)
   float3 q = make_float3(q0, q1, q2);
   q *= q;
   float3 roots = make_float3(5.64173671f, 4.31705182f, 6.84453530f);
-  float3 asdf = atan2(make_float3(0.5f), make_float3(1.0f));
   float3 sigma = select(select(make_float3(0.5f * M_PI_F), roots * 0.5f * M_PI_F / ir, isless(roots,ir)), atan2(sqrt(make_float3(1.0f) / (q - make_float3(1.0f))), make_float3(1.0f)), isless(make_float3(1.0f), q));
   sigma = select(sigma, make_float3(0.001f), isless(sigma, make_float3(0.001f)));
   *var = sigma*sigma;

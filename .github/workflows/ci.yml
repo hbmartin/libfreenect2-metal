@@ -183,6 +183,38 @@ jobs:
           -R '^(RgbDecoderFallback\.|PublicApi\.VaapiInitializationFailure)'
           --timeout 120 --output-on-failure
 
+  cuda-12-3:
+    name: CUDA 12.3 compile-only
+    runs-on: ubuntu-24.04
+    container: nvidia/cuda:12.3.2-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CUDA build dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install --yes \
+            cmake ninja-build git pkg-config libusb-1.0-0-dev libturbojpeg0-dev
+
+      - name: Configure both CUDA depth pipelines
+        run: >-
+          cmake -S . -B build-cuda -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=11
+          -DCMAKE_CUDA_ARCHITECTURES=75
+          -DBUILD_TESTING=OFF
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_OPENNI2_DRIVER=OFF
+          -DENABLE_CUDA=ON
+          -DENABLE_OPENCL=OFF
+          -DENABLE_OPENGL=OFF
+          -DENABLE_VAAPI=OFF
+          -DENABLE_TEGRAJPEG=OFF
+          -DENABLE_WARNINGS_AS_ERRORS=ON
+
+      - name: Compile standard and KDE CUDA pipelines
+        run: cmake --build build-cuda -j 2 --target freenect2
+
   windows-msvc:
     name: MSVC, static, C++11
     runs-on: windows-2025

@@ -333,26 +333,26 @@ OpenCLKdePacketPipeline::~OpenCLKdePacketPipeline() { }
 #endif // LIBFREENECT2_WITH_OPENCL_SUPPORT
 
 #ifdef LIBFREENECT2_WITH_CUDA_SUPPORT
-CudaPacketPipeline::CudaPacketPipeline(const int deviceId)
-  : CudaPacketPipeline(PacketPipelineConfig(), deviceId)
+CudaPacketPipeline::CudaPacketPipeline(const int device_id)
+  : CudaPacketPipeline(PacketPipelineConfig(), device_id)
 {
 }
 
-CudaPacketPipeline::CudaPacketPipeline(const PacketPipelineConfig &config, const int deviceId) : PacketPipeline("cuda"), deviceId(deviceId)
+CudaPacketPipeline::CudaPacketPipeline(const PacketPipelineConfig &config, const int device_id) : PacketPipeline("cuda"), deviceId(device_id)
 {
-  comp_->initialize(getConfiguredRgbPacketProcessor(config), new CudaDepthPacketProcessor(deviceId));
+  comp_->initialize(getConfiguredRgbPacketProcessor(config), new CudaDepthPacketProcessor(device_id));
 }
 
 CudaKdePacketPipeline::~CudaKdePacketPipeline() { }
 
-CudaKdePacketPipeline::CudaKdePacketPipeline(const int deviceId)
-  : CudaKdePacketPipeline(PacketPipelineConfig(), deviceId)
+CudaKdePacketPipeline::CudaKdePacketPipeline(const int device_id)
+  : CudaKdePacketPipeline(PacketPipelineConfig(), device_id)
 {
 }
 
-CudaKdePacketPipeline::CudaKdePacketPipeline(const PacketPipelineConfig &config, const int deviceId) : PacketPipeline("cuda_kde"), deviceId(deviceId)
+CudaKdePacketPipeline::CudaKdePacketPipeline(const PacketPipelineConfig &config, const int device_id) : PacketPipeline("cuda_kde"), deviceId(device_id)
 {
-  comp_->initialize(getConfiguredRgbPacketProcessor(config), new CudaKdeDepthPacketProcessor(deviceId));
+  comp_->initialize(getConfiguredRgbPacketProcessor(config), new CudaKdeDepthPacketProcessor(device_id));
 }
 
 CudaPacketPipeline::~CudaPacketPipeline() { }

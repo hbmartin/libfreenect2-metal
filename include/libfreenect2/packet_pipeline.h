@@ -186,8 +186,8 @@ class LIBFREENECT2_API CudaPacketPipeline : public PacketPipeline
 protected:
   const int deviceId;
 public:
-  CudaPacketPipeline(const int deviceId = -1);
-  CudaPacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
+  CudaPacketPipeline(const int device_id = -1);
+  CudaPacketPipeline(const PacketPipelineConfig &config, const int device_id = -1);
   virtual ~CudaPacketPipeline();
 };
 
@@ -202,8 +202,8 @@ class LIBFREENECT2_API CudaKdePacketPipeline : public PacketPipeline
 protected:
   const int deviceId;
 public:
-  CudaKdePacketPipeline(const int deviceId = -1);
-  CudaKdePacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
+  CudaKdePacketPipeline(const int device_id = -1);
+  CudaKdePacketPipeline(const PacketPipelineConfig &config, const int device_id = -1);
   virtual ~CudaKdePacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_CUDA_SUPPORT
