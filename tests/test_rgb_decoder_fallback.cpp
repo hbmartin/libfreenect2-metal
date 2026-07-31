@@ -111,7 +111,7 @@ public:
   void finish() { finish_.store(true); }
 
 private:
-  volatile bool healthy_;
+  std::atomic<bool> healthy_;
   std::atomic<bool> processing_;
   std::atomic<bool> finish_;
 };

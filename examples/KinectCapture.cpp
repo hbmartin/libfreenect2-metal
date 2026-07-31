@@ -587,13 +587,15 @@ int main(int argc, char** argv)
            << "  }";
   if (apply_depth_correction)
   {
+    // max_digits10 needs defaultfloat to mean "round-trippable"; under the
+    // std::fixed set above it would only pad to 17 fractional digits.
     metadata << ",\n"
-             << std::setprecision(std::numeric_limits<double>::max_digits10)
+             << std::defaultfloat << std::setprecision(std::numeric_limits<double>::max_digits10)
              << "  \"depth_correction\": {\"scale\": " << correction_profile.scale
              << ", \"offset_mm\": " << correction_profile.offset_mm
              << ", \"rmse_mm\": " << correction_profile.rmse_mm
              << ", \"device_match\": " << (correction_device_match ? "true" : "false") << "}"
-             << std::setprecision(2);
+             << std::fixed << std::setprecision(2);
   }
   if (timestamp_aligned)
   {

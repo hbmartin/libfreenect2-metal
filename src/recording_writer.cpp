@@ -105,6 +105,14 @@ public:
     if (!frameByteCount(*frame, byte_count))
       return false;
 
+    {
+      // A closed or failed writer must not pay for the frame copy below;
+      // accepting_ is checked again under the same lock before queueing.
+      libfreenect2::lock_guard guard(mutex_);
+      if (!accepting_)
+        return false;
+    }
+
     RecordingJob job;
     const bool is_color = type == Frame::Color;
     job.entry.stream = is_color ? "color" : "depth";

@@ -586,7 +586,7 @@ public:
     // bool cond0 = zmultiplier == 0 || (m9 >= 0 && m9 < 32767);
     // m9 = std::max(-m9, m9);
     //// if m9 is positive or pixel is invalid (zmultiplier) we set it to 0 otherwise to its
-    ///absolute value O.o
+    //// absolute value O.o
     // m9 = cond0 ? 0 : m9;
 
     transformMeasurements(m0);

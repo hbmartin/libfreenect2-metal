@@ -64,8 +64,7 @@ public:
 
   void setPacketProcessor(libfreenect2::BaseDepthPacketProcessor* processor);
 
-  virtual void onDataReceived(unsigned char* buffer, size_t length,
-                              uint64_t arrival_timestamp_us = 0);
+  virtual void onDataReceived(unsigned char* buffer, size_t length, uint64_t arrival_timestamp_us);
 
 private:
   libfreenect2::BaseDepthPacketProcessor* processor_;
