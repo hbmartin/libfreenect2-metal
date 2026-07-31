@@ -1037,6 +1037,8 @@ void OpenGLDepthPacketProcessor::process(const DepthPacket &packet)
 
   ir->timestamp = packet.timestamp;
   depth->timestamp = packet.timestamp;
+  ir->arrival_timestamp_us = packet.arrival_timestamp_us;
+  depth->arrival_timestamp_us = packet.arrival_timestamp_us;
   ir->sequence = packet.sequence;
   depth->sequence = packet.sequence;
 

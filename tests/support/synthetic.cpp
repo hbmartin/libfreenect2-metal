@@ -227,6 +227,7 @@ void runSyntheticDepthProcessor(libfreenect2::DepthPacketProcessor& proc,
   libfreenect2::DepthPacket packet;
   packet.sequence = seed;
   packet.timestamp = seed * 100u;
+  packet.arrival_timestamp_us = seed * 1000u;
   packet.buffer = buffer.data();
   packet.buffer_length = buffer.size();
   packet.memory = 0;

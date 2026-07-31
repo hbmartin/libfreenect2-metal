@@ -53,6 +53,7 @@
 #include <libfreenect2/protocol/command_transaction.h>
 #include <libfreenect2/logging.h>
 #include <libfreenect2/threading.h>
+#include <libfreenect2/timing.h>
 
 namespace libfreenect2
 {
@@ -1624,6 +1625,7 @@ void Freenect2ReplayDevice::processRgbFrame(Frame* frame)
   RgbPacket packet;
   
   packet.timestamp = frame->timestamp;
+  packet.arrival_timestamp_us = monotonicTimeMicroseconds();
   packet.sequence = frame->sequence;
   packet.jpeg_buffer = frame->data;
   packet.jpeg_buffer_length = frame->bytes_per_pixel;
@@ -1639,6 +1641,7 @@ void Freenect2ReplayDevice::processDepthFrame(Frame* frame)
   DepthPacket packet;
 
   packet.timestamp = frame->timestamp;
+  packet.arrival_timestamp_us = monotonicTimeMicroseconds();
   packet.sequence = frame->sequence;
   packet.buffer = frame->data;
   packet.buffer_length = frame->bytes_per_pixel;
@@ -1815,6 +1818,7 @@ void Freenect2ReplayDevice::run()
       }
 
       packet_.timestamp = timestamp_sequence[0];
+      packet_.arrival_timestamp_us = monotonicTimeMicroseconds();
       packet_.sequence = timestamp_sequence[1];
       packet_.buffer = packet_.memory->data;
       packet_.buffer_length = length;
@@ -1836,6 +1840,7 @@ void Freenect2ReplayDevice::run()
 
       RgbPacket rgb;
       rgb.timestamp = timestamp_sequence[0];
+      rgb.arrival_timestamp_us = monotonicTimeMicroseconds();
       rgb.sequence = timestamp_sequence[1];
       rgb.jpeg_buffer = &jpeg[0];
       rgb.jpeg_buffer_length = length;

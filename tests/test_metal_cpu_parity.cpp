@@ -103,6 +103,7 @@ DepthPacket makePacket(std::vector<unsigned char>& buffer)
   DepthPacket p;
   p.sequence = 1;
   p.timestamp = 100;
+  p.arrival_timestamp_us = 123456;
   p.buffer = buffer.data();
   p.buffer_length = buffer.size();
   p.memory = 0;

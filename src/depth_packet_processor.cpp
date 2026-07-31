@@ -131,12 +131,14 @@ void DumpDepthPacketProcessor::process(const DepthPacket &packet) {
   Frame* depth_frame = new Frame(1, 1, packet.buffer_length);
 
   depth_frame->timestamp = packet.timestamp;
+  depth_frame->arrival_timestamp_us = packet.arrival_timestamp_us;
   depth_frame->sequence = packet.sequence;
   depth_frame->format = Frame::Raw;
   std::memcpy(depth_frame->data, packet.buffer, packet.buffer_length);
 
   Frame* ir_frame = new Frame(1, 1, packet.buffer_length, depth_frame->data);
   ir_frame->timestamp = packet.timestamp;
+  ir_frame->arrival_timestamp_us = packet.arrival_timestamp_us;
   ir_frame->sequence = packet.sequence;
   ir_frame->format = Frame::Raw;
 

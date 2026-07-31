@@ -467,6 +467,7 @@ void VaapiRgbPacketProcessor::process(const RgbPacket &packet)
   impl_->startTiming();
 
   impl_->frame->timestamp = packet.timestamp;
+  impl_->frame->arrival_timestamp_us = packet.arrival_timestamp_us;
   impl_->frame->sequence = packet.sequence;
   impl_->frame->exposure = packet.exposure;
   impl_->frame->gain = packet.gain;

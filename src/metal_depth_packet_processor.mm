@@ -785,6 +785,8 @@ void MetalDepthPacketProcessor::process(const DepthPacket &packet)
 
   impl_->ir_frame->timestamp = packet.timestamp;
   impl_->depth_frame->timestamp = packet.timestamp;
+  impl_->ir_frame->arrival_timestamp_us = packet.arrival_timestamp_us;
+  impl_->depth_frame->arrival_timestamp_us = packet.arrival_timestamp_us;
   impl_->ir_frame->sequence = packet.sequence;
   impl_->depth_frame->sequence = packet.sequence;
 
