@@ -235,8 +235,16 @@ jobs:
         run: cmake --build build-cuda -j 2 --target freenect2
 
   windows-msvc:
-    name: MSVC, static, C++11
+    name: MSVC, ${{ matrix.linkage }}, C++11
     runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - linkage: static
+            shared: OFF
+          - linkage: shared
+            shared: ON
     steps:
       - uses: actions/checkout@v4
         with:
@@ -254,7 +262,7 @@ jobs:
           cmake -S . -B build-msvc -A x64
           -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           -DVCPKG_TARGET_TRIPLET=x64-windows
-          -DBUILD_SHARED_LIBS=OFF
+          -DBUILD_SHARED_LIBS=${{ matrix.shared }}
           -DBUILD_TESTING=ON
           -DBUILD_EXAMPLES=ON
           -DBUILD_OPENNI2_DRIVER=OFF
@@ -470,11 +478,12 @@ jobs:
           fi
 
   static-analysis:
-    name: clang-tidy
+    name: clang-tidy 18
     runs-on: ubuntu-24.04
     env:
-      CC: clang
-      CXX: clang++
+      CC: clang-18
+      CXX: clang++-18
+      CLANG_TIDY: clang-tidy-18
     steps:
       - uses: actions/checkout@v4
         with:
@@ -483,7 +492,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes ninja-build clang clang-tidy pkg-config python3 \
+          sudo apt-get install --yes ninja-build clang-18 clang-tidy-18 pkg-config python3 \
             libusb-1.0-0-dev libturbojpeg0-dev
 
       - name: Configure compile database

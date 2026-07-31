@@ -51,8 +51,7 @@ std::string uniqueRecordingDirectory()
   {
     temporary_root = std::getenv("TMP");
   }
-  const std::string root =
-      temporary_root != 0 && temporary_root[0] != '\0' ? temporary_root : ".";
+  const std::string root = temporary_root != 0 && temporary_root[0] != '\0' ? temporary_root : ".";
 #else
   temporary_root = std::getenv("TMPDIR");
   const std::string root =
@@ -248,9 +247,14 @@ TEST(RecordingPaths, RejectsAbsoluteAndTraversalPaths)
   EXPECT_FALSE(isSafeRelativePath("C:\\absolute\\path"));
   EXPECT_FALSE(isSafeRelativePath("../manifest.json"));
   EXPECT_FALSE(isSafeRelativePath("frames/../manifest.json"));
+  EXPECT_FALSE(isSafeRelativePath("..\\manifest.json"));
+  EXPECT_FALSE(isSafeRelativePath("frames\\..\\manifest.json"));
+  EXPECT_FALSE(isSafeRelativePath("frames\\.\\color.jpg"));
+  EXPECT_FALSE(isSafeRelativePath("frames\\\\color.jpg"));
   EXPECT_FALSE(isSafeRelativePath("frames/./color.jpg"));
   EXPECT_FALSE(isSafeRelativePath("frames//color.jpg"));
   EXPECT_FALSE(isSafeRelativePath("frames/color.jpg/"));
+  EXPECT_FALSE(isSafeRelativePath("frames\\color.jpg\\"));
   EXPECT_FALSE(isSafeRelativePath("frames/color/data:stream"));
   EXPECT_FALSE(isSafeRelativePath(std::string("frames/color.jpg\0ignored", 24)));
 }
@@ -450,7 +454,8 @@ TEST(RecordingJournal, RejectsHostileNumericFields)
 
 TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -503,12 +508,12 @@ TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)
   size_t complete_size = 0;
   EXPECT_TRUE(regularFileSize(joinPath(directory, "recording.complete"), complete_size));
   EXPECT_GT(complete_size, 0u);
-  removeTestRecording(directory);
 }
 
 TEST(RecordingWriter, PersistsRawDepthAndP0Calibration)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
 
@@ -539,24 +544,24 @@ TEST(RecordingWriter, PersistsRawDepthAndP0Calibration)
   EXPECT_TRUE(regularFileSize(joinPath(directory, "recording.complete"), complete_size));
   EXPECT_GT(complete_size, 0u);
   EXPECT_TRUE(writer.close());
-  removeTestRecording(directory);
 }
 
 TEST(RecordingWriter, LeavesAnIncompleteRecordingWithoutCalibration)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 1);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   EXPECT_FALSE(writer.close());
   EXPECT_NE(std::string::npos, writer.getLastError().find("calibration"));
   size_t unused = 0;
   EXPECT_FALSE(regularFileSize(joinPath(directory, "recording.complete"), unused));
-  removeTestRecording(directory);
 }
 
 TEST(RecordingLoader, LoadsIdentityAndCalibrationAndEnforcesCompletion)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 1);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   const CalibrationData expected = sampleCalibrationData();
@@ -577,12 +582,12 @@ TEST(RecordingLoader, LoadsIdentityAndCalibrationAndEnforcesCompletion)
 
   ASSERT_EQ(0, std::remove(joinPath(directory, "calibration/p0.bin").c_str()));
   EXPECT_FALSE(loadRecordingMetadata(directory, true, metadata, &error));
-  removeTestRecording(directory);
 }
 
 TEST(RecordingLoader, SalvagesOnlyCompleteFinalJournalLines)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -609,12 +614,12 @@ TEST(RecordingLoader, SalvagesOnlyCompleteFinalJournalLines)
   ASSERT_TRUE(writeFileAtomically(journal_path, valid + "not-json\n{\"truncated\"", &error))
       << error;
   EXPECT_FALSE(loadRecordingData(directory, true, recording, &error));
-  removeTestRecording(directory);
 }
 
 TEST(RecordingReplay, ReplaysJournaledColorWithRecordedMetadata)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -658,12 +663,12 @@ TEST(RecordingReplay, ReplaysJournaledColorWithRecordedMetadata)
   listener.release(frames);
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
-  removeTestRecording(directory);
 }
 
 TEST(RecordingReplay, HonorsRequestedStreamCombinations)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 4);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -711,7 +716,6 @@ TEST(RecordingReplay, HonorsRequestedStreamCombinations)
   EXPECT_FALSE(color_listener.waitForNewFrame(frames, 20));
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
-  removeTestRecording(directory);
 }
 
 TEST(RecordingReplay, SurvivesConcurrentStopCalls)
@@ -833,7 +837,8 @@ TEST(RecordingReplay, CloseSerializesAConcurrentStart)
 
 TEST(RecordingReplay, PreservesGlobalJournalOrderInFastMode)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 4);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -869,12 +874,12 @@ TEST(RecordingReplay, PreservesGlobalJournalOrderInFastMode)
   EXPECT_EQ(Frame::Color, types[2]);
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
-  removeTestRecording(directory);
 }
 
 TEST(RecordingReplay, ReproducesRecordedOffsetsAndInterruptsLongWaits)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 4);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -909,12 +914,12 @@ TEST(RecordingReplay, ReproducesRecordedOffsetsAndInterruptsLongWaits)
   EXPECT_LT(stop_elapsed, 250000u);
   EXPECT_EQ(2u, listener.types().size());
   EXPECT_TRUE(device->close());
-  removeTestRecording(directory);
 }
 
 TEST(RecordingReplay, RoundTripsSyntheticRawDepthThroughCpuReplay)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(
@@ -949,7 +954,6 @@ TEST(RecordingReplay, RoundTripsSyntheticRawDepthThroughCpuReplay)
   listener.release(frames);
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
-  removeTestRecording(directory);
 }
 
 } // namespace recording

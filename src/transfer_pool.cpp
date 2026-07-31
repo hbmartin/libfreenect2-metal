@@ -27,28 +27,19 @@
 /** @file transfer_pool.cpp Data transfer implementation. */
 
 #include <libfreenect2/usb/transfer_pool.h>
+#include <libfreenect2/usb/error.h>
 #include <libfreenect2/logging.h>
 #include <libfreenect2/timing.h>
-
-#define WRITE_LIBUSB_ERROR(__RESULT) \
-  libusb_error_name((__RESULT)) << " " << libusb_strerror(static_cast<libusb_error>((__RESULT)))
 
 namespace libfreenect2
 {
 namespace usb
 {
 
-TransferPool::TransferPool(libusb_device_handle* device_handle, unsigned char device_endpoint) :
-    callback_(0),
-    device_handle_(device_handle),
-    device_endpoint_(device_endpoint),
-    buffer_(0),
-    buffer_size_(0),
-    enable_submit_(false),
-    stalled_transfers_(0),
-    stall_logged_(false),
-    disconnect_logged_(false),
-    event_listener_(0)
+TransferPool::TransferPool(libusb_device_handle* device_handle, unsigned char device_endpoint)
+    : callback_(0), device_handle_(device_handle), device_endpoint_(device_endpoint), buffer_(0),
+      buffer_size_(0), enable_submit_(false), stalled_transfers_(0), stall_logged_(false),
+      disconnect_logged_(false), event_listener_(0)
 {
 }
 
@@ -74,13 +65,13 @@ bool TransferPool::enabled()
 
 void TransferPool::deallocate()
 {
-  for(TransferQueue::iterator it = transfers_.begin(); it != transfers_.end(); ++it)
+  for (TransferQueue::iterator it = transfers_.begin(); it != transfers_.end(); ++it)
   {
     libusb_free_transfer(it->transfer);
   }
   transfers_.clear();
 
-  if(buffer_ != 0)
+  if (buffer_ != 0)
   {
     delete[] buffer_;
     buffer_ = 0;
@@ -90,7 +81,7 @@ void TransferPool::deallocate()
 
 bool TransferPool::submit()
 {
-  if(!enable_submit_)
+  if (!enable_submit_)
   {
     LOG_WARNING << "transfer submission disabled!";
     return false;
@@ -101,16 +92,16 @@ bool TransferPool::submit()
   disconnect_logged_ = false;
 
   size_t failcount = 0;
-  for(size_t i = 0; i < transfers_.size(); ++i)
+  for (size_t i = 0; i < transfers_.size(); ++i)
   {
-    libusb_transfer *transfer = transfers_[i].transfer;
+    libusb_transfer* transfer = transfers_[i].transfer;
     transfers_[i].setStopped(false);
 
     int r = libusb_submit_transfer(transfer);
 
-    if(r != LIBUSB_SUCCESS)
+    if (r != LIBUSB_SUCCESS)
     {
-      LOG_ERROR << "failed to submit transfer: " << WRITE_LIBUSB_ERROR(r);
+      LOG_ERROR << "failed to submit transfer: " << formatLibusbError(r);
       transfers_[i].setStopped(true);
       // count it as stalled so logStallIfComplete() still fires if the
       // remaining transfers die later
@@ -130,21 +121,21 @@ bool TransferPool::submit()
 
 void TransferPool::cancel()
 {
-  for(TransferQueue::iterator it = transfers_.begin(); it != transfers_.end(); ++it)
+  for (TransferQueue::iterator it = transfers_.begin(); it != transfers_.end(); ++it)
   {
     int r = libusb_cancel_transfer(it->transfer);
 
-    if(r != LIBUSB_SUCCESS && r != LIBUSB_ERROR_NOT_FOUND)
+    if (r != LIBUSB_SUCCESS && r != LIBUSB_ERROR_NOT_FOUND)
     {
-      LOG_ERROR << "failed to cancel transfer: " << WRITE_LIBUSB_ERROR(r);
+      LOG_ERROR << "failed to cancel transfer: " << formatLibusbError(r);
     }
   }
 
-  for(;;)
+  for (;;)
   {
     libfreenect2::this_thread::sleep_for(libfreenect2::chrono::milliseconds(100));
     size_t stopped_transfers = 0;
-    for(TransferQueue::iterator it = transfers_.begin(); it != transfers_.end(); ++it)
+    for (TransferQueue::iterator it = transfers_.begin(); it != transfers_.end(); ++it)
       stopped_transfers += it->getStopped();
     if (stopped_transfers == transfers_.size())
       break;
@@ -153,12 +144,12 @@ void TransferPool::cancel()
   }
 }
 
-void TransferPool::setCallback(DataCallback *callback)
+void TransferPool::setCallback(DataCallback* callback)
 {
   callback_ = callback;
 }
 
-void TransferPool::setEventListener(TransferPoolEventListener *listener)
+void TransferPool::setEventListener(TransferPoolEventListener* listener)
 {
   event_listener_ = listener;
 }
@@ -169,11 +160,11 @@ void TransferPool::allocateTransfers(size_t num_transfers, size_t transfer_size)
   buffer_ = new unsigned char[buffer_size_];
   transfers_.reserve(num_transfers);
 
-  unsigned char *ptr = buffer_;
+  unsigned char* ptr = buffer_;
 
-  for(size_t i = 0; i < num_transfers; ++i)
+  for (size_t i = 0; i < num_transfers; ++i)
   {
-    libusb_transfer *transfer = allocateTransfer();
+    libusb_transfer* transfer = allocateTransfer();
     fillTransfer(transfer);
 
     transfers_.push_back(TransferPool::Transfer(transfer, this));
@@ -183,7 +174,7 @@ void TransferPool::allocateTransfers(size_t num_transfers, size_t transfer_size)
     transfer->buffer = ptr;
     transfer->length = transfer_size;
     transfer->timeout = 1000;
-    transfer->callback = (libusb_transfer_cb_fn) &TransferPool::onTransferCompleteStatic;
+    transfer->callback = (libusb_transfer_cb_fn)&TransferPool::onTransferCompleteStatic;
     transfer->user_data = &transfers_.back();
 
     ptr += transfer_size;
@@ -192,7 +183,7 @@ void TransferPool::allocateTransfers(size_t num_transfers, size_t transfer_size)
 
 void TransferPool::onTransferCompleteStatic(libusb_transfer* transfer)
 {
-  TransferPool::Transfer *t = reinterpret_cast<TransferPool::Transfer*>(transfer->user_data);
+  TransferPool::Transfer* t = reinterpret_cast<TransferPool::Transfer*>(transfer->user_data);
   t->pool->onTransferComplete(t);
 }
 
@@ -200,13 +191,13 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
 {
   const uint64_t arrival_timestamp_us = monotonicTimeMicroseconds();
 
-  if(t->transfer->status == LIBUSB_TRANSFER_CANCELLED)
+  if (t->transfer->status == LIBUSB_TRANSFER_CANCELLED)
   {
     t->setStopped(true);
     return;
   }
 
-  if(t->transfer->status == LIBUSB_TRANSFER_NO_DEVICE)
+  if (t->transfer->status == LIBUSB_TRANSFER_NO_DEVICE)
   {
     // The device is gone; resubmitting can never succeed. Do not process the
     // transfer: libusb (and the macOS backend) does not rewrite
@@ -214,11 +205,11 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
     // descriptors still carry the previous round's COMPLETED statuses and the
     // buffer its already-delivered bytes — processing here would re-emit stale
     // duplicate packets to the stream parser at disconnect.
-    if(!disconnect_logged_)
+    if (!disconnect_logged_)
     {
       disconnect_logged_ = true;
       LOG_ERROR << "usb transfer failed: device disconnected";
-      if(event_listener_ != 0)
+      if (event_listener_ != 0)
         event_listener_->onTransferPoolEvent(TransferPoolEventListener::UsbDeviceDisconnected,
                                              device_endpoint_);
     }
@@ -228,7 +219,7 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
     return;
   }
 
-  if(t->transfer->status != LIBUSB_TRANSFER_COMPLETED)
+  if (t->transfer->status != LIBUSB_TRANSFER_COMPLETED)
   {
     // transient errors (timeout, io, overflow) happen under bus pressure;
     // the transfer is resubmitted below, so only note it at debug level
@@ -238,7 +229,7 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
   // process data
   processTransfer(t->transfer, arrival_timestamp_us);
 
-  if(!enable_submit_)
+  if (!enable_submit_)
   {
     t->setStopped(true);
     return;
@@ -249,9 +240,9 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
   // event-loop progress, which is blocked while this callback runs)
   int r = libusb_submit_transfer(t->transfer);
 
-  if(r != LIBUSB_SUCCESS)
+  if (r != LIBUSB_SUCCESS)
   {
-    LOG_ERROR << "failed to submit transfer: " << WRITE_LIBUSB_ERROR(r);
+    LOG_ERROR << "failed to submit transfer: " << formatLibusbError(r);
     t->setStopped(true);
     stalled_transfers_++;
     logStallIfComplete();
@@ -260,31 +251,29 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
 
 void TransferPool::logStallIfComplete()
 {
-  if(!stall_logged_ && !disconnect_logged_ && enable_submit_ &&
-     stalled_transfers_ >= transfers_.size())
+  if (!stall_logged_ && !disconnect_logged_ && enable_submit_ &&
+      stalled_transfers_ >= transfers_.size())
   {
     stall_logged_ = true;
-    LOG_ERROR << "all usb transfers on endpoint 0x" << std::hex
-              << int(device_endpoint_) << std::dec
+    LOG_ERROR << "all usb transfers on endpoint 0x" << std::hex << int(device_endpoint_) << std::dec
               << " have stopped; the stream is stalled. Stop and close the "
                  "device, then reopen it (replug or reset the Kinect if "
                  "reopening fails). Common causes: USB3 bandwidth "
                  "or power limits, flaky cables/adapters, or VM USB "
                  "passthrough.";
-    if(event_listener_ != 0)
+    if (event_listener_ != 0)
       event_listener_->onTransferPoolEvent(TransferPoolEventListener::AllTransfersStalled,
                                            device_endpoint_);
   }
 }
 
-BulkTransferPool::BulkTransferPool(libusb_device_handle* device_handle, unsigned char device_endpoint) :
-    TransferPool(device_handle, device_endpoint)
+BulkTransferPool::BulkTransferPool(libusb_device_handle* device_handle,
+                                   unsigned char device_endpoint)
+    : TransferPool(device_handle, device_endpoint)
 {
 }
 
-BulkTransferPool::~BulkTransferPool()
-{
-}
+BulkTransferPool::~BulkTransferPool() {}
 
 void BulkTransferPool::allocate(size_t num_transfers, size_t transfer_size)
 {
@@ -303,23 +292,19 @@ void BulkTransferPool::fillTransfer(libusb_transfer* transfer)
 
 void BulkTransferPool::processTransfer(libusb_transfer* transfer, uint64_t arrival_timestamp_us)
 {
-  if(transfer->status != LIBUSB_TRANSFER_COMPLETED) return;
+  if (transfer->status != LIBUSB_TRANSFER_COMPLETED)
+    return;
 
-  if(callback_)
-    callback_->onDataReceived(transfer->buffer, transfer->actual_length,
-                              arrival_timestamp_us);
+  if (callback_)
+    callback_->onDataReceived(transfer->buffer, transfer->actual_length, arrival_timestamp_us);
 }
 
-IsoTransferPool::IsoTransferPool(libusb_device_handle* device_handle, unsigned char device_endpoint) :
-    TransferPool(device_handle, device_endpoint),
-    num_packets_(0),
-    packet_size_(0)
+IsoTransferPool::IsoTransferPool(libusb_device_handle* device_handle, unsigned char device_endpoint)
+    : TransferPool(device_handle, device_endpoint), num_packets_(0), packet_size_(0)
 {
 }
 
-IsoTransferPool::~IsoTransferPool()
-{
-}
+IsoTransferPool::~IsoTransferPool() {}
 
 void IsoTransferPool::allocate(size_t num_transfers, size_t num_packets, size_t packet_size)
 {
@@ -344,13 +329,14 @@ void IsoTransferPool::fillTransfer(libusb_transfer* transfer)
 
 void IsoTransferPool::processTransfer(libusb_transfer* transfer, uint64_t arrival_timestamp_us)
 {
-  unsigned char *ptr = transfer->buffer;
+  unsigned char* ptr = transfer->buffer;
 
-  for(size_t i = 0; i < num_packets_; ++i)
+  for (size_t i = 0; i < num_packets_; ++i)
   {
-    if(transfer->iso_packet_desc[i].status != LIBUSB_TRANSFER_COMPLETED) continue;
+    if (transfer->iso_packet_desc[i].status != LIBUSB_TRANSFER_COMPLETED)
+      continue;
 
-    if(callback_)
+    if (callback_)
       callback_->onDataReceived(ptr, transfer->iso_packet_desc[i].actual_length,
                                 arrival_timestamp_us);
 

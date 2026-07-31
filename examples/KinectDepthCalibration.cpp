@@ -41,8 +41,7 @@ bool parsePositiveDouble(const std::string& text, double& value)
   errno = 0;
   char* end = 0;
   const double parsed = std::strtod(text.c_str(), &end);
-  if (errno != 0 || end == text.c_str() || *end != '\0' || !std::isfinite(parsed) ||
-      parsed <= 0.0)
+  if (errno != 0 || end == text.c_str() || *end != '\0' || !std::isfinite(parsed) || parsed <= 0.0)
     return false;
   value = parsed;
   return true;
@@ -64,8 +63,7 @@ bool parseUint32(const std::string& text, uint32_t& value)
 
 bool collectFrames(libfreenect2::Freenect2Device& device, double known_distance_mm,
                    const libfreenect2::DepthCalibrationRoi& roi, uint32_t warmup_frame_count,
-                   uint32_t frame_count,
-                   std::vector<libfreenect2::DepthCalibrationSample>& samples,
+                   uint32_t frame_count, std::vector<libfreenect2::DepthCalibrationSample>& samples,
                    std::string& error)
 {
   libfreenect2::SyncMultiFrameListener listener(libfreenect2::Frame::Depth);
@@ -73,13 +71,12 @@ bool collectFrames(libfreenect2::Freenect2Device& device, double known_distance_
   if (!device.startStreams(false, true))
   {
     device.setIrAndDepthFrameListener(0);
-    error = "unable to start replay depth stream";
+    error = "unable to start depth stream";
     return false;
   }
 
   bool success = true;
-  const uint64_t total_frame_count =
-      static_cast<uint64_t>(warmup_frame_count) + frame_count;
+  const uint64_t total_frame_count = static_cast<uint64_t>(warmup_frame_count) + frame_count;
   for (uint64_t frame_index = 0; frame_index < total_frame_count; ++frame_index)
   {
     libfreenect2::FrameMap frames;
@@ -95,7 +92,7 @@ bool collectFrames(libfreenect2::Freenect2Device& device, double known_distance_
         !libfreenect2::computeDepthRoiStatistics(*depth->second, roi, statistics, &error))
     {
       if (depth == frames.end())
-        error = "replay delivered a frame set without depth";
+        error = "depth stream delivered a frame set without depth";
       listener.release(frames);
       success = false;
       break;
@@ -117,16 +114,15 @@ bool collectFrames(libfreenect2::Freenect2Device& device, double known_distance_
   device.setIrAndDepthFrameListener(0);
   if (success && !stopped)
   {
-    error = "unable to stop replay depth stream";
+    error = "unable to stop depth stream";
     success = false;
   }
   return success;
 }
 
-bool collectRecording(const RecordingInput& input,
-                      const libfreenect2::DepthCalibrationRoi& roi, uint32_t frame_count,
-                      const std::string& pipeline_name,
-                      std::string& serial, std::string& firmware,
+bool collectRecording(const RecordingInput& input, const libfreenect2::DepthCalibrationRoi& roi,
+                      uint32_t frame_count, const std::string& pipeline_name, std::string& serial,
+                      std::string& firmware,
                       std::vector<libfreenect2::DepthCalibrationSample>& samples,
                       std::string& error)
 {
@@ -137,8 +133,8 @@ bool collectRecording(const RecordingInput& input,
     return false;
   }
   libfreenect2::Freenect2Replay replay;
-  libfreenect2::Freenect2Device* device = replay.openRecording(
-      input.directory, pipeline, libfreenect2::ReplayOptions());
+  libfreenect2::Freenect2Device* device =
+      replay.openRecording(input.directory, pipeline, libfreenect2::ReplayOptions());
   if (device == 0)
   {
     error = "unable to open recording directory '" + input.directory + "'";
@@ -155,15 +151,15 @@ bool collectRecording(const RecordingInput& input,
   else if (serial != recording_serial || firmware != recording_firmware)
   {
     std::ostringstream message;
-    message << "recording device mismatch: expected " << serial << " / " << firmware
-            << ", got " << recording_serial << " / " << recording_firmware;
+    message << "recording device mismatch: expected " << serial << " / " << firmware << ", got "
+            << recording_serial << " / " << recording_firmware;
     error = message.str();
     device->close();
     return false;
   }
 
-  const bool collected = collectFrames(*device, input.known_distance_mm, roi, 0, frame_count,
-                                       samples, error);
+  const bool collected =
+      collectFrames(*device, input.known_distance_mm, roi, 0, frame_count, samples, error);
   const bool closed = device->close();
   if (collected && !closed)
   {
@@ -176,10 +172,8 @@ bool collectRecording(const RecordingInput& input,
 bool collectLive(const std::vector<double>& known_distances,
                  const libfreenect2::DepthCalibrationRoi& roi, uint32_t warmup_frame_count,
                  uint32_t frame_count, const std::string& requested_serial,
-                 const std::string& pipeline_name, std::string& serial,
-                 std::string& firmware,
-                 std::vector<libfreenect2::DepthCalibrationSample>& samples,
-                 std::string& error)
+                 const std::string& pipeline_name, std::string& serial, std::string& firmware,
+                 std::vector<libfreenect2::DepthCalibrationSample>& samples, std::string& error)
 {
   libfreenect2::Freenect2 freenect2;
   if (freenect2.enumerateDevices() == 0)
@@ -385,11 +379,9 @@ int main(int argc, char** argv)
   }
 
   std::cout << "Saved "
-            << (profile.model == libfreenect2::DepthCorrectionProfile::OffsetOnly
-                    ? "offset-only"
-                    : "linear")
+            << (profile.model == libfreenect2::DepthCorrectionProfile::OffsetOnly ? "offset-only"
+                                                                                  : "linear")
             << " profile for " << profile.serial << ": corrected_mm = " << profile.scale
-            << " * measured_mm + " << profile.offset_mm << ", RMSE " << profile.rmse_mm
-            << " mm\n";
+            << " * measured_mm + " << profile.offset_mm << ", RMSE " << profile.rmse_mm << " mm\n";
   return 0;
 }

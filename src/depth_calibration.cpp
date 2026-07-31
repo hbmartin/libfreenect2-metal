@@ -55,9 +55,7 @@ bool DepthCorrectionProfile::apply(Frame& depth) const
   return true;
 }
 
-DepthCalibrationRoi::DepthCalibrationRoi() : x(0), y(0), width(0), height(0)
-{
-}
+DepthCalibrationRoi::DepthCalibrationRoi() : x(0), y(0), width(0), height(0) {}
 
 DepthCalibrationRoi::DepthCalibrationRoi(uint32_t x_arg, uint32_t y_arg, uint32_t width_arg,
                                          uint32_t height_arg)
@@ -65,9 +63,7 @@ DepthCalibrationRoi::DepthCalibrationRoi(uint32_t x_arg, uint32_t y_arg, uint32_
 {
 }
 
-DepthRoiStatistics::DepthRoiStatistics() : median_mm(0.0), mad_mm(0.0), valid_pixel_count(0)
-{
-}
+DepthRoiStatistics::DepthRoiStatistics() : median_mm(0.0), mad_mm(0.0), valid_pixel_count(0) {}
 
 DepthCalibrationSample::DepthCalibrationSample()
     : known_distance_mm(0.0), measured_median_mm(0.0), mad_mm(0.0), valid_pixel_count(0)
@@ -123,8 +119,7 @@ bool computeDepthRoiStatistics(const Frame& depth, const DepthCalibrationRoi& ro
                                DepthRoiStatistics& statistics, std::string* error)
 {
   statistics = DepthRoiStatistics();
-  if (depth.data == NULL || depth.format != Frame::Float ||
-      depth.bytes_per_pixel != sizeof(float))
+  if (depth.data == NULL || depth.format != Frame::Float || depth.bytes_per_pixel != sizeof(float))
     return fail("depth frame is not decoded float data", error);
   if (roi.width == 0 || roi.height == 0 || roi.x >= depth.width || roi.y >= depth.height ||
       roi.width > depth.width - roi.x || roi.height > depth.height - roi.y)
@@ -162,7 +157,7 @@ bool fitDepthCorrectionProfile(const std::vector<DepthCalibrationSample>& sample
   if (samples.empty())
     return fail("at least one calibration sample is required", error);
 
-  std::map<double, std::vector<double> > measured_by_distance;
+  std::map<double, std::vector<double>> measured_by_distance;
   for (size_t index = 0; index < samples.size(); ++index)
   {
     const DepthCalibrationSample& sample = samples[index];
@@ -176,7 +171,7 @@ bool fitDepthCorrectionProfile(const std::vector<DepthCalibrationSample>& sample
 
   std::vector<double> known_distances;
   std::vector<double> measured_medians;
-  for (std::map<double, std::vector<double> >::iterator group = measured_by_distance.begin();
+  for (std::map<double, std::vector<double>>::iterator group = measured_by_distance.begin();
        group != measured_by_distance.end(); ++group)
   {
     known_distances.push_back(group->first);
@@ -225,8 +220,8 @@ bool fitDepthCorrectionProfile(const std::vector<DepthCalibrationSample>& sample
   double squared_error_sum = 0.0;
   for (size_t index = 0; index < samples.size(); ++index)
   {
-    const double residual = fitted.scale * samples[index].measured_median_mm +
-                            fitted.offset_mm - samples[index].known_distance_mm;
+    const double residual = fitted.scale * samples[index].measured_median_mm + fitted.offset_mm -
+                            samples[index].known_distance_mm;
     fitted.residuals_mm.push_back(residual);
     squared_error_sum += residual * residual;
   }
@@ -260,12 +255,11 @@ bool DepthCorrectionProfile::save(const std::string& path, std::string* error) c
   root["samples"] = nlohmann::json::array();
   for (size_t index = 0; index < samples.size(); ++index)
   {
-    root["samples"].push_back(
-        {{"known_distance_mm", samples[index].known_distance_mm},
-         {"measured_median_mm", samples[index].measured_median_mm},
-         {"mad_mm", samples[index].mad_mm},
-         {"valid_pixel_count", samples[index].valid_pixel_count},
-         {"residual_mm", residuals_mm[index]}});
+    root["samples"].push_back({{"known_distance_mm", samples[index].known_distance_mm},
+                               {"measured_median_mm", samples[index].measured_median_mm},
+                               {"mad_mm", samples[index].mad_mm},
+                               {"valid_pixel_count", samples[index].valid_pixel_count},
+                               {"residual_mm", residuals_mm[index]}});
   }
   return recording::writeFileAtomically(path, root.dump(2) + "\n", error);
 }
@@ -295,8 +289,7 @@ bool DepthCorrectionProfile::load(const std::string& path, DepthCorrectionProfil
       loaded.model = Linear;
     else
       return fail("unsupported depth correction model", error);
-    if (root.at("formula").get<std::string>() !=
-        "corrected_mm = scale * measured_mm + offset_mm")
+    if (root.at("formula").get<std::string>() != "corrected_mm = scale * measured_mm + offset_mm")
       return fail("unsupported depth correction formula", error);
     loaded.scale = root.at("scale").get<double>();
     loaded.offset_mm = root.at("offset_mm").get<double>();
@@ -317,7 +310,8 @@ bool DepthCorrectionProfile::load(const std::string& path, DepthCorrectionProfil
       sample.measured_median_mm = item->at("measured_median_mm").get<double>();
       sample.mad_mm = item->at("mad_mm").get<double>();
       const uint64_t valid_pixel_count = item->at("valid_pixel_count").get<uint64_t>();
-      if (valid_pixel_count > std::numeric_limits<size_t>::max())
+      if (sizeof(size_t) < sizeof(uint64_t) &&
+          valid_pixel_count > static_cast<uint64_t>(std::numeric_limits<size_t>::max()))
         return fail("depth correction sample count is too large", error);
       sample.valid_pixel_count = static_cast<size_t>(valid_pixel_count);
       loaded.samples.push_back(sample);

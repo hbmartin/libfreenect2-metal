@@ -46,8 +46,7 @@ public:
    * @param arrival_timestamp_us Monotonic time captured when the USB transfer
    * completed, or zero when the caller has no host-arrival timestamp.
    */
-  virtual void onDataReceived(unsigned char *buffer, size_t n,
-                              uint64_t arrival_timestamp_us = 0) = 0;
+  virtual void onDataReceived(unsigned char* buffer, size_t n, uint64_t arrival_timestamp_us) = 0;
 };
 
 } // namespace libfreenect2

@@ -19,6 +19,7 @@
 #include <iomanip>
 #include <limits>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 namespace libfreenect2
@@ -60,7 +61,7 @@ public:
   RecordingWriterImpl(const std::string& directory, size_t queue_capacity)
       : directory_(directory), queue_capacity_(queue_capacity), worker_(0), accepting_(false),
         stopping_(false), start_time_us_(monotonicTimeMicroseconds()), next_index_(0),
-        calibration_set_(false), closed_(false)
+        calibration_set_(false), calibration_in_progress_(false), closed_(false)
   {
     if (directory_.empty())
     {
@@ -105,6 +106,23 @@ public:
       return false;
 
     RecordingJob job;
+    const bool is_color = type == Frame::Color;
+    job.entry.stream = is_color ? "color" : "depth";
+    job.entry.byte_count = byte_count;
+    job.entry.device_timestamp = frame->timestamp;
+    job.entry.sequence = frame->sequence;
+    job.entry.arrival_offset_us = frame->arrival_timestamp_us > start_time_us_
+                                      ? frame->arrival_timestamp_us - start_time_us_
+                                      : 0;
+    job.entry.has_rgb_metadata = is_color;
+    if (is_color)
+    {
+      job.entry.exposure = frame->exposure;
+      job.entry.gain = frame->gain;
+      job.entry.gamma = frame->gamma;
+    }
+    job.data.assign(frame->data, frame->data + byte_count);
+
     {
       libfreenect2::lock_guard guard(mutex_);
       if (!accepting_)
@@ -116,25 +134,9 @@ public:
       }
 
       job.entry.index = next_index_++;
-      const bool is_color = type == Frame::Color;
-      job.entry.stream = is_color ? "color" : "depth";
       job.entry.path =
           frameRelativePath(job.entry.stream, job.entry.index, is_color ? ".jpg" : ".depth");
-      job.entry.byte_count = byte_count;
-      job.entry.device_timestamp = frame->timestamp;
-      job.entry.sequence = frame->sequence;
-      job.entry.arrival_offset_us = frame->arrival_timestamp_us > start_time_us_
-                                        ? frame->arrival_timestamp_us - start_time_us_
-                                        : 0;
-      job.entry.has_rgb_metadata = is_color;
-      if (is_color)
-      {
-        job.entry.exposure = frame->exposure;
-        job.entry.gain = frame->gain;
-        job.entry.gamma = frame->gamma;
-      }
-      job.data.assign(frame->data, frame->data + byte_count);
-      queue_.push_back(job);
+      queue_.push_back(std::move(job));
     }
     condition_.notify_one();
     return false;
@@ -143,44 +145,63 @@ public:
   bool setCalibration(const std::string& serial, const std::string& firmware,
                       const CalibrationData& calibration)
   {
-    libfreenect2::lock_guard guard(mutex_);
-    if (!accepting_)
+    // Serialize calibration publication with close(), while allowing ordinary
+    // state/statistics readers to proceed during the filesystem write.
+    libfreenect2::lock_guard close_guard(close_mutex_);
+    recording::ManifestV1 pending_manifest;
+    std::vector<unsigned char> p0_tables;
     {
-      if (last_error_.empty())
-        last_error_ = "recording writer is not open";
-      return false;
-    }
-    if (calibration_set_)
-    {
-      last_error_ = "recording calibration was already published";
-      return false;
-    }
-    if (serial.empty() || firmware.empty())
-    {
-      last_error_ = "recording calibration requires a serial and firmware";
-      return false;
-    }
-    if (calibration.p0_tables.size() < sizeof(protocol::P0TablesResponse))
-    {
-      last_error_ = "recording calibration contains a truncated P0 table response";
-      return false;
+      libfreenect2::lock_guard guard(mutex_);
+      if (!accepting_)
+      {
+        if (last_error_.empty())
+          last_error_ = "recording writer is not open";
+        return false;
+      }
+      if (calibration_set_ || calibration_in_progress_)
+      {
+        last_error_ = "recording calibration was already published";
+        return false;
+      }
+      if (serial.empty() || firmware.empty())
+      {
+        last_error_ = "recording calibration requires a serial and firmware";
+        return false;
+      }
+      if (calibration.p0_tables.size() < sizeof(protocol::P0TablesResponse))
+      {
+        last_error_ = "recording calibration contains a truncated P0 table response";
+        return false;
+      }
+
+      pending_manifest = manifest_;
+      pending_manifest.serial = serial;
+      pending_manifest.firmware = firmware;
+      pending_manifest.color = calibration.color;
+      pending_manifest.ir = calibration.ir;
+      p0_tables = calibration.p0_tables;
+      calibration_in_progress_ = true;
     }
 
     std::string error;
     if (!recording::writeFileAtomically(recording::joinPath(directory_, "calibration/p0.bin"),
-                                        &calibration.p0_tables[0], calibration.p0_tables.size(),
-                                        &error))
+                                        &p0_tables[0], p0_tables.size(), &error))
     {
+      libfreenect2::lock_guard guard(mutex_);
+      calibration_in_progress_ = false;
       last_error_ = error;
       accepting_ = false;
+      stopping_ = true;
+      condition_.notify_all();
       return false;
     }
 
-    manifest_.serial = serial;
-    manifest_.firmware = firmware;
-    manifest_.color = calibration.color;
-    manifest_.ir = calibration.ir;
-    calibration_set_ = true;
+    {
+      libfreenect2::lock_guard guard(mutex_);
+      manifest_ = pending_manifest;
+      calibration_set_ = true;
+      calibration_in_progress_ = false;
+    }
     return true;
   }
 
@@ -258,6 +279,7 @@ private:
     if (last_error_.empty())
       last_error_ = error;
     accepting_ = false;
+    stopping_ = true;
     stats_.dropped_frames += queue_.size();
     queue_.clear();
   }
@@ -277,7 +299,7 @@ private:
             break;
           continue;
         }
-        job = queue_.front();
+        job = std::move(queue_.front());
         queue_.pop_front();
       }
 
@@ -313,6 +335,7 @@ private:
   uint64_t next_index_;
   recording::ManifestV1 manifest_;
   bool calibration_set_;
+  bool calibration_in_progress_;
   bool closed_;
   recording::FrameJournal journal_;
   RecordingWriter::Stats stats_;

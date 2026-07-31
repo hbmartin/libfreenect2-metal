@@ -90,8 +90,8 @@ TEST(DepthStreamParser, AssemblesFullFrameAndForwardsOnce)
   std::vector<unsigned char> first = makeSubpacket(1, 0);
   const size_t first_fragment_size = 1234;
   parser.onDataReceived(first.data(), first_fragment_size, 100);
-  parser.onDataReceived(first.data() + first_fragment_size,
-                        first.size() - first_fragment_size, 200);
+  parser.onDataReceived(first.data() + first_fragment_size, first.size() - first_fragment_size,
+                        200);
 
   // Complete the remaining subsequences of sequence 1 ...
   for (uint32_t s = 1; s < 10; ++s)
@@ -109,6 +109,26 @@ TEST(DepthStreamParser, AssemblesFullFrameAndForwardsOnce)
   // retains the first subpacket's device timestamp rather than the last one's.
   EXPECT_EQ(proc.last_timestamp, 1000u);
   EXPECT_EQ(proc.last_arrival_timestamp_us, 100u);
+}
+
+TEST(DepthStreamParser, CapturesTimestampsWhenFirstSequenceIsZero)
+{
+  CapturingDepthProcessor proc;
+  DepthPacketStreamParser parser;
+  parser.setPacketProcessor(&proc);
+
+  for (uint32_t subsequence = 0; subsequence < 10; ++subsequence)
+  {
+    std::vector<unsigned char> subpacket = makeSubpacket(0, subsequence);
+    feed(parser, subpacket, 500 + subsequence);
+  }
+  std::vector<unsigned char> flush = makeSubpacket(1, 0);
+  feed(parser, flush, 999);
+
+  ASSERT_EQ(proc.count, 1);
+  EXPECT_EQ(proc.last_sequence, 0u);
+  EXPECT_EQ(proc.last_timestamp, 1000u);
+  EXPECT_EQ(proc.last_arrival_timestamp_us, 500u);
 }
 
 TEST(DepthStreamParser, RejectsOutOfRangeSubsequenceWithoutForwarding)
@@ -149,7 +169,7 @@ TEST(DepthStreamParser, HandlesZeroLengthResyncAndGarbage)
   parser.setPacketProcessor(&proc);
 
   // Zero-length transfer is the resync signal — must not crash.
-  parser.onDataReceived(0, 0);
+  parser.onDataReceived(0, 0, 0);
 
   // Random-sized garbage that never matches the footer boundary — must be
   // absorbed without a crash or forwarded packet.

@@ -4,6 +4,7 @@
 #include <chrono>
 #include <future>
 #include <limits>
+#include <memory>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -30,7 +31,7 @@ bool waitForValue(const std::atomic<int>& value, int expected)
 {
   const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now() + std::chrono::seconds(2);
-  while(value.load() != expected && std::chrono::steady_clock::now() < deadline)
+  while (value.load() != expected && std::chrono::steady_clock::now() < deadline)
     std::this_thread::yield();
   return value.load() == expected;
 }
@@ -77,32 +78,41 @@ Frame* makeTimestampedFrame(uint32_t timestamp)
 
 TEST(PoolAllocator, BlocksUntilABufferIsReleased)
 {
-  PoolAllocator allocator;
-  std::atomic<bool> entered(false);
-  std::promise<Buffer*> first_promise;
-  std::promise<Buffer*> second_promise;
-  std::promise<Buffer*> result_promise;
-  std::future<Buffer*> first_result = first_promise.get_future();
-  std::future<Buffer*> second_result = second_promise.get_future();
-  std::future<Buffer*> result = result_promise.get_future();
-  std::thread waiter([&]() {
-    first_promise.set_value(allocator.allocate(64));
-    second_promise.set_value(allocator.allocate(64));
-    entered.store(true);
-    result_promise.set_value(allocator.allocate(64));
-  });
+  const std::shared_ptr<PoolAllocator> allocator(new PoolAllocator());
+  const std::shared_ptr<std::atomic<bool>> entered(new std::atomic<bool>(false));
+  const std::shared_ptr<std::promise<Buffer*>> first_promise(new std::promise<Buffer*>());
+  const std::shared_ptr<std::promise<Buffer*>> second_promise(new std::promise<Buffer*>());
+  const std::shared_ptr<std::promise<Buffer*>> result_promise(new std::promise<Buffer*>());
+  std::future<Buffer*> first_result = first_promise->get_future();
+  std::future<Buffer*> second_result = second_promise->get_future();
+  std::future<Buffer*> result = result_promise->get_future();
+  std::thread waiter(
+      [=]()
+      {
+        first_promise->set_value(allocator->allocate(64));
+        second_promise->set_value(allocator->allocate(64));
+        entered->store(true);
+        result_promise->set_value(allocator->allocate(64));
+      });
 
+  if (first_result.wait_for(std::chrono::seconds(2)) != std::future_status::ready ||
+      second_result.wait_for(std::chrono::seconds(2)) != std::future_status::ready)
+  {
+    waiter.detach();
+    ADD_FAILURE() << "initial pool allocations did not complete before the deadline";
+    return;
+  }
   Buffer* first = first_result.get();
   Buffer* second = second_result.get();
-  while(!entered.load())
+  while (!entered->load())
     std::this_thread::yield();
   EXPECT_EQ(result.wait_for(std::chrono::milliseconds(25)), std::future_status::timeout);
 
-  allocator.free(first);
+  allocator->free(first);
   std::future_status status = result.wait_for(std::chrono::seconds(2));
-  if(status != std::future_status::ready)
+  if (status != std::future_status::ready)
   {
-    allocator.free(second);
+    allocator->free(second);
     waiter.join();
     ASSERT_EQ(status, std::future_status::ready);
     return;
@@ -113,8 +123,8 @@ TEST(PoolAllocator, BlocksUntilABufferIsReleased)
 
   EXPECT_EQ(reused, first);
   EXPECT_EQ(reused->length, 0u);
-  allocator.free(reused);
-  allocator.free(second);
+  allocator->free(reused);
+  allocator->free(second);
 }
 
 TEST(AsyncPacketProcessor, ProcessesAndReleasesPacketsUnderLoad)
@@ -122,9 +132,9 @@ TEST(AsyncPacketProcessor, ProcessesAndReleasesPacketsUnderLoad)
   CountingProcessor processor;
   {
     AsyncPacketProcessor<TestPacket> async(&processor);
-    for(int value = 1; value <= 200; ++value)
+    for (int value = 1; value <= 200; ++value)
     {
-      while(!async.ready())
+      while (!async.ready())
         std::this_thread::yield();
 
       TestPacket packet;
@@ -143,10 +153,12 @@ TEST(AsyncPacketProcessor, ProcessesAndReleasesPacketsUnderLoad)
 TEST(SyncMultiFrameListener, CoordinatesProducerAndConsumerThreads)
 {
   SyncMultiFrameListener listener(Frame::Color | Frame::Depth);
-  std::thread producer([&]() {
-    EXPECT_TRUE(listener.onNewFrame(Frame::Color, new Frame(1, 1, 4)));
-    EXPECT_TRUE(listener.onNewFrame(Frame::Depth, new Frame(1, 1, 4)));
-  });
+  std::thread producer(
+      [&]()
+      {
+        EXPECT_TRUE(listener.onNewFrame(Frame::Color, new Frame(1, 1, 4)));
+        EXPECT_TRUE(listener.onNewFrame(Frame::Depth, new Frame(1, 1, 4)));
+      });
 
   FrameMap frames;
   listener.waitForNewFrame(frames);

@@ -35,11 +35,11 @@ using libfreenect2::DepthPacketProcessor;
 using libfreenect2::Frame;
 using libfreenect2::Freenect2Device;
 using libfreenect2::testing::CollectingFrameListener;
-using libfreenect2::testing::DepthFilterConfiguration;
-using libfreenect2::testing::DepthFrameAgreement;
 using libfreenect2::testing::compareDepthFrames;
 using libfreenect2::testing::countValidDepthPixels;
+using libfreenect2::testing::DepthFilterConfiguration;
 using libfreenect2::testing::depthFilterConfigurations;
+using libfreenect2::testing::DepthFrameAgreement;
 using libfreenect2::testing::loadSyntheticTables;
 using libfreenect2::testing::makeIrParams;
 using libfreenect2::testing::makeSyntheticDepthBuffer;
@@ -197,12 +197,11 @@ TEST(MetalCpuParity, ReconfigurationIsAdoptedCleanly)
 TEST(MetalCpuParity, SupportsEveryFilterCombination)
 {
   libfreenect2::MetalDepthPacketProcessor metal;
-  if(!metal.good())
+  if (!metal.good())
     GTEST_SKIP() << "No usable Metal device on this machine";
 
-  const std::array<DepthFilterConfiguration, 4>& configurations =
-      depthFilterConfigurations();
-  for(size_t i = 0; i < configurations.size(); ++i)
+  const std::array<DepthFilterConfiguration, 4>& configurations = depthFilterConfigurations();
+  for (size_t i = 0; i < configurations.size(); ++i)
   {
     const DepthFilterConfiguration& filter = configurations[i];
     SCOPED_TRACE(filter.name);
@@ -215,6 +214,7 @@ TEST(MetalCpuParity, SupportsEveryFilterCombination)
 
     ASSERT_NE(cpu_output.depth(), nullptr);
     ASSERT_NE(metal_output.depth(), nullptr);
+    EXPECT_GT(countValidDepthPixels(cpu_output.depth()), 0u);
     EXPECT_GT(countValidDepthPixels(metal_output.depth()), 0u);
 
     const DepthFrameAgreement agreement = compareDepthFrames(

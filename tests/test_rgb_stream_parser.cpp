@@ -127,7 +127,7 @@ TEST(RgbStreamParser, ExtractsValidJpegPacket)
 
   const size_t jpeg_len = 512;
   std::vector<unsigned char> pkt = makePacket(/*sequence=*/9, jpeg_len);
-  parser.onDataReceived(pkt.data(), pkt.size());
+  parser.onDataReceived(pkt.data(), pkt.size(), 0);
 
   ASSERT_EQ(proc.count, 1);
   EXPECT_EQ(proc.last_sequence, 9u);
@@ -141,7 +141,7 @@ TEST(RgbStreamParser, RejectsPacketWithoutEoiMarker)
   parser.setPacketProcessor(&proc);
 
   std::vector<unsigned char> pkt = makePacket(3, 512, /*good_eoi=*/false);
-  parser.onDataReceived(pkt.data(), pkt.size());
+  parser.onDataReceived(pkt.data(), pkt.size(), 0);
 
   EXPECT_EQ(proc.count, 0);
 }
@@ -173,7 +173,7 @@ TEST(RgbStreamParser, RejectsPacketWithMismatchedSize)
   parser.setPacketProcessor(&proc);
 
   std::vector<unsigned char> pkt = makePacket(3, 512, true, /*packet_size_delta=*/+1);
-  parser.onDataReceived(pkt.data(), pkt.size());
+  parser.onDataReceived(pkt.data(), pkt.size(), 0);
 
   EXPECT_EQ(proc.count, 0);
 }
@@ -186,7 +186,7 @@ TEST(RgbStreamParser, IgnoresTruncatedInputWithoutCrash)
 
   // Fewer bytes than a header + footer — must return early, no crash.
   std::vector<unsigned char> tiny(16, 0xaa);
-  parser.onDataReceived(tiny.data(), tiny.size());
+  parser.onDataReceived(tiny.data(), tiny.size(), 0);
 
   EXPECT_EQ(proc.count, 0);
 }

@@ -42,8 +42,7 @@ namespace libfreenect2
 {
 
 /** Footer of a depth packet. */
-LIBFREENECT2_PACK(struct DepthSubPacketFooter
-{
+LIBFREENECT2_PACK(struct DepthSubPacketFooter {
   uint32_t magic0;
   uint32_t magic1;
   uint32_t timestamp;
@@ -63,12 +62,13 @@ public:
   DepthPacketStreamParser();
   virtual ~DepthPacketStreamParser();
 
-  void setPacketProcessor(libfreenect2::BaseDepthPacketProcessor *processor);
+  void setPacketProcessor(libfreenect2::BaseDepthPacketProcessor* processor);
 
   virtual void onDataReceived(unsigned char* buffer, size_t length,
                               uint64_t arrival_timestamp_us = 0);
+
 private:
-  libfreenect2::BaseDepthPacketProcessor *processor_;
+  libfreenect2::BaseDepthPacketProcessor* processor_;
 
   size_t buffer_size_;
   DepthPacket packet_;
@@ -80,6 +80,7 @@ private:
   uint32_t current_timestamp_;
   uint64_t current_arrival_timestamp_us_;
   uint64_t work_buffer_arrival_timestamp_us_;
+  bool sequence_started_;
   bool null_buffer_logged_;
 };
 

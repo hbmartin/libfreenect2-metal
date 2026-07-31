@@ -26,7 +26,7 @@ available.
 To create the labeled contact sheet, install Pillow and run:
 
 ```sh
-python3 -m pip install 'Pillow==12.3.0'  # Image.Resampling requires Pillow >= 9.1
+python3 -m pip install 'Pillow>=9.1'
 python3 tools/kinect_capture/compose_capture.py captures/example
 ```
 

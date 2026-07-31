@@ -18,6 +18,7 @@ namespace libfreenect2
 class RgbDecoderFallback : public RgbPacketProcessor
 {
 public:
+  /** Take ownership of both decoder pointers. Either pointer may be null. */
   RgbDecoderFallback(RgbPacketProcessor* primary, RgbPacketProcessor* fallback);
   virtual ~RgbDecoderFallback();
 

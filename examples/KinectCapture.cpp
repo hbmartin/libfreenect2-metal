@@ -326,8 +326,8 @@ int main(int argc, char** argv)
   if (apply_depth_correction)
   {
     std::string error;
-    if (!libfreenect2::DepthCorrectionProfile::load(correction_profile_path,
-                                                     correction_profile, &error))
+    if (!libfreenect2::DepthCorrectionProfile::load(correction_profile_path, correction_profile,
+                                                    &error))
     {
       std::cerr << "Unable to load depth correction profile: " << error << "\n";
       return 2;
@@ -410,13 +410,11 @@ int main(int argc, char** argv)
     }
 
     const std::chrono::steady_clock::time_point deadline =
-        std::chrono::steady_clock::now() +
-        std::chrono::seconds(recording_duration_seconds);
+        std::chrono::steady_clock::now() + std::chrono::seconds(recording_duration_seconds);
     while (writer.isOpen())
     {
       const libfreenect2::RecordingWriter::Stats stats = writer.getStats();
-      if (recording_depth_frames != 0 &&
-          stats.written_depth_frames >= recording_depth_frames)
+      if (recording_depth_frames != 0 && stats.written_depth_frames >= recording_depth_frames)
         break;
       if (recording_duration_seconds != 0 && std::chrono::steady_clock::now() >= deadline)
         break;
@@ -433,7 +431,9 @@ int main(int argc, char** argv)
                 << device->getLastError() << "\n";
     }
     if (!recording_ok ||
-        (recording_depth_frames != 0 && stats.written_depth_frames < recording_depth_frames))
+        (recording_depth_frames != 0 && stats.written_depth_frames < recording_depth_frames) ||
+        (recording_duration_seconds != 0 && stats.written_color_frames == 0 &&
+         stats.written_depth_frames == 0))
     {
       std::cerr << "Recording did not complete cleanly: " << writer.getLastError() << "\n";
       return 1;
@@ -451,6 +451,18 @@ int main(int argc, char** argv)
   libfreenect2::FrameListener* listener =
       timestamp_aligned ? static_cast<libfreenect2::FrameListener*>(&aligned_listener)
                         : static_cast<libfreenect2::FrameListener*>(&legacy_listener);
+  const auto waitForFrames = [&](libfreenect2::FrameMap& map, int timeout_ms)
+  {
+    return timestamp_aligned ? aligned_listener.waitForNewFrame(map, timeout_ms)
+                             : legacy_listener.waitForNewFrame(map, timeout_ms);
+  };
+  const auto releaseFrames = [&](libfreenect2::FrameMap& map)
+  {
+    if (timestamp_aligned)
+      aligned_listener.release(map);
+    else
+      legacy_listener.release(map);
+  };
   device->setColorFrameListener(listener);
   device->setIrAndDepthFrameListener(listener);
   if (!device->start())
@@ -466,9 +478,9 @@ int main(int argc, char** argv)
         correction_profile.serial == serial && correction_profile.firmware == firmware;
     if (!correction_device_match)
     {
-      std::cerr << "Warning: depth correction profile was fitted for "
-                << correction_profile.serial << " / " << correction_profile.firmware
-                << ", but the open device is " << serial << " / " << firmware << "\n";
+      std::cerr << "Warning: depth correction profile was fitted for " << correction_profile.serial
+                << " / " << correction_profile.firmware << ", but the open device is " << serial
+                << " / " << firmware << "\n";
       if (!allow_device_mismatch)
       {
         std::cerr << "Refusing to apply a mismatched profile without "
@@ -483,8 +495,7 @@ int main(int argc, char** argv)
   libfreenect2::FrameMap frames;
   for (int i = 0; i < 20; ++i)
   {
-    const bool received = timestamp_aligned ? aligned_listener.waitForNewFrame(frames, 10000)
-                                            : legacy_listener.waitForNewFrame(frames, 10000);
+    const bool received = waitForFrames(frames, 10000);
     if (!received)
     {
       std::cerr << "Timed out waiting for frame set " << i;
@@ -503,10 +514,7 @@ int main(int argc, char** argv)
     }
     if (i != 19)
     {
-      if (timestamp_aligned)
-        aligned_listener.release(frames);
-      else
-        legacy_listener.release(frames);
+      releaseFrames(frames);
     }
   }
 
@@ -519,10 +527,7 @@ int main(int argc, char** argv)
   if (!color || !ir || !depth || color->status != 0 || ir->status != 0 || depth->status != 0)
   {
     std::cerr << "Received an incomplete or invalid synchronized frame set\n";
-    if (timestamp_aligned)
-      aligned_listener.release(frames);
-    else
-      legacy_listener.release(frames);
+    releaseFrames(frames);
     device->stop();
     device->close();
     return 1;
@@ -531,10 +536,7 @@ int main(int argc, char** argv)
   if (apply_depth_correction && !correction_profile.apply(*depth))
   {
     std::cerr << "Depth correction profile could not be applied to the decoded depth frame\n";
-    if (timestamp_aligned)
-      aligned_listener.release(frames);
-    else
-      legacy_listener.release(frames);
+    releaseFrames(frames);
     device->stop();
     device->close();
     return 1;
@@ -586,11 +588,12 @@ int main(int argc, char** argv)
   if (apply_depth_correction)
   {
     metadata << ",\n"
+             << std::setprecision(std::numeric_limits<double>::max_digits10)
              << "  \"depth_correction\": {\"scale\": " << correction_profile.scale
              << ", \"offset_mm\": " << correction_profile.offset_mm
              << ", \"rmse_mm\": " << correction_profile.rmse_mm
-             << ", \"device_match\": " << (correction_device_match ? "true" : "false")
-             << "}";
+             << ", \"device_match\": " << (correction_device_match ? "true" : "false") << "}"
+             << std::setprecision(2);
   }
   if (timestamp_aligned)
   {
@@ -606,10 +609,7 @@ int main(int argc, char** argv)
   metadata.flush();
   output_ok = metadata.good() && output_ok;
 
-  if (timestamp_aligned)
-    aligned_listener.release(frames);
-  else
-    legacy_listener.release(frames);
+  releaseFrames(frames);
   device->stop();
   device->close();
   if (!output_ok)

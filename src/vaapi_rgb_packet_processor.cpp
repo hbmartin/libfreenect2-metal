@@ -39,48 +39,75 @@
 #include "libfreenect2/logging.h"
 #include "libfreenect2/allocator.h"
 
-#define CHECK_COND(cond) do { if (!(cond)) { LOG_ERROR << #cond " failed"; return false; } } while(0)
-#define CHECK_VA(expr) do { VAStatus err = (expr); if (err != VA_STATUS_SUCCESS) { LOG_ERROR << #expr ": " << vaErrorStr(err); return false; } } while(0)
-#define CALL_VA(expr) do { VAStatus err = (expr); if (err != VA_STATUS_SUCCESS) { LOG_ERROR << #expr ": " << vaErrorStr(err); } } while(0)
+#define CHECK_COND(cond)                                                                           \
+  do                                                                                               \
+  {                                                                                                \
+    if (!(cond))                                                                                   \
+    {                                                                                              \
+      LOG_ERROR << #cond " failed";                                                                \
+      return false;                                                                                \
+    }                                                                                              \
+  } while (0)
+#define CHECK_VA(expr)                                                                             \
+  do                                                                                               \
+  {                                                                                                \
+    VAStatus err = (expr);                                                                         \
+    if (err != VA_STATUS_SUCCESS)                                                                  \
+    {                                                                                              \
+      LOG_ERROR << #expr ": " << vaErrorStr(err);                                                  \
+      return false;                                                                                \
+    }                                                                                              \
+  } while (0)
+#define CALL_VA(expr)                                                                              \
+  do                                                                                               \
+  {                                                                                                \
+    VAStatus err = (expr);                                                                         \
+    if (err != VA_STATUS_SUCCESS)                                                                  \
+    {                                                                                              \
+      LOG_ERROR << #expr ": " << vaErrorStr(err);                                                  \
+    }                                                                                              \
+  } while (0)
 
 namespace libfreenect2
 {
 
-class VaapiImage: public Buffer
+class VaapiImage : public Buffer
 {
 public:
   VAImage image;
 };
 
-class VaapiImageAllocator: public Allocator
+class VaapiImageAllocator : public Allocator
 {
 public:
   VADisplay display;
   unsigned short width;
   unsigned short height;
   VAImageFormat format;
-  Allocator *pool;
+  Allocator* pool;
 
-  VaapiImageAllocator(VADisplay display, unsigned short width, unsigned short height, const VAImageFormat &format):
-    display(display), width(width), height(height), format(format)
+  VaapiImageAllocator(VADisplay display, unsigned short width, unsigned short height,
+                      const VAImageFormat& format)
+      : display(display), width(width), height(height), format(format)
   {
   }
 
-  virtual Buffer *allocate(size_t size)
+  virtual Buffer* allocate(size_t size)
   {
     (void)size;
-    VaapiImage *vi = new VaapiImage();
+    VaapiImage* vi = new VaapiImage();
     vi->allocator = this;
     CALL_VA(vaCreateImage(display, &format, width, height, &vi->image));
     return vi;
   }
 
-  virtual void free(Buffer *b)
+  virtual void free(Buffer* b)
   {
     if (b == NULL)
       return;
-    VaapiImage *vi = static_cast<VaapiImage *>(b);
-    if (vi->data) {
+    VaapiImage* vi = static_cast<VaapiImage*>(b);
+    if (vi->data)
+    {
       CALL_VA(vaUnmapBuffer(display, vi->image.buf));
       vi->data = NULL;
     }
@@ -89,11 +116,12 @@ public:
   }
 };
 
-class VaapiFrame: public Frame
+class VaapiFrame : public Frame
 {
 public:
-  VaapiFrame(VaapiImage *vi):
-    Frame(vi->image.width, vi->image.height, vi->image.format.bits_per_pixel/8, (unsigned char*)-1)
+  VaapiFrame(VaapiImage* vi)
+      : Frame(vi->image.width, vi->image.height, vi->image.format.bits_per_pixel / 8,
+              (unsigned char*)-1)
   {
     data = NULL;
     rawdata = reinterpret_cast<unsigned char*>(vi);
@@ -101,17 +129,18 @@ public:
 
   virtual ~VaapiFrame()
   {
-    VaapiImage *vi = reinterpret_cast<VaapiImage *>(rawdata);
+    VaapiImage* vi = reinterpret_cast<VaapiImage*>(rawdata);
     vi->allocator->free(vi);
     rawdata = NULL;
   }
 
   bool draw(VADisplay display, VASurfaceID surface)
   {
-    VaapiImage *vi = reinterpret_cast<VaapiImage *>(rawdata);
-    VAImage &image = vi->image;
+    VaapiImage* vi = reinterpret_cast<VaapiImage*>(rawdata);
+    VAImage& image = vi->image;
     data = NULL;
-    if (vi->data != NULL) {
+    if (vi->data != NULL)
+    {
       vi->data = NULL;
       CHECK_VA(vaUnmapBuffer(display, image.buf));
     }
@@ -122,19 +151,21 @@ public:
   }
 };
 
-class VaapiBuffer: public Buffer
+class VaapiBuffer : public Buffer
 {
 public:
   VABufferID id;
 
-  VaapiBuffer(): Buffer(), id(VA_INVALID_ID) {}
+  VaapiBuffer() : Buffer(), id(VA_INVALID_ID) {}
 };
 
 class VaapiBufferMapRestorer
 {
 public:
-  VaapiBufferMapRestorer(VADisplay display, VaapiBuffer *buffer):
-    display_(display), buffer_(buffer), restore_(false) {}
+  VaapiBufferMapRestorer(VADisplay display, VaapiBuffer* buffer)
+      : display_(display), buffer_(buffer), restore_(false)
+  {
+  }
 
   ~VaapiBufferMapRestorer()
   {
@@ -147,7 +178,8 @@ public:
     if (buffer_ == NULL || buffer_->id == VA_INVALID_ID || buffer_->data == NULL)
       return false;
     const VAStatus status = vaUnmapBuffer(display_, buffer_->id);
-    if (status != VA_STATUS_SUCCESS) {
+    if (status != VA_STATUS_SUCCESS)
+    {
       LOG_ERROR << "vaUnmapBuffer: " << vaErrorStr(status);
       return false;
     }
@@ -161,7 +193,8 @@ public:
     if (!restore_)
       return true;
     const VAStatus status = vaMapBuffer(display_, buffer_->id, (void**)&buffer_->data);
-    if (status != VA_STATUS_SUCCESS) {
+    if (status != VA_STATUS_SUCCESS)
+    {
       LOG_ERROR << "vaMapBuffer: " << vaErrorStr(status);
       buffer_->data = NULL;
       return false;
@@ -172,17 +205,17 @@ public:
 
 private:
   VADisplay display_;
-  VaapiBuffer *buffer_;
+  VaapiBuffer* buffer_;
   bool restore_;
 };
 
-class VaapiAllocator: public Allocator
+class VaapiAllocator : public Allocator
 {
 private:
   VADisplay display;
   VAContextID context;
 
-  bool allocate_va(VaapiBuffer *b, size_t size)
+  bool allocate_va(VaapiBuffer* b, size_t size)
   {
     CHECK_VA(vaCreateBuffer(display, context, VASliceDataBufferType, size, 1, NULL, &b->id));
     CHECK_VA(vaMapBuffer(display, b->id, (void**)&b->data));
@@ -191,27 +224,28 @@ private:
   }
 
 public:
-  VaapiAllocator(VADisplay display, VAContextID context):
-    display(display), context(context) {}
+  VaapiAllocator(VADisplay display, VAContextID context) : display(display), context(context) {}
 
-  virtual Buffer *allocate(size_t size)
+  virtual Buffer* allocate(size_t size)
   {
-    VaapiBuffer *vb = new VaapiBuffer();
+    VaapiBuffer* vb = new VaapiBuffer();
     if (!allocate_va(vb, size))
       vb->data = NULL;
     return vb;
   }
 
-  virtual void free(Buffer *b)
+  virtual void free(Buffer* b)
   {
     if (b == NULL)
       return;
-    VaapiBuffer *vb = static_cast<VaapiBuffer *>(b);
-    if (vb->data) {
+    VaapiBuffer* vb = static_cast<VaapiBuffer*>(b);
+    if (vb->data)
+    {
       CALL_VA(vaUnmapBuffer(display, vb->id));
       vb->data = NULL;
     }
-    if (vb->id != VA_INVALID_ID) {
+    if (vb->id != VA_INVALID_ID)
+    {
       CALL_VA(vaDestroyBuffer(display, vb->id));
       vb->id = VA_INVALID_ID;
     }
@@ -219,9 +253,16 @@ public:
   }
 };
 
-class VaapiRgbPacketProcessorImpl: public WithPerfLogging
+class VaapiRgbPacketProcessorImpl : public WithPerfLogging
 {
 public:
+  enum DecodeResult
+  {
+    DecodeSuccess,
+    DecodeDroppedFrame,
+    DecodeFatalError
+  };
+
   int drm_fd;
   VADisplay display;
   VAConfigID config;
@@ -247,30 +288,17 @@ public:
   static const int WIDTH = 1920;
   static const int HEIGHT = 1080;
 
-  VaapiFrame *frame;
+  VaapiFrame* frame;
 
-  Allocator *buffer_allocator;
-  Allocator *image_allocator;
+  Allocator* buffer_allocator;
+  Allocator* image_allocator;
 
-  explicit VaapiRgbPacketProcessorImpl(const std::string &device_path):
-    drm_fd(-1),
-    display(NULL),
-    config(VA_INVALID_ID),
-    surface(VA_INVALID_SURFACE),
-    context(VA_INVALID_ID),
-    pic_param_buf(VA_INVALID_ID),
-    iq_buf(VA_INVALID_ID),
-    huff_buf(VA_INVALID_ID),
-    slice_param_buf(VA_INVALID_ID),
-    jpeg_first_packet(true),
-    jpeg_header_size(0),
-    display_initialized(false),
-    initialized(false),
-    healthy(false),
-    device_path(device_path),
-    frame(NULL),
-    buffer_allocator(NULL),
-    image_allocator(NULL)
+  explicit VaapiRgbPacketProcessorImpl(const std::string& device_path)
+      : drm_fd(-1), display(NULL), config(VA_INVALID_ID), surface(VA_INVALID_SURFACE),
+        context(VA_INVALID_ID), pic_param_buf(VA_INVALID_ID), iq_buf(VA_INVALID_ID),
+        huff_buf(VA_INVALID_ID), slice_param_buf(VA_INVALID_ID), jpeg_first_packet(true),
+        jpeg_header_size(0), display_initialized(false), initialized(false), healthy(false),
+        device_path(device_path), frame(NULL), buffer_allocator(NULL), image_allocator(NULL)
   {
     dinfo.err = jpeg_std_error(&jerr);
     jpeg_create_decompress(&dinfo);
@@ -286,13 +314,12 @@ public:
     std::memset(&format, 0, sizeof(format));
     format.fourcc = VA_FOURCC_BGRX;
     format.byte_order = VA_LSB_FIRST;
-    format.bits_per_pixel = 4*8;
+    format.bits_per_pixel = 4 * 8;
     format.depth = 8;
 
     image_allocator = new PoolAllocator(new VaapiImageAllocator(display, WIDTH, HEIGHT, format));
 
     newFrame();
-
   }
 
   ~VaapiRgbPacketProcessorImpl()
@@ -323,43 +350,49 @@ public:
 
   void newFrame()
   {
-    frame = new VaapiFrame(static_cast<VaapiImage *>(image_allocator->allocate(0)));
+    frame = new VaapiFrame(static_cast<VaapiImage*>(image_allocator->allocate(0)));
     frame->format = Frame::BGRX;
   }
 
-  bool tryInitializeDevice(const std::string &path)
+  bool tryInitializeDevice(const std::string& path)
   {
     int candidate_fd = open(path.c_str(), O_RDWR);
     if (candidate_fd < 0)
       return false;
     VADisplay candidate_display = vaGetDisplayDRM(candidate_fd);
-    if (!vaDisplayIsValid(candidate_display)) {
+    if (!vaDisplayIsValid(candidate_display))
+    {
       close(candidate_fd);
       return false;
     }
 
     int major_ver = 0;
     int minor_ver = 0;
-    if (vaInitialize(candidate_display, &major_ver, &minor_ver) != VA_STATUS_SUCCESS) {
+    if (vaInitialize(candidate_display, &major_ver, &minor_ver) != VA_STATUS_SUCCESS)
+    {
       close(candidate_fd);
       return false;
     }
     const int maximum = vaMaxNumEntrypoints(candidate_display);
     std::vector<VAEntrypoint> entrypoints(maximum > 0 ? maximum : 1);
     int count = 0;
-    const VAStatus status = vaQueryConfigEntrypoints(candidate_display, VAProfileJPEGBaseline,
-                                                     &entrypoints[0], &count);
+    const VAStatus status =
+        vaQueryConfigEntrypoints(candidate_display, VAProfileJPEGBaseline, &entrypoints[0], &count);
     bool supports_jpeg = status == VA_STATUS_SUCCESS && count > 0 && count <= maximum;
-    if (supports_jpeg) {
+    if (supports_jpeg)
+    {
       supports_jpeg = false;
-      for (int index = 0; index < count; ++index) {
-        if (entrypoints[index] == VAEntrypointVLD) {
+      for (int index = 0; index < count; ++index)
+      {
+        if (entrypoints[index] == VAEntrypointVLD)
+        {
           supports_jpeg = true;
           break;
         }
       }
     }
-    if (!supports_jpeg) {
+    if (!supports_jpeg)
+    {
       CALL_VA(vaTerminate(candidate_display));
       close(candidate_fd);
       return false;
@@ -372,18 +405,19 @@ public:
     return true;
   }
 
-  static void appendGlob(const char *pattern, std::vector<std::string> &paths)
+  static void appendGlob(const char* pattern, std::vector<std::string>& paths)
   {
     glob_t matches;
     std::memset(&matches, 0, sizeof(matches));
-    if (glob(pattern, 0, NULL, &matches) == 0) {
+    if (glob(pattern, 0, NULL, &matches) == 0)
+    {
       for (size_t index = 0; index < matches.gl_pathc; ++index)
         paths.push_back(matches.gl_pathv[index]);
     }
     globfree(&matches);
   }
 
-  static bool isNvidiaDevice(const std::string &path)
+  static bool isNvidiaDevice(const std::string& path)
   {
     const std::string::size_type separator = path.find_last_of('/');
     const std::string name = separator == std::string::npos ? path : path.substr(separator + 1);
@@ -396,15 +430,20 @@ public:
   bool initializeVaapi()
   {
     /* Open display */
-    if (!device_path.empty()) {
+    if (!device_path.empty())
+    {
       CHECK_COND(tryInitializeDevice(device_path));
-    } else {
+    }
+    else
+    {
       std::vector<std::string> drm_devices;
       appendGlob("/dev/dri/renderD*", drm_devices);
       appendGlob("/dev/dri/card*", drm_devices);
       for (std::vector<std::string>::const_iterator device = drm_devices.begin();
-           device != drm_devices.end(); ++device) {
-        if (isNvidiaDevice(*device)) {
+           device != drm_devices.end(); ++device)
+      {
+        if (isNvidiaDevice(*device))
+        {
           LOG_INFO << "skipping NVIDIA DRM node during automatic VAAPI probing: " << *device;
           continue;
         }
@@ -422,11 +461,13 @@ public:
 
     std::vector<VAEntrypoint> entrypoints(static_cast<size_t>(max_entrypoints));
     int num_entrypoints;
-    CHECK_VA(vaQueryConfigEntrypoints(display, VAProfileJPEGBaseline, entrypoints.data(), &num_entrypoints));
+    CHECK_VA(vaQueryConfigEntrypoints(display, VAProfileJPEGBaseline, entrypoints.data(),
+                                      &num_entrypoints));
     CHECK_COND(num_entrypoints >= 1 && num_entrypoints <= max_entrypoints);
 
     int vld_entrypoint;
-    for  (vld_entrypoint = 0; vld_entrypoint < num_entrypoints; vld_entrypoint++) {
+    for (vld_entrypoint = 0; vld_entrypoint < num_entrypoints; vld_entrypoint++)
+    {
       if (entrypoints[vld_entrypoint] == VAEntrypointVLD)
         break;
     }
@@ -435,8 +476,9 @@ public:
     VAConfigAttrib attr;
     attr.type = VAConfigAttribRTFormat;
     CHECK_VA(vaGetConfigAttributes(display, VAProfileJPEGBaseline, VAEntrypointVLD, &attr, 1));
-	unsigned int rtformat = VA_RT_FORMAT_YUV444;
-    if ((attr.value & rtformat) == 0) {
+    unsigned int rtformat = VA_RT_FORMAT_YUV444;
+    if ((attr.value & rtformat) == 0)
+    {
       LOG_WARNING << "YUV444 not supported by libva, chroma will be halved";
       rtformat = VA_RT_FORMAT_YUV420;
     }
@@ -452,7 +494,7 @@ public:
     return true;
   }
 
-  VABufferID createBuffer(VABufferType type, unsigned int size, void *data)
+  VABufferID createBuffer(VABufferType type, unsigned int size, void* data)
   {
     VABufferID buffer = VA_INVALID_ID;
     CALL_VA(vaCreateBuffer(display, context, type, size, 1, data, &buffer));
@@ -461,14 +503,15 @@ public:
     return buffer;
   }
 
-  bool createParameters(struct jpeg_decompress_struct &jpeg_info, const unsigned char *vb_start)
+  bool createParameters(struct jpeg_decompress_struct& jpeg_info, const unsigned char* vb_start)
   {
     /* Picture Parameter */
     VAPictureParameterBufferJPEGBaseline pic;
     std::memset(&pic, 0, sizeof(pic));
     pic.picture_width = jpeg_info.image_width;
     pic.picture_height = jpeg_info.image_height;
-    for (int i = 0; i< jpeg_info.num_components; i++) {
+    for (int i = 0; i < jpeg_info.num_components; i++)
+    {
       pic.components[i].component_id = jpeg_info.comp_info[i].component_id;
       pic.components[i].h_sampling_factor = jpeg_info.comp_info[i].h_samp_factor;
       pic.components[i].v_sampling_factor = jpeg_info.comp_info[i].v_samp_factor;
@@ -480,20 +523,16 @@ public:
     /* IQ Matrix */
     VAIQMatrixBufferJPEGBaseline iq;
     std::memset(&iq, 0, sizeof(iq));
-    for (int i = 0; i < NUM_QUANT_TBLS; i++) {
+    for (int i = 0; i < NUM_QUANT_TBLS; i++)
+    {
       if (!jpeg_info.quant_tbl_ptrs[i])
         continue;
       iq.load_quantiser_table[i] = 1;
       /* Assuming dinfo.data_precision == 8 */
       const int natural_order[DCTSIZE2] = {
-        0,  1,  8, 16,  9,  2,  3, 10,
-        17, 24, 32, 25, 18, 11,  4,  5,
-        12, 19, 26, 33, 40, 48, 41, 34,
-        27, 20, 13,  6,  7, 14, 21, 28,
-        35, 42, 49, 56, 57, 50, 43, 36,
-        29, 22, 15, 23, 30, 37, 44, 51,
-        58, 59, 52, 45, 38, 31, 39, 46,
-        53, 60, 61, 54, 47, 55, 62, 63,
+          0,  1,  8,  16, 9,  2,  3,  10, 17, 24, 32, 25, 18, 11, 4,  5,  12, 19, 26, 33, 40, 48,
+          41, 34, 27, 20, 13, 6,  7,  14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23,
+          30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63,
       };
 
       for (int j = 0; j < DCTSIZE2; j++)
@@ -505,30 +544,32 @@ public:
     VAHuffmanTableBufferJPEGBaseline huff;
     std::memset(&huff, 0, sizeof(huff));
     const int num_huffman_tables = 2;
-    for (int i = 0; i < num_huffman_tables; i++) {
+    for (int i = 0; i < num_huffman_tables; i++)
+    {
       if (!jpeg_info.dc_huff_tbl_ptrs[i] || !jpeg_info.ac_huff_tbl_ptrs[i])
         continue;
       huff.load_huffman_table[i] = 1;
       memcpy(huff.huffman_table[i].num_dc_codes, &jpeg_info.dc_huff_tbl_ptrs[i]->bits[1],
-           sizeof(huff.huffman_table[i].num_dc_codes));
+             sizeof(huff.huffman_table[i].num_dc_codes));
       memcpy(huff.huffman_table[i].dc_values, jpeg_info.dc_huff_tbl_ptrs[i]->huffval,
-           sizeof(huff.huffman_table[i].dc_values));
+             sizeof(huff.huffman_table[i].dc_values));
       memcpy(huff.huffman_table[i].num_ac_codes, &jpeg_info.ac_huff_tbl_ptrs[i]->bits[1],
-           sizeof(huff.huffman_table[i].num_ac_codes));
+             sizeof(huff.huffman_table[i].num_ac_codes));
       memcpy(huff.huffman_table[i].ac_values, jpeg_info.ac_huff_tbl_ptrs[i]->huffval,
-           sizeof(huff.huffman_table[i].ac_values));
+             sizeof(huff.huffman_table[i].ac_values));
     }
     huff_buf = createBuffer(VAHuffmanTableBufferType, sizeof(huff), &huff);
 
     /* Slice Parameter */
-    VASliceParameterBufferJPEGBaseline *pslice;
+    VASliceParameterBufferJPEGBaseline* pslice;
     slice_param_buf = createBuffer(VASliceParameterBufferType, sizeof(*pslice), NULL);
     CHECK_VA(vaMapBuffer(display, slice_param_buf, (void**)&pslice));
-    VASliceParameterBufferJPEGBaseline &slice = *pslice;
+    VASliceParameterBufferJPEGBaseline& slice = *pslice;
 
     slice.slice_data_offset = jpeg_info.src->next_input_byte - vb_start;
     slice.slice_data_flag = VA_SLICE_DATA_FLAG_ALL;
-    for (int i = 0; i < jpeg_info.comps_in_scan; i++) {
+    for (int i = 0; i < jpeg_info.comps_in_scan; i++)
+    {
       slice.components[i].component_selector = jpeg_info.cur_comp_info[i]->component_id;
       slice.components[i].dc_table_selector = jpeg_info.cur_comp_info[i]->dc_tbl_no;
       slice.components[i].ac_table_selector = jpeg_info.cur_comp_info[i]->ac_tbl_no;
@@ -545,56 +586,97 @@ public:
     return true;
   }
 
-  bool decompress(unsigned char *buf, size_t len, VaapiBuffer *vb)
+  DecodeResult decodeVaStatus(VAStatus status, const char* operation)
   {
-    if (jpeg_first_packet) {
+    if (status == VA_STATUS_SUCCESS)
+      return DecodeSuccess;
+    LOG_ERROR << operation << ": " << vaErrorStr(status);
+    return status == VA_STATUS_ERROR_DECODING_ERROR ? DecodeDroppedFrame : DecodeFatalError;
+  }
+
+  DecodeResult decompress(unsigned char* buf, size_t len, VaapiBuffer* vb)
+  {
+    if (buf == NULL || vb == NULL)
+      return DecodeFatalError;
+
+    if (jpeg_first_packet)
+    {
       jpeg_mem_src(&dinfo, buf, len);
       int header_status = jpeg_read_header(&dinfo, true);
-      CHECK_COND(header_status == JPEG_HEADER_OK);
-      CHECK_COND(dinfo.image_width == WIDTH && dinfo.image_height == HEIGHT);
+      if (header_status != JPEG_HEADER_OK || dinfo.image_width != WIDTH ||
+          dinfo.image_height != HEIGHT)
+      {
+        LOG_WARNING << "dropping malformed VAAPI JPEG frame";
+        jpeg_abort_decompress(&dinfo);
+        return DecodeDroppedFrame;
+      }
 
       jpeg_first_packet = false;
       if (!createParameters(dinfo, vb->data))
-        return false;
+        return DecodeFatalError;
 
       jpeg_header_size = len - dinfo.src->bytes_in_buffer;
       jpeg_abort_decompress(&dinfo);
     }
+    if (len <= jpeg_header_size)
+    {
+      LOG_WARNING << "dropping truncated VAAPI JPEG frame";
+      return DecodeDroppedFrame;
+    }
+
     /* Grab the packet buffer for VAAPI backend */
     VaapiBufferMapRestorer mapping(display, vb);
-    CHECK_COND(mapping.unmap());
+    if (!mapping.unmap())
+      return DecodeFatalError;
 
     /* The only parameter that changes after the first packet */
-    VASliceParameterBufferJPEGBaseline *slice;
-    CHECK_VA(vaMapBuffer(display, slice_param_buf, (void**)&slice));
+    VASliceParameterBufferJPEGBaseline* slice;
+    DecodeResult result =
+        decodeVaStatus(vaMapBuffer(display, slice_param_buf, (void**)&slice), "vaMapBuffer");
+    if (result != DecodeSuccess)
+      return result;
     slice->slice_data_size = len - jpeg_header_size;
-    CHECK_VA(vaUnmapBuffer(display, slice_param_buf));
+    result = decodeVaStatus(vaUnmapBuffer(display, slice_param_buf), "vaUnmapBuffer");
+    if (result != DecodeSuccess)
+      return result;
 
     /* Commit buffers */
-    CHECK_VA(vaBeginPicture(display, context, surface));
+    result = decodeVaStatus(vaBeginPicture(display, context, surface), "vaBeginPicture");
+    if (result != DecodeSuccess)
+      return result;
     VABufferID va_bufs[5] = {pic_param_buf, iq_buf, huff_buf, slice_param_buf, vb->id};
-    CHECK_VA(vaRenderPicture(display, context, va_bufs, 5));
-    CHECK_VA(vaEndPicture(display, context));
+    result = decodeVaStatus(vaRenderPicture(display, context, va_bufs, 5), "vaRenderPicture");
+    if (result != DecodeSuccess)
+    {
+      CALL_VA(vaEndPicture(display, context));
+      return result;
+    }
+    result = decodeVaStatus(vaEndPicture(display, context), "vaEndPicture");
+    if (result != DecodeSuccess)
+      return result;
 
     /* Sync surface */
-    CHECK_VA(vaSyncSurface(display, surface));
+    result = decodeVaStatus(vaSyncSurface(display, surface), "vaSyncSurface");
+    if (result != DecodeSuccess)
+      return result;
 
     if (!frame->draw(display, surface))
-      return false;
+      return DecodeFatalError;
 
-    CHECK_COND(mapping.remap());
+    if (!mapping.remap())
+      return DecodeFatalError;
 
-    return true;
+    return DecodeSuccess;
   }
 };
 
-VaapiRgbPacketProcessor::VaapiRgbPacketProcessor() :
-    impl_(new VaapiRgbPacketProcessorImpl(std::string()))
+VaapiRgbPacketProcessor::VaapiRgbPacketProcessor()
+    : impl_(new VaapiRgbPacketProcessorImpl(std::string()))
 {
 }
 
-VaapiRgbPacketProcessor::VaapiRgbPacketProcessor(const std::string &device_path) :
-    impl_(new VaapiRgbPacketProcessorImpl(device_path))
+VaapiRgbPacketProcessor::VaapiRgbPacketProcessor(const std::string& device_path)
+    : impl_(new VaapiRgbPacketProcessorImpl(device_path))
 {
 }
 
@@ -608,7 +690,7 @@ bool VaapiRgbPacketProcessor::good()
   return impl_->initialized && impl_->healthy;
 }
 
-void VaapiRgbPacketProcessor::process(const RgbPacket &packet)
+void VaapiRgbPacketProcessor::process(const RgbPacket& packet)
 {
   if (listener_ == 0 || !impl_->initialized || !impl_->healthy || impl_->frame == NULL)
     return;
@@ -622,21 +704,23 @@ void VaapiRgbPacketProcessor::process(const RgbPacket &packet)
   impl_->frame->gain = packet.gain;
   impl_->frame->gamma = packet.gamma;
 
-  unsigned char *buf = packet.jpeg_buffer;
+  unsigned char* buf = packet.jpeg_buffer;
   size_t len = packet.jpeg_buffer_length;
-  VaapiBuffer *vb = static_cast<VaapiBuffer *>(packet.memory);
-  impl_->healthy = impl_->decompress(buf, len, vb);
+  VaapiBuffer* vb = static_cast<VaapiBuffer*>(packet.memory);
+  const VaapiRgbPacketProcessorImpl::DecodeResult result = impl_->decompress(buf, len, vb);
+  if (result == VaapiRgbPacketProcessorImpl::DecodeFatalError)
+    impl_->healthy = false;
 
   impl_->stopTiming(LOG_INFO);
 
-  if (!impl_->healthy)
+  if (result != VaapiRgbPacketProcessorImpl::DecodeSuccess)
     return;
 
   if (listener_->onNewFrame(Frame::Color, impl_->frame))
     impl_->newFrame();
 }
 
-Allocator *VaapiRgbPacketProcessor::getAllocator()
+Allocator* VaapiRgbPacketProcessor::getAllocator()
 {
   return impl_->buffer_allocator;
 }
