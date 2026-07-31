@@ -300,6 +300,17 @@ public:
    */
   std::string getDefaultDeviceSerialNumber();
 
+  /** Wait until a device with @p serial appears in enumeration.
+   *
+   * This does not revive a closed or disconnected device object. After it
+   * returns true, call openDevice(serial) to obtain a fresh object.
+   * @param serial Device serial number to find.
+   * @param timeout_ms Maximum monotonic wait in milliseconds.
+   * @param poll_ms Delay between enumeration attempts.
+   */
+  bool waitForDevice(const std::string &serial, uint32_t timeout_ms,
+                     uint32_t poll_ms = 250);
+
   /** Open device by index with default pipeline.
    * @param idx Index number. Index numbers are not determinstic during enumeration.
    * @return New device object, or NULL on failure

@@ -1482,6 +1482,35 @@ std::string Freenect2::getDefaultDeviceSerialNumber()
   return getDeviceSerialNumber(0);
 }
 
+bool Freenect2::waitForDevice(const std::string &serial, uint32_t timeout_ms,
+                              uint32_t poll_ms)
+{
+  if(serial.empty())
+    return false;
+
+  const uint64_t start_us = monotonicTimeMicroseconds();
+  const uint64_t timeout_us = static_cast<uint64_t>(timeout_ms) * 1000;
+  const uint64_t poll_us = static_cast<uint64_t>(poll_ms == 0 ? 1 : poll_ms) * 1000;
+  for(;;)
+  {
+    const int device_count = enumerateDevices();
+    for(int index = 0; index < device_count; ++index)
+    {
+      if(getDeviceSerialNumber(index) == serial)
+        return true;
+    }
+
+    const uint64_t elapsed_us = monotonicTimeMicroseconds() - start_us;
+    if(elapsed_us >= timeout_us)
+      return false;
+
+    const uint64_t remaining_us = timeout_us - elapsed_us;
+    const uint64_t delay_us = std::min(poll_us, remaining_us);
+    libfreenect2::this_thread::sleep_for(
+        libfreenect2::chrono::microseconds(delay_us));
+  }
+}
+
 Freenect2Device *Freenect2::openDevice(int idx)
 {
   return openDevice(idx, createDefaultPacketPipeline());

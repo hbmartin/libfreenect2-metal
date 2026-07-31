@@ -51,6 +51,13 @@ TEST(PublicApi, ReportsRuntimeIdentity)
   EXPECT_FALSE(libfreenect2::getBuildRevision().empty());
 }
 
+TEST(PublicApi, WaitForDeviceTimesOutForAnUnknownSerial)
+{
+  libfreenect2::Freenect2 freenect2;
+  EXPECT_FALSE(freenect2.waitForDevice("__libfreenect2_missing_serial__", 5, 1));
+  EXPECT_FALSE(freenect2.waitForDevice("", 5, 1));
+}
+
 TEST(PublicApi, ExposesCanonicalPipelineFactories)
 {
   const std::vector<std::string> compiled = libfreenect2::getCompiledPacketPipelines();
