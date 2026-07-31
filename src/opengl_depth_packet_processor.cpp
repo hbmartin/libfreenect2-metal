@@ -488,7 +488,8 @@ public:
 
   virtual ~OpenGLDepthPacketProcessorImpl()
   {
-    if(gl() != 0)
+    deinitialize();
+    if (gl() != 0)
     {
       delete gl();
       gl(0);
@@ -496,8 +497,8 @@ public:
     glfwDestroyWindow(opengl_context_ptr);
     opengl_context_ptr = 0;
   }
-  
-  virtual void onOpenGLBindingsChanged(OpenGLBindings *b) 
+
+  virtual void onOpenGLBindingsChanged(OpenGLBindings* b)
   {
     lut11to16.gl(b);
     p0table[0].gl(b);
@@ -526,7 +527,7 @@ public:
 
     filter2_debug.gl(b);
     filter2_depth.gl(b);
- 
+
     stage1.gl(b);
     filter1.gl(b);
     stage2.gl(b);
@@ -562,11 +563,12 @@ public:
     int major = glfwGetWindowAttrib(opengl_context_ptr, GLFW_CONTEXT_VERSION_MAJOR);
     int minor = glfwGetWindowAttrib(opengl_context_ptr, GLFW_CONTEXT_VERSION_MINOR);
 
-    if (major * 10 + minor < 31) {
-        LOG_ERROR << "OpenGL version 3.1 not supported.";
-        LOG_ERROR << "Your version is " << major << "." << minor;
-        LOG_ERROR << "Try updating your graphics driver.";
-        return false;
+    if (major * 10 + minor < 31)
+    {
+      LOG_ERROR << "OpenGL version 3.1 not supported.";
+      LOG_ERROR << "Your version is " << major << "." << minor;
+      LOG_ERROR << "Try updating your graphics driver.";
+      return false;
     }
 
     // Some headless/software GL stacks (e.g. Mesa llvmpipe, GPU-less VM guests)
@@ -577,34 +579,39 @@ public:
     // (424 * 9); every other allocation here is smaller.
     GLint max_rect_texture_size = 0;
     glGetIntegerv(GL_MAX_RECTANGLE_TEXTURE_SIZE, &max_rect_texture_size);
-    if (max_rect_texture_size < 424 * 9) {
-        LOG_ERROR << "GL_MAX_RECTANGLE_TEXTURE_SIZE is too small: " << max_rect_texture_size;
-        return false;
+    if (max_rect_texture_size < 424 * 9)
+    {
+      LOG_ERROR << "GL_MAX_RECTANGLE_TEXTURE_SIZE is too small: " << max_rect_texture_size;
+      return false;
     }
 
-    OpenGLBindings *b = new OpenGLBindings();
+    OpenGLBindings* b = new OpenGLBindings();
     flextInit(b);
     gl(b);
 
     input_data.allocate(352, 424 * 9);
 
-    for(int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3; ++i)
       stage1_data[i].allocate(512, 424);
 
-    if(do_debug) stage1_debug.allocate(512, 424);
+    if (do_debug)
+      stage1_debug.allocate(512, 424);
     stage1_infrared.allocate(512, 424);
 
-    for(int i = 0; i < 2; ++i)
+    for (int i = 0; i < 2; ++i)
       filter1_data[i].allocate(512, 424);
 
     filter1_max_edge_test.allocate(512, 424);
-    if(do_debug) filter1_debug.allocate(512, 424);
+    if (do_debug)
+      filter1_debug.allocate(512, 424);
 
-    if(do_debug) stage2_debug.allocate(512, 424);
+    if (do_debug)
+      stage2_debug.allocate(512, 424);
     stage2_depth.allocate(512, 424);
     stage2_depth_and_ir_sum.allocate(512, 424);
 
-    if(do_debug) filter2_debug.allocate(512, 424);
+    if (do_debug)
+      filter2_debug.allocate(512, 424);
     filter2_depth.allocate(512, 424);
 
     stage1.setVertexShader(loadShaderSource("default.vs"));
@@ -637,7 +644,7 @@ public:
     filter2.bindFragDataLocation("FilterDepth", 1);
     filter2.build();
 
-    if(do_debug)
+    if (do_debug)
     {
       debug.setVertexShader(loadShaderSource("default.vs"));
       debug.setFragmentShader(loadShaderSource("debug.fs"));
@@ -650,57 +657,80 @@ public:
     gl()->glGenFramebuffers(1, &stage1_framebuffer);
     gl()->glBindFramebuffer(GL_FRAMEBUFFER, stage1_framebuffer);
 
-    const GLenum stage1_buffers[] = { debug_attachment, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4 };
+    const GLenum stage1_buffers[] = {debug_attachment, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2,
+                                     GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4};
     gl()->glDrawBuffers(5, stage1_buffers);
     glReadBuffer(GL_COLOR_ATTACHMENT4);
 
-    if(do_debug) gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE, stage1_debug.texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE, stage1_data[0].texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE, stage1_data[1].texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_RECTANGLE, stage1_data[2].texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_RECTANGLE, stage1_infrared.texture, 0);
-    if (!checkFBO(GL_FRAMEBUFFER)) return false;
+    if (do_debug)
+      gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE,
+                                   stage1_debug.texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE,
+                                 stage1_data[0].texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE,
+                                 stage1_data[1].texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_RECTANGLE,
+                                 stage1_data[2].texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_RECTANGLE,
+                                 stage1_infrared.texture, 0);
+    if (!checkFBO(GL_FRAMEBUFFER))
+      return false;
 
     gl()->glGenFramebuffers(1, &filter1_framebuffer);
     gl()->glBindFramebuffer(GL_FRAMEBUFFER, filter1_framebuffer);
 
-    const GLenum filter1_buffers[] = { debug_attachment, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
+    const GLenum filter1_buffers[] = {debug_attachment, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2,
+                                      GL_COLOR_ATTACHMENT3};
     gl()->glDrawBuffers(4, filter1_buffers);
     glReadBuffer(GL_NONE);
 
-    if(do_debug) gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE, filter1_debug.texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE, filter1_data[0].texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE, filter1_data[1].texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_RECTANGLE, filter1_max_edge_test.texture, 0);
-    if (!checkFBO(GL_FRAMEBUFFER)) return false;
+    if (do_debug)
+      gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE,
+                                   filter1_debug.texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE,
+                                 filter1_data[0].texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE,
+                                 filter1_data[1].texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_RECTANGLE,
+                                 filter1_max_edge_test.texture, 0);
+    if (!checkFBO(GL_FRAMEBUFFER))
+      return false;
 
     gl()->glGenFramebuffers(1, &stage2_framebuffer);
     gl()->glBindFramebuffer(GL_FRAMEBUFFER, stage2_framebuffer);
 
-    const GLenum stage2_buffers[] = { debug_attachment, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+    const GLenum stage2_buffers[] = {debug_attachment, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
     gl()->glDrawBuffers(3, stage2_buffers);
     glReadBuffer(GL_COLOR_ATTACHMENT1);
 
-    if(do_debug) gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE, stage2_debug.texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE, stage2_depth.texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE, stage2_depth_and_ir_sum.texture, 0);
-    if (!checkFBO(GL_FRAMEBUFFER)) return false;
+    if (do_debug)
+      gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE,
+                                   stage2_debug.texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE,
+                                 stage2_depth.texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE,
+                                 stage2_depth_and_ir_sum.texture, 0);
+    if (!checkFBO(GL_FRAMEBUFFER))
+      return false;
 
     gl()->glGenFramebuffers(1, &filter2_framebuffer);
     gl()->glBindFramebuffer(GL_FRAMEBUFFER, filter2_framebuffer);
 
-    const GLenum filter2_buffers[] = { debug_attachment, GL_COLOR_ATTACHMENT1 };
+    const GLenum filter2_buffers[] = {debug_attachment, GL_COLOR_ATTACHMENT1};
     gl()->glDrawBuffers(2, filter2_buffers);
     glReadBuffer(GL_COLOR_ATTACHMENT1);
 
-    if(do_debug) gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE, filter2_debug.texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE, filter2_depth.texture, 0);
-    if (!checkFBO(GL_FRAMEBUFFER)) return false;
+    if (do_debug)
+      gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE,
+                                   filter2_debug.texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE,
+                                 filter2_depth.texture, 0);
+    if (!checkFBO(GL_FRAMEBUFFER))
+      return false;
 
-    Vertex bl = {-1.0f, -1.0f, 0.0f, 0.0f }, br = { 1.0f, -1.0f, 512.0f, 0.0f }, tl = {-1.0f, 1.0f, 0.0f, 424.0f }, tr = { 1.0f, 1.0f, 512.0f, 424.0f };
-    Vertex vertices[] = {
-        bl, tl, tr, tr, br, bl
-    };
+    Vertex bl = {-1.0f, -1.0f, 0.0f, 0.0f}, br = {1.0f, -1.0f, 512.0f, 0.0f},
+           tl = {-1.0f, 1.0f, 0.0f, 424.0f}, tr = {1.0f, 1.0f, 512.0f, 424.0f};
+    Vertex vertices[] = {bl, tl, tr, tr, br, bl};
     gl()->glGenBuffers(1, &square_vbo);
     gl()->glGenVertexArrays(1, &square_vao);
 
@@ -713,7 +743,8 @@ public:
     gl()->glEnableVertexAttribArray(position_attr);
 
     GLint texcoord_attr = stage1.getAttributeLocation("InputTexCoord");
-    gl()->glVertexAttribPointer(texcoord_attr, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)(2 * sizeof(float)));
+    gl()->glVertexAttribPointer(texcoord_attr, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                                (GLvoid*)(2 * sizeof(float)));
     gl()->glEnableVertexAttribArray(texcoord_attr);
     CHECKGL();
     return true;
@@ -721,9 +752,63 @@ public:
 
   void deinitialize()
   {
+    if (opengl_context_ptr == 0 || gl() == 0)
+      return;
+
+    ChangeCurrentOpenGLContext ctx(opengl_context_ptr);
+    gl()->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    gl()->glBindBuffer(GL_ARRAY_BUFFER, 0);
+    gl()->glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+
+    const GLuint framebuffers[] = {stage1_framebuffer, filter1_framebuffer, stage2_framebuffer,
+                                   filter2_framebuffer};
+    gl()->glDeleteFramebuffers(4, framebuffers);
+    stage1_framebuffer = 0;
+    filter1_framebuffer = 0;
+    stage2_framebuffer = 0;
+    filter2_framebuffer = 0;
+
+    if (square_vbo != 0)
+    {
+      gl()->glDeleteBuffers(1, &square_vbo);
+      square_vbo = 0;
+    }
+    if (square_vao != 0)
+    {
+      gl()->glDeleteVertexArrays(1, &square_vao);
+      square_vao = 0;
+    }
+
+    stage1.release();
+    filter1.release();
+    stage2.release();
+    filter2.release();
+    debug.release();
+
+    lut11to16.release();
+    for (int i = 0; i < 3; ++i)
+      p0table[i].release();
+    x_table.release();
+    z_table.release();
+    input_data.release();
+    stage1_debug.release();
+    for (int i = 0; i < 3; ++i)
+      stage1_data[i].release();
+    stage1_infrared.release();
+    for (int i = 0; i < 2; ++i)
+      filter1_data[i].release();
+    filter1_max_edge_test.release();
+    filter1_debug.release();
+    stage2_debug.release();
+    stage2_depth.release();
+    stage2_depth_and_ir_sum.release();
+    filter2_debug.release();
+    filter2_depth.release();
+    CHECKGL();
   }
 
-  void updateShaderParametersForProgram(ShaderProgram &program)
+  void updateShaderParametersForProgram(ShaderProgram& program)
   {
     if(!params_need_update) return;
 
