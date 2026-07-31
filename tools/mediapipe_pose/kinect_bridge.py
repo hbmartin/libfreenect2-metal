@@ -137,6 +137,11 @@ class KinectCapture:
         return value.decode("utf-8", errors="replace") if value else "unknown bridge error"
 
     def next_frame(self, timeout_ms: int = 10_000) -> tuple[np.ndarray, FrameInfo]:
+        """Capture one frame into a reused internal RGB buffer.
+
+        The next call overwrites the returned array; callers that retain a
+        frame must copy it first.
+        """
         native_info = _FrameInfo()
         status = self._library.mp_pose_capture_next(
             self._handle,

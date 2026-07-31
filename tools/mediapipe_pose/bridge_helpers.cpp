@@ -16,6 +16,13 @@ struct Candidate
   int distance_squared;
 };
 
+bool byDepthThenDistance(const Candidate& left, const Candidate& right)
+{
+  if (left.depth != right.depth)
+    return left.depth < right.depth;
+  return left.distance_squared < right.distance_squared;
+}
+
 void collectCandidates(int center_x, int center_y, int radius,
                        const std::vector<int32_t>& color_to_depth, size_t color_width,
                        size_t color_height, const float* depth_mm, size_t depth_pixel_count,
@@ -49,20 +56,14 @@ void collectCandidates(int center_x, int center_y, int radius,
       candidates.push_back(Candidate{depth_index, depth, distance_squared});
     }
   }
+  std::sort(candidates.begin(), candidates.end(), byDepthThenDistance);
 }
 
-int selectCandidate(std::vector<Candidate> candidates, float cluster_span_mm, bool require_cluster)
+int selectCandidate(const std::vector<Candidate>& candidates, float cluster_span_mm,
+                    bool require_cluster)
 {
   if (candidates.empty())
     return -1;
-
-  std::sort(candidates.begin(), candidates.end(),
-            [](const Candidate& left, const Candidate& right)
-            {
-              if (left.depth != right.depth)
-                return left.depth < right.depth;
-              return left.distance_squared < right.distance_squared;
-            });
 
   size_t cluster_begin = 0;
   size_t cluster_end = 0;
@@ -155,8 +156,12 @@ int findDepthPixel(float normalized_x, float normalized_y,
 {
   if (!std::isfinite(normalized_x) || !std::isfinite(normalized_y) || normalized_x < 0.0f ||
       normalized_x > 1.0f || normalized_y < 0.0f || normalized_y > 1.0f || color_width == 0 ||
-      color_height == 0 || !depth_mm || color_to_depth.size() != color_width * color_height ||
-      primary_radius < 0 || fallback_radius < primary_radius || cluster_span_mm < 0.0f)
+      color_height == 0 || !depth_mm ||
+      color_width > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+      color_height > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+      color_to_depth.size() != color_width * color_height || primary_radius < 0 ||
+      fallback_radius < primary_radius || cluster_span_mm < 0.0f ||
+      static_cast<size_t>(fallback_radius) > std::max(color_width, color_height))
     return -1;
 
   const int center_x = static_cast<int>(std::lround(normalized_x * (color_width - 1)));

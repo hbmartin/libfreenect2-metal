@@ -93,6 +93,7 @@ TEST(MediaPipePoseBridge, RejectsInvalidOrMissingDepth)
 
   EXPECT_EQ(findDepthPixel(0.5f, 0.5f, reverse, width, height, depth, 3, 2, 2, 150.0f), -1);
   EXPECT_EQ(findDepthPixel(-0.1f, 0.5f, reverse, width, height, depth, 3, 2, 2, 150.0f), -1);
+  EXPECT_EQ(findDepthPixel(0.5f, 0.5f, reverse, width, height, depth, 3, 2, 6, 150.0f), -1);
 }
 
 TEST(MediaPipePoseBridge, SelectedDepthProducesFiniteMetricXyz)

@@ -19,9 +19,9 @@ tools/mediapipe_pose/setup_demo.sh
 ```
 
 `setup_demo.sh` creates `tools/mediapipe_pose/.venv`, installs
-`mediapipe==0.10.35`, and downloads the official Full FP16 model. The download
-is accepted only when its SHA-256 is
-`4eaa5eb7a98365221087693fcc286334cf0858e2eb6e15b506aa4a7ecdcec4ad`.
+`mediapipe==0.10.35` and `Pillow==12.3.0`, and downloads revision 1 of the
+official Full FP16 model. The download is accepted only when its SHA-256 is
+`5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1`.
 
 ## Run
 

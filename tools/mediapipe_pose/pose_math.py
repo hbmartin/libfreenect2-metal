@@ -131,8 +131,11 @@ class Measurement:
     source: str
 
     def to_dict(self) -> dict[str, Any]:
+        serializable_value = (
+            None if self.value is None or not math.isfinite(self.value) else round(self.value, 3)
+        )
         return {
-            "value_degrees": None if self.value is None else round(self.value, 3),
+            "value_degrees": serializable_value,
             "source": self.source,
         }
 
@@ -207,5 +210,5 @@ def build_record(
         "pose_detected": pose_detected,
         "landmarks": list(landmarks),
         "measurements": {name: value.to_dict() for name, value in measurements.items()},
-        "processing_fps": round(fps, 3),
+        "processing_fps": round(fps, 3) if math.isfinite(fps) else None,
     }

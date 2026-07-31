@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 import time
 from collections import deque
 from datetime import datetime, timezone
@@ -293,8 +294,12 @@ def main() -> int:
         raise FileNotFoundError(f"Pose model not found: {model}. Run tools/mediapipe_pose/download_model.py")
     if not 0.0 <= arguments.visibility <= 1.0 or not 0.0 <= arguments.presence <= 1.0:
         raise ValueError("visibility and presence must be between zero and one")
-    if arguments.depth_radius < 0 or arguments.depth_fallback_radius < arguments.depth_radius:
+    if arguments.depth_radius < 0:
+        raise ValueError("depth radius must be non-negative")
+    if arguments.depth_fallback_radius < arguments.depth_radius:
         raise ValueError("depth fallback radius must be at least the primary radius")
+    if arguments.depth_fallback_radius > 1920:
+        raise ValueError("depth fallback radius must not exceed the Kinect color-image dimensions")
 
     import cv2
     import mediapipe as mp
@@ -347,7 +352,10 @@ def main() -> int:
                 except TimeoutError:
                     timeout_count += 1
                     if timeout_count >= 3:
-                        raise
+                        raise RuntimeError(
+                            f"no frames received after {timeout_count} timeouts; "
+                            "check the Kinect connection"
+                        ) from None
                     continue
 
                 timestamp_ms = max(last_timestamp_ms + 1, (time.monotonic_ns() - started) // 1_000_000)
@@ -448,3 +456,6 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except KeyboardInterrupt:
         raise SystemExit(130)
+    except RuntimeError as error:
+        print(f"error: {error}", file=sys.stderr)
+        raise SystemExit(1)

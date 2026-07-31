@@ -12,9 +12,9 @@ from pathlib import Path
 
 MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-    "pose_landmarker_full/float16/latest/pose_landmarker_full.task"
+    "pose_landmarker_full/float16/1/pose_landmarker_full.task"
 )
-MODEL_SHA256 = "4eaa5eb7a98365221087693fcc286334cf0858e2eb6e15b506aa4a7ecdcec4ad"
+MODEL_SHA256 = "5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1"
 DEFAULT_DESTINATION = Path(__file__).resolve().parent / "models" / "pose_landmarker_full.task"
 
 

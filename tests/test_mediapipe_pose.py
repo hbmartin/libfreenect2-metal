@@ -96,9 +96,26 @@ class RecordingTests(unittest.TestCase):
         encoded = json.dumps(record, allow_nan=False)
         decoded = json.loads(encoded)
         self.assertEqual(decoded["schema_version"], 1)
+        self.assertEqual(decoded["frame"]["color_sequence"], 10)
+        self.assertTrue(decoded["frame"]["synchronization_valid"])
+        self.assertEqual(decoded["landmarks"][0]["name"], "nose")
+        self.assertEqual(decoded["landmarks"][0]["kinect_xyz_m"], [0.0, 0.0, 1.0])
         self.assertEqual(decoded["measurements"]["left_elbow"]["source"], "kinect")
         self.assertIsNone(decoded["measurements"]["right_elbow"]["value_degrees"])
         self.assertTrue(math.isclose(decoded["processing_fps"], 29.97))
+
+    def test_non_finite_measurement_and_fps_remain_strict_json(self) -> None:
+        record = build_record(
+            wall_time_utc="2026-07-30T12:00:00+00:00",
+            frame={"color_sequence": 1, "synchronization_valid": True},
+            landmarks=[],
+            measurements={"left_elbow": Measurement(float("nan"), "kinect")},
+            fps=float("inf"),
+            pose_detected=True,
+        )
+        decoded = json.loads(json.dumps(record, allow_nan=False))
+        self.assertIsNone(decoded["measurements"]["left_elbow"]["value_degrees"])
+        self.assertIsNone(decoded["processing_fps"])
 
 
 if __name__ == "__main__":
