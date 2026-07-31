@@ -219,7 +219,7 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
       disconnect_logged_ = true;
       LOG_ERROR << "usb transfer failed: device disconnected";
       if(event_listener_ != 0)
-        event_listener_->onTransferPoolEvent(TransferPoolEventListener::DeviceDisconnected,
+        event_listener_->onTransferPoolEvent(TransferPoolEventListener::UsbDeviceDisconnected,
                                              device_endpoint_);
     }
     t->setStopped(true);
@@ -272,7 +272,7 @@ void TransferPool::logStallIfComplete()
                  "or power limits, flaky cables/adapters, or VM USB "
                  "passthrough.";
     if(event_listener_ != 0)
-      event_listener_->onTransferPoolEvent(TransferPoolEventListener::TransfersStalled,
+      event_listener_->onTransferPoolEvent(TransferPoolEventListener::AllTransfersStalled,
                                            device_endpoint_);
   }
 }

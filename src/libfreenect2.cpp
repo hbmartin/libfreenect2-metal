@@ -37,6 +37,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 
 #define WRITE_LIBUSB_ERROR(__RESULT) \
   libusb_error_name((__RESULT)) << " " << libusb_strerror(static_cast<libusb_error>((__RESULT)))
@@ -262,15 +263,9 @@ struct IrCameraTables: Freenect2Device::IrCameraParams
 class Freenect2DeviceImpl : public Freenect2Device, private TransferPoolEventListener
 {
 private:
-  enum State
-  {
-    Created,
-    Open,
-    Streaming,
-    Closed
-  };
-
-  State state_;
+  mutable libfreenect2::mutex state_mutex_;
+  DeviceState state_;
+  std::string last_error_;
   bool has_usb_interfaces_;
 
   Freenect2Impl *context_;
@@ -289,6 +284,8 @@ private:
   Freenect2Device::IrCameraParams ir_camera_params_;
   Freenect2Device::ColorCameraParams rgb_camera_params_;
   void rollbackStreamStart();
+  void setOperationalState(DeviceState state, const std::string &error = std::string());
+  void setClosedState(const std::string &error = std::string());
   virtual void onTransferPoolEvent(TransferPoolEventListener::Event event,
                                    unsigned char endpoint);
 public:
@@ -300,6 +297,8 @@ public:
   virtual std::string getSerialNumber();
   virtual std::string getFirmwareVersion();
   virtual std::string getPacketPipelineName();
+  virtual DeviceState getState() const;
+  virtual std::string getLastError() const;
 
   virtual Freenect2Device::ColorCameraParams getColorCameraParams();
   virtual Freenect2Device::IrCameraParams getIrCameraParams();
@@ -336,6 +335,8 @@ public:
   virtual std::string getSerialNumber();
   virtual std::string getFirmwareVersion();
   virtual std::string getPacketPipelineName();
+  virtual DeviceState getState() const;
+  virtual std::string getLastError() const;
 
   virtual ColorCameraParams getColorCameraParams();
   virtual IrCameraParams getIrCameraParams();
@@ -381,7 +382,9 @@ private:
   std::vector<std::string> frame_filenames_;
   libfreenect2::thread* t_;
   std::atomic<bool> running_;
-  bool closed_;
+  mutable libfreenect2::mutex state_mutex_;
+  DeviceState state_;
+  std::string last_error_;
   bool enable_rgb_;
   bool enable_depth_;
   bool has_calibration_;
@@ -702,7 +705,7 @@ Freenect2Device::~Freenect2Device()
 }
 
 Freenect2DeviceImpl::Freenect2DeviceImpl(Freenect2Impl *context, const PacketPipeline *pipeline, libusb_device *usb_device, libusb_device_handle *usb_device_handle, const std::string &serial) :
-  state_(Created),
+  state_(DeviceCreated),
   has_usb_interfaces_(false),
   context_(context),
   usb_device_(usb_device),
@@ -738,19 +741,51 @@ int Freenect2DeviceImpl::nextCommandSeq()
 void Freenect2DeviceImpl::onTransferPoolEvent(TransferPoolEventListener::Event event,
                                               unsigned char endpoint)
 {
-  if(event == TransferPoolEventListener::DeviceDisconnected)
-    LOG_ERROR << "device " << serial_ << " disconnected on endpoint 0x" << std::hex
-              << int(endpoint) << std::dec;
+  std::ostringstream message;
+  if(event == TransferPoolEventListener::UsbDeviceDisconnected)
+    message << "USB device disconnected on endpoint 0x" << std::hex << int(endpoint);
   else
-    LOG_ERROR << "device " << serial_ << " reached a terminal transfer stall on endpoint 0x"
-              << std::hex << int(endpoint) << std::dec;
+    message << "terminal USB transfer stall on endpoint 0x" << std::hex << int(endpoint);
+
+  {
+    libfreenect2::lock_guard guard(state_mutex_);
+    if(state_ == DeviceClosed)
+      return;
+    if(event == TransferPoolEventListener::UsbDeviceDisconnected)
+      state_ = DeviceDisconnected;
+    else if(state_ != DeviceDisconnected)
+      state_ = DeviceError;
+    else
+      return;
+    last_error_ = message.str();
+  }
+  LOG_ERROR << "device " << serial_ << ": " << message.str();
+}
+
+void Freenect2DeviceImpl::setOperationalState(DeviceState state, const std::string &error)
+{
+  libfreenect2::lock_guard guard(state_mutex_);
+  if(state_ == DeviceDisconnected || state_ == DeviceError || state_ == DeviceClosed)
+    return;
+  state_ = state;
+  last_error_ = error;
+}
+
+void Freenect2DeviceImpl::setClosedState(const std::string &error)
+{
+  libfreenect2::lock_guard guard(state_mutex_);
+  if(!error.empty() && state_ != DeviceDisconnected && state_ != DeviceError)
+    last_error_ = error;
+  state_ = DeviceClosed;
 }
 
 bool Freenect2DeviceImpl::isSameUsbDevice(libusb_device* other)
 {
   bool result = false;
 
-  if(state_ != Closed && usb_device_ != 0)
+  const DeviceState state = getState();
+  if(state != DeviceClosed && state != DeviceDisconnected && state != DeviceError &&
+     usb_device_ != 0)
   {
     unsigned char bus = libusb_get_bus_number(usb_device_);
     unsigned char address = libusb_get_device_address(usb_device_);
@@ -777,6 +812,18 @@ std::string Freenect2DeviceImpl::getFirmwareVersion()
 std::string Freenect2DeviceImpl::getPacketPipelineName()
 {
   return pipeline_ == NULL ? std::string() : pipeline_->getName();
+}
+
+DeviceState Freenect2DeviceImpl::getState() const
+{
+  libfreenect2::lock_guard guard(state_mutex_);
+  return state_;
+}
+
+std::string Freenect2DeviceImpl::getLastError() const
+{
+  libfreenect2::lock_guard guard(state_mutex_);
+  return last_error_;
 }
 
 Freenect2Device::ColorCameraParams Freenect2DeviceImpl::getColorCameraParams()
@@ -902,7 +949,7 @@ bool Freenect2DeviceImpl::open()
 {
   LOG_INFO << "opening...";
 
-  if(state_ != Created) return false;
+  if(getState() != DeviceCreated) return false;
 
   if(usb_control_.setConfiguration() != UsbControl::Success) return false;
   if(!has_usb_interfaces_ && usb_control_.claimInterfaces() != UsbControl::Success) return false;
@@ -951,7 +998,7 @@ bool Freenect2DeviceImpl::open()
   rgb_transfer_pool_.allocate(rgb_num_xfers, rgb_xfer_size);
   ir_transfer_pool_.allocate(ir_num_xfers, ir_pkts_per_xfer, max_iso_packet_size);
 
-  state_ = Open;
+  setOperationalState(DeviceOpen);
 
   LOG_INFO << "opened";
 
@@ -981,13 +1028,13 @@ void Freenect2DeviceImpl::rollbackStreamStart()
   command_tx_.execute(StopCommand(nextCommandSeq()), result);
   command_tx_.execute(SetStreamDisabledCommand(nextCommandSeq()), result);
   usb_control_.setVideoTransferFunctionState(UsbControl::Disabled);
-  state_ = Open;
+  setOperationalState(DeviceOpen, "stream start failed and was rolled back");
 }
 
 bool Freenect2DeviceImpl::startStreams(bool enable_rgb, bool enable_depth)
 {
   LOG_INFO << "starting...";
-  if(state_ != Open) return false;
+  if(getState() != DeviceOpen) return false;
 
   CommandTransaction::Result serial_result, firmware_result, result;
 
@@ -1139,7 +1186,12 @@ bool Freenect2DeviceImpl::startStreams(bool enable_rgb, bool enable_depth)
     }
   }
 
-  state_ = Streaming;
+  setOperationalState(DeviceStreaming);
+  if(getState() != DeviceStreaming)
+  {
+    rollbackStreamStart();
+    return false;
+  }
   LOG_INFO << "started";
   return true;
 }
@@ -1148,7 +1200,9 @@ bool Freenect2DeviceImpl::stop()
 {
   LOG_INFO << "stopping...";
 
-  if(state_ != Streaming)
+  const DeviceState initial_state = getState();
+  if(initial_state != DeviceStreaming && initial_state != DeviceDisconnected &&
+     initial_state != DeviceError)
   {
     LOG_INFO << "already stopped, doing nothing";
     return true;
@@ -1194,7 +1248,8 @@ bool Freenect2DeviceImpl::stop()
   if (usb_control_.setVideoTransferFunctionState(UsbControl::Disabled) != UsbControl::Success)
     success = false;
 
-  state_ = Open;
+  setOperationalState(DeviceOpen,
+                      success ? std::string() : "device stopped with control-transfer errors");
   LOG_INFO << (success ? "stopped" : "stopped with control-transfer errors");
   return success;
 }
@@ -1203,14 +1258,16 @@ bool Freenect2DeviceImpl::close()
 {
   LOG_INFO << "closing...";
 
-  if(state_ == Closed)
+  const DeviceState initial_state = getState();
+  if(initial_state == DeviceClosed)
   {
     LOG_INFO << "already closed, doing nothing";
     return true;
   }
 
   bool success = true;
-  if(state_ == Streaming && !stop())
+  if((initial_state == DeviceStreaming || initial_state == DeviceDisconnected ||
+      initial_state == DeviceError) && !stop())
     success = false;
 
   CommandTransaction::Result result;
@@ -1259,7 +1316,7 @@ bool Freenect2DeviceImpl::close()
   usb_device_handle_ = 0;
   usb_device_ = 0;
 
-  state_ = Closed;
+  setClosedState(success ? std::string() : "device closed with shutdown errors");
   LOG_INFO << (success ? "closed" : "closed with shutdown errors");
   return success;
 }
@@ -1567,7 +1624,7 @@ Freenect2Device *Freenect2::openDefaultDevice(const PacketPipeline *pipeline)
 }
 
 Freenect2ReplayDevice::Freenect2ReplayDevice(Freenect2ReplayImpl *context, const std::vector<std::string>& frame_filenames, const PacketPipeline* pipeline, const Freenect2Replay::Calibration *calibration)
-  :context_(context), pipeline_(pipeline), frame_filenames_(frame_filenames), t_(NULL), running_(false), closed_(false),
+  :context_(context), pipeline_(pipeline), frame_filenames_(frame_filenames), t_(NULL), running_(false), state_(DeviceCreated),
    enable_rgb_(true), enable_depth_(true), has_calibration_(calibration != NULL)
 {
   if(calibration != NULL)
@@ -1600,6 +1657,18 @@ std::string Freenect2ReplayDevice::getFirmwareVersion()
 std::string Freenect2ReplayDevice::getPacketPipelineName()
 {
   return pipeline_ == NULL ? std::string() : pipeline_->getName();
+}
+
+DeviceState Freenect2ReplayDevice::getState() const
+{
+  libfreenect2::lock_guard guard(state_mutex_);
+  return state_;
+}
+
+std::string Freenect2ReplayDevice::getLastError() const
+{
+  libfreenect2::lock_guard guard(state_mutex_);
+  return last_error_;
 }
 
 Freenect2Device::ColorCameraParams Freenect2ReplayDevice::getColorCameraParams()
@@ -1658,8 +1727,15 @@ bool Freenect2ReplayDevice::open()
 {
   LOG_INFO << "opening...";
 
-  if(pipeline_ == NULL || frame_filenames_.empty())
+  const auto fail = [this](const std::string &error) {
+    libfreenect2::lock_guard guard(state_mutex_);
+    state_ = DeviceError;
+    last_error_ = error;
     return false;
+  };
+
+  if(pipeline_ == NULL || frame_filenames_.empty())
+    return fail("replay requires a pipeline and at least one frame");
 
   if(has_calibration_)
   {
@@ -1667,18 +1743,18 @@ bool Freenect2ReplayDevice::open()
     if(calibration_.p0_tables.size() != sizeof(protocol::P0TablesResponse))
     {
       LOG_ERROR << "invalid replay P0 table length: " << calibration_.p0_tables.size();
-      return false;
+      return fail("invalid replay P0 table length");
     }
     if(calibration_.x_table.size() != DepthPacketProcessor::TABLE_SIZE ||
        calibration_.z_table.size() != DepthPacketProcessor::TABLE_SIZE)
     {
       LOG_ERROR << "invalid replay X/Z table length";
-      return false;
+      return fail("invalid replay X/Z table length");
     }
     if(calibration_.lookup_table.size() != DepthPacketProcessor::LUT_SIZE)
     {
       LOG_ERROR << "invalid replay lookup table length: " << calibration_.lookup_table.size();
-      return false;
+      return fail("invalid replay lookup table length");
     }
 
     setColorCameraParams(calibration_.color);
@@ -1691,6 +1767,11 @@ bool Freenect2ReplayDevice::open()
     }
   }
 
+  {
+    libfreenect2::lock_guard guard(state_mutex_);
+    state_ = DeviceOpen;
+    last_error_.clear();
+  }
   return true;
 }
 
@@ -1698,7 +1779,7 @@ bool Freenect2ReplayDevice::close()
 {
   LOG_INFO << "closing...";
 
-  if(closed_)
+  if(getState() == DeviceClosed)
   {
     LOG_INFO << "already closed, doing nothing";
     return true;
@@ -1712,7 +1793,10 @@ bool Freenect2ReplayDevice::close()
   if(pipeline_ != NULL && pipeline_->getDepthPacketProcessor() != 0)
     pipeline_->getDepthPacketProcessor()->setFrameListener(0);
 
-  closed_ = true;
+  {
+    libfreenect2::lock_guard guard(state_mutex_);
+    state_ = DeviceClosed;
+  }
   LOG_INFO << "closed";
   return true;
 }
@@ -1784,8 +1868,17 @@ bool Freenect2ReplayDevice::start()
 bool Freenect2ReplayDevice::startStreams(bool enable_rgb, bool enable_depth)
 {
   LOG_INFO << "Freenect2ReplayDevice: starting: rgb: " << enable_rgb << ", depth: " << enable_depth;
-  if(closed_ || running_.load() || (!enable_rgb && !enable_depth))
-    return false;
+  {
+    libfreenect2::lock_guard guard(state_mutex_);
+    if(state_ != DeviceOpen || running_.load() || (!enable_rgb && !enable_depth))
+    {
+      last_error_ = state_ == DeviceClosed ? "replay device is closed"
+                                          : "replay is already running or no stream was selected";
+      return false;
+    }
+    state_ = DeviceStreaming;
+    last_error_.clear();
+  }
   if(t_ != NULL)
   {
     t_->join();
@@ -1808,6 +1901,14 @@ bool Freenect2ReplayDevice::stop()
     t_->join();
     delete t_;
     t_ = NULL;
+  }
+  {
+    libfreenect2::lock_guard guard(state_mutex_);
+    if(state_ != DeviceClosed)
+    {
+      state_ = DeviceOpen;
+      last_error_.clear();
+    }
   }
   LOG_INFO << "replay stopped";
   return true;
@@ -1968,6 +2069,11 @@ void Freenect2ReplayDevice::run()
     }
   }
   running_.store(false);
+  {
+    libfreenect2::lock_guard guard(state_mutex_);
+    if(state_ == DeviceStreaming)
+      state_ = DeviceOpen;
+  }
 }
 
 Freenect2Replay::Freenect2Replay() :

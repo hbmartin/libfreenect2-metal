@@ -49,6 +49,17 @@ LIBFREENECT2_API std::string getBuildRevision();
  * Find, open, and control Kinect v2 devices. */
 ///@{
 
+/** Observable device lifecycle state. */
+enum DeviceState
+{
+  DeviceCreated,
+  DeviceOpen,
+  DeviceStreaming,
+  DeviceDisconnected,
+  DeviceError,
+  DeviceClosed
+};
+
 /** Device control. */
 class LIBFREENECT2_API Freenect2Device
 {
@@ -137,6 +148,12 @@ public:
   virtual std::string getSerialNumber() = 0;
   virtual std::string getFirmwareVersion() = 0;
   virtual std::string getPacketPipelineName() = 0;
+
+  /** Return a thread-safe snapshot of the current lifecycle state. */
+  virtual DeviceState getState() const = 0;
+
+  /** Return a thread-safe snapshot of the most recent lifecycle error. */
+  virtual std::string getLastError() const = 0;
 
   /** Get current color parameters.
    * @copydetails ColorCameraParams

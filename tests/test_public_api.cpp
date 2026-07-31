@@ -116,7 +116,7 @@ TEST(PublicApi, RejectsInvalidReplayCalibration)
   std::vector<std::string> files;
   files.push_back("color_1_1.jpg");
 
-  EXPECT_EQ(static_cast<libfreenect2::Freenect2Device *>(NULL),
+  EXPECT_EQ(static_cast<libfreenect2::Freenect2Device*>(NULL),
             replay.openDevice(files, calibration, new libfreenect2::CpuPacketPipeline()));
 }
 
@@ -124,18 +124,59 @@ TEST(PublicApi, ReplayStartStopCloseIsRepeatable)
 {
   lf::Freenect2Replay replay;
   std::vector<std::string> files(1, "missing_color_1_1.jpg");
-  lf::Freenect2Device *device = replay.openDevice(files, new lf::CpuPacketPipeline());
-  ASSERT_NE(static_cast<lf::Freenect2Device *>(NULL), device);
+  lf::Freenect2Device* device = replay.openDevice(files, new lf::CpuPacketPipeline());
+  ASSERT_NE(static_cast<lf::Freenect2Device*>(NULL), device);
   EXPECT_EQ("cpu", device->getPacketPipelineName());
+  EXPECT_EQ(lf::DeviceOpen, device->getState());
+  EXPECT_TRUE(device->getLastError().empty());
   EXPECT_TRUE(device->startStreams(true, false));
   EXPECT_TRUE(device->stop());
+  EXPECT_EQ(lf::DeviceOpen, device->getState());
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->startStreams(true, false));
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
   EXPECT_TRUE(device->startStreams(true, false));
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
+  EXPECT_EQ(lf::DeviceClosed, device->getState());
+  EXPECT_FALSE(device->startStreams(true, false));
+  EXPECT_FALSE(device->getLastError().empty());
   EXPECT_TRUE(device->close());
+}
+
+TEST(PublicApi, ReplayStateSnapshotsRemainValidDuringLifecycleChanges)
+{
+  lf::Freenect2Replay replay;
+  std::vector<std::string> files(1, "missing_color_1_1.jpg");
+  lf::Freenect2Device* device = replay.openDevice(files, new lf::CpuPacketPipeline());
+  ASSERT_NE(static_cast<lf::Freenect2Device*>(NULL), device);
+
+  std::atomic<bool> reading(true);
+  std::atomic<int> invalid_states(0);
+  std::thread reader(
+      [&]()
+      {
+        while (reading.load())
+        {
+          const lf::DeviceState state = device->getState();
+          if (state < lf::DeviceCreated || state > lf::DeviceClosed)
+            invalid_states.fetch_add(1);
+          (void)device->getLastError();
+        }
+      });
+
+  for (size_t iteration = 0; iteration < 25; ++iteration)
+  {
+    EXPECT_TRUE(device->startStreams(true, false));
+    EXPECT_TRUE(device->stop());
+  }
+  reading.store(false);
+  reader.join();
+
+  EXPECT_EQ(0, invalid_states.load());
+  EXPECT_EQ(lf::DeviceOpen, device->getState());
+  EXPECT_TRUE(device->close());
+  EXPECT_EQ(lf::DeviceClosed, device->getState());
 }
 
 } // namespace

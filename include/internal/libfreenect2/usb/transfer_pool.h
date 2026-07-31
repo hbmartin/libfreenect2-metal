@@ -44,8 +44,8 @@ class TransferPoolEventListener
 public:
   enum Event
   {
-    DeviceDisconnected,
-    TransfersStalled
+    UsbDeviceDisconnected,
+    AllTransfersStalled
   };
 
   virtual ~TransferPoolEventListener() {}
