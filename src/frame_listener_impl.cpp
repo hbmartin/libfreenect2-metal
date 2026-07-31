@@ -32,11 +32,12 @@
 namespace libfreenect2
 {
 
-Frame::Frame(size_t width, size_t height, size_t bytes_per_pixel, unsigned char *data_) :
-  width(width),
-  height(height),
-  bytes_per_pixel(bytes_per_pixel),
-  data(data_),
+Frame::Frame(size_t width_arg, size_t height_arg, size_t bytes_per_pixel_arg,
+             unsigned char *data_arg) :
+  width(width_arg),
+  height(height_arg),
+  bytes_per_pixel(bytes_per_pixel_arg),
+  data(data_arg),
   exposure(0.f),
   gain(0.f),
   gamma(0.f),
@@ -44,7 +45,7 @@ Frame::Frame(size_t width, size_t height, size_t bytes_per_pixel, unsigned char 
   format(Frame::Invalid),
   rawdata(NULL)
 {
-  if (data_)
+  if (data_arg)
     return;
   const size_t alignment = 64;
   size_t space = width * height * bytes_per_pixel + alignment;
@@ -124,6 +125,7 @@ bool SyncMultiFrameListener::waitForNewFrame(FrameMap &frame, int milliseconds)
     return false;
   }
 #else
+  (void)milliseconds;
   waitForNewFrame(frame);
   return true;
 #endif // LIBFREENECT2_THREADING_STDLIB

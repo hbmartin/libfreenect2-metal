@@ -36,6 +36,8 @@
 #include <fstream>
 #include <string>
 #include <map>
+#include <cstddef>
+#include <cstring>
 #include <cstdlib>
 
 #include <stdint.h>
@@ -83,11 +85,11 @@ protected:
   WithOpenGLBindings() : bindings(0) {}
   virtual ~WithOpenGLBindings() {}
   
-  virtual void onOpenGLBindingsChanged(OpenGLBindings *b) { }
+  virtual void onOpenGLBindingsChanged(OpenGLBindings *) { }
 public:
-  void gl(OpenGLBindings *bindings)
+  void gl(OpenGLBindings *new_bindings)
   {
-    this->bindings = bindings;
+    bindings = new_bindings;
     onOpenGLBindingsChanged(this->bindings);
   }
   
@@ -353,9 +355,9 @@ public:
     downloadToBuffer(data);
   }
 
-  void downloadToBuffer(unsigned char *data)
+  void downloadToBuffer(unsigned char *output)
   {
-    glReadPixels(0, 0, width, height, FormatT::Format, FormatT::Type, data);
+    glReadPixels(0, 0, width, height, FormatT::Format, FormatT::Type, output);
     CHECKGL();
   }
 
@@ -364,13 +366,13 @@ public:
     flipYBuffer(data);
   }
 
-  void flipYBuffer(unsigned char *data)
+  void flipYBuffer(unsigned char *output)
   {
     typedef unsigned char type;
 
     size_t linestep = width * bytes_per_pixel / sizeof(type);
 
-    type *first_line = reinterpret_cast<type *>(data), *last_line = reinterpret_cast<type *>(data) + (height - 1) * linestep;
+    type *first_line = reinterpret_cast<type *>(output), *last_line = reinterpret_cast<type *>(output) + (height - 1) * linestep;
 
     for(size_t y = 0; y < height / 2; ++y)
     {
@@ -951,23 +953,30 @@ void OpenGLDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char* 
 {
   if (!impl_)
     return;
+  if(buffer == 0 || buffer_length < sizeof(libfreenect2::protocol::P0TablesResponse))
+  {
+    LOG_ERROR << "P0Table response too short!";
+    return;
+  }
   ChangeCurrentOpenGLContext ctx(impl_->opengl_context_ptr);
 
-  size_t n = 512 * 424;
-  libfreenect2::protocol::P0TablesResponse* p0table = (libfreenect2::protocol::P0TablesResponse*)buffer;
+  const size_t table_bytes = 512u * 424u * sizeof(uint16_t);
 
   impl_->p0table[0].allocate(512, 424);
-  std::copy(reinterpret_cast<unsigned char*>(p0table->p0table0), reinterpret_cast<unsigned char*>(p0table->p0table0 + n), impl_->p0table[0].data);
+  std::memcpy(impl_->p0table[0].data,
+              buffer + offsetof(libfreenect2::protocol::P0TablesResponse, p0table0), table_bytes);
   impl_->p0table[0].flipY();
   impl_->p0table[0].upload();
 
   impl_->p0table[1].allocate(512, 424);
-  std::copy(reinterpret_cast<unsigned char*>(p0table->p0table1), reinterpret_cast<unsigned char*>(p0table->p0table1 + n), impl_->p0table[1].data);
+  std::memcpy(impl_->p0table[1].data,
+              buffer + offsetof(libfreenect2::protocol::P0TablesResponse, p0table1), table_bytes);
   impl_->p0table[1].flipY();
   impl_->p0table[1].upload();
 
   impl_->p0table[2].allocate(512, 424);
-  std::copy(reinterpret_cast<unsigned char*>(p0table->p0table2), reinterpret_cast<unsigned char*>(p0table->p0table2 + n), impl_->p0table[2].data);
+  std::memcpy(impl_->p0table[2].data,
+              buffer + offsetof(libfreenect2::protocol::P0TablesResponse, p0table2), table_bytes);
   impl_->p0table[2].flipY();
   impl_->p0table[2].upload();
 

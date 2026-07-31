@@ -876,17 +876,18 @@ public:
     depth_frame->format = Frame::Float;
   }
 
-  void fill_trig_table(const protocol::P0TablesResponse *p0table)
+  void fill_trig_table(const unsigned char *p0table)
   {
     for (int r = 0; r < 424; ++r) {
       float4 *it = &h_p0table[r * 512];
-      const uint16_t *it0 = &p0table->p0table0[r * 512];
-      const uint16_t *it1 = &p0table->p0table1[r * 512];
-      const uint16_t *it2 = &p0table->p0table2[r * 512];
-      for (int c = 0; c < 512; ++c, ++it, ++it0, ++it1, ++it2) {
-        it->x = -((float) * it0) * 0.000031 * M_PI;
-        it->y = -((float) * it1) * 0.000031 * M_PI;
-        it->z = -((float) * it2) * 0.000031 * M_PI;
+      for (int c = 0; c < 512; ++c, ++it) {
+        const size_t index = static_cast<size_t>(r * 512 + c);
+        it->x = -((float)protocol::readP0TableValue(
+            p0table, offsetof(protocol::P0TablesResponse, p0table0), index)) * 0.000031 * M_PI;
+        it->y = -((float)protocol::readP0TableValue(
+            p0table, offsetof(protocol::P0TablesResponse, p0table1), index)) * 0.000031 * M_PI;
+        it->z = -((float)protocol::readP0TableValue(
+            p0table, offsetof(protocol::P0TablesResponse, p0table2), index)) * 0.000031 * M_PI;
         it->w = 0.0f;
       }
     }
@@ -912,7 +913,12 @@ void CudaDepthPacketProcessor::setConfiguration(const DepthPacketProcessor::Conf
 
 void CudaDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char *buffer, size_t buffer_length)
 {
-  impl_->fill_trig_table((protocol::P0TablesResponse *)buffer);
+  if(buffer == 0 || buffer_length < sizeof(protocol::P0TablesResponse))
+  {
+    LOG_ERROR << "P0Table response too short!";
+    return;
+  }
+  impl_->fill_trig_table(buffer);
   cudaMemcpy(impl_->d_p0table, impl_->h_p0table, impl_->d_p0table_size, cudaMemcpyHostToDevice);
 }
 

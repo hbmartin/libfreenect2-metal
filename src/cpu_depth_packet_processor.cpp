@@ -34,6 +34,7 @@
 #include <fstream>
 
 #include <limits>
+#include <stddef.h>
 
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -256,6 +257,19 @@ void flipHorizontal(const Mat<ScalarT> &in, Mat<ScalarT>& out)
     }
     last_line -= 2 * linestep;
   }
+}
+
+static void loadP0Table(const unsigned char *buffer, size_t offset, bool flip, Mat<uint16_t> &output)
+{
+  // Command responses are byte buffers and are not guaranteed to meet the
+  // alignment required by uint16_t. Copy into aligned matrix storage before
+  // decoding or flipping the table.
+  Mat<uint16_t> input(424, 512);
+  memcpy(input.buffer(), buffer + offset, input.sizeInBytes());
+  if(flip)
+    flipHorizontal(input, output);
+  else
+    input.copyTo(output);
 }
 
 namespace libfreenect2
@@ -682,8 +696,8 @@ public:
 
         float t11 = t10 * mask2;
 
-        float mask3 = params.max_dealias_confidence * params.max_dealias_confidence >= norm ? 1.0f : 0.0f;
-        t10 *= mask3;
+        // The mode mask is fixed to the first branch in this implementation.
+        // Do not compute the unused alternate result here.
         phase = true/*(modeMask & 2) != 0*/ ? t11 : t10;
       }
     }
@@ -830,28 +844,19 @@ void CpuDepthPacketProcessor::setConfiguration(const libfreenect2::DepthPacketPr
  */
 void CpuDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char* buffer, size_t buffer_length)
 {
-  // TODO: check known header fields (headersize, tablesize)
-  libfreenect2::protocol::P0TablesResponse* p0table = (libfreenect2::protocol::P0TablesResponse*)buffer;
-
-  if(buffer_length < sizeof(libfreenect2::protocol::P0TablesResponse))
+  if(buffer == 0 || buffer_length < sizeof(libfreenect2::protocol::P0TablesResponse))
   {
     LOG_ERROR << "P0Table response too short!";
     return;
   }
 
-  if(impl_->flip_ptables)
-  {
-    flipHorizontal(Mat<uint16_t>(424, 512, p0table->p0table0), impl_->p0_table0);
-    flipHorizontal(Mat<uint16_t>(424, 512, p0table->p0table1), impl_->p0_table1);
-    flipHorizontal(Mat<uint16_t>(424, 512, p0table->p0table2), impl_->p0_table2);
-  }
-  else
-  {
-    Mat<uint16_t> p00(424, 512, p0table->p0table0);
-    p00.copyTo(impl_->p0_table0);
-    Mat<uint16_t>(424, 512, p0table->p0table1).copyTo(impl_->p0_table1);
-    Mat<uint16_t>(424, 512, p0table->p0table2).copyTo(impl_->p0_table2);
-  }
+  // TODO: check known header fields (headersize, tablesize)
+  loadP0Table(buffer, offsetof(libfreenect2::protocol::P0TablesResponse, p0table0),
+              impl_->flip_ptables, impl_->p0_table0);
+  loadP0Table(buffer, offsetof(libfreenect2::protocol::P0TablesResponse, p0table1),
+              impl_->flip_ptables, impl_->p0_table1);
+  loadP0Table(buffer, offsetof(libfreenect2::protocol::P0TablesResponse, p0table2),
+              impl_->flip_ptables, impl_->p0_table2);
 
   impl_->fillTrigTable(impl_->p0_table0, impl_->trig_table0);
   impl_->fillTrigTable(impl_->p0_table1, impl_->trig_table1);
@@ -893,33 +898,26 @@ void CpuDepthPacketProcessor::process(const DepthPacket &packet)
   ;
   Mat<unsigned char> m_max_edge_test(424, 512);
 
-  float *m_ptr = (m.ptr(0, 0)->val);
-
   for(int y = 0; y < 424; ++y)
-    for(int x = 0; x < 512; ++x, m_ptr += 9)
+    for(int x = 0; x < 512; ++x)
     {
-      impl_->processPixelStage1(x, y, packet.buffer, m_ptr + 0, m_ptr + 3, m_ptr + 6);
+      float *measurements = m.ptr(y, x)->val;
+      impl_->processPixelStage1(x, y, packet.buffer, measurements + 0, measurements + 3, measurements + 6);
     }
 
   // bilateral filtering
+  Mat<Vec<float, 9> > *processed_measurements = &m;
   if(impl_->enable_bilateral_filter)
   {
-    float *m_filtered_ptr = (m_filtered.ptr(0, 0)->val);
-    unsigned char *m_max_edge_test_ptr = m_max_edge_test.ptr(0, 0);
-
     for(int y = 0; y < 424; ++y)
-      for(int x = 0; x < 512; ++x, m_filtered_ptr += 9, ++m_max_edge_test_ptr)
+      for(int x = 0; x < 512; ++x)
       {
         bool max_edge_test_val = true;
-        impl_->filterPixelStage1(x, y, m, m_filtered_ptr, max_edge_test_val);
-        *m_max_edge_test_ptr = max_edge_test_val ? 1 : 0;
+        impl_->filterPixelStage1(x, y, m, m_filtered.ptr(y, x)->val, max_edge_test_val);
+        m_max_edge_test.at(y, x) = max_edge_test_val ? 1 : 0;
       }
 
-    m_ptr = (m_filtered.ptr(0, 0)->val);
-  }
-  else
-  {
-    m_ptr = (m.ptr(0, 0)->val);
+    processed_measurements = &m_filtered;
   }
 
   Mat<float> out_ir(424, 512, impl_->ir_frame->data), out_depth(424, 512, impl_->depth_frame->data);
@@ -927,35 +925,33 @@ void CpuDepthPacketProcessor::process(const DepthPacket &packet)
   if(impl_->enable_edge_filter)
   {
     Mat<Vec<float, 3> > depth_ir_sum(424, 512);
-    Vec<float, 3> *depth_ir_sum_ptr = depth_ir_sum.ptr(0, 0);
-    unsigned char *m_max_edge_test_ptr = m_max_edge_test.ptr(0, 0);
-
     for(int y = 0; y < 424; ++y)
-      for(int x = 0; x < 512; ++x, m_ptr += 9, ++m_max_edge_test_ptr, ++depth_ir_sum_ptr)
+      for(int x = 0; x < 512; ++x)
       {
         float raw_depth, ir_sum;
+        float *measurements = processed_measurements->ptr(y, x)->val;
 
-        impl_->processPixelStage2(x, y, m_ptr + 0, m_ptr + 3, m_ptr + 6, out_ir.ptr(423 - y, x), &raw_depth, &ir_sum);
+        impl_->processPixelStage2(x, y, measurements + 0, measurements + 3, measurements + 6, out_ir.ptr(423 - y, x), &raw_depth, &ir_sum);
 
-        depth_ir_sum_ptr->val[0] = raw_depth;
-        depth_ir_sum_ptr->val[1] = *m_max_edge_test_ptr == 1 ? raw_depth : 0;
-        depth_ir_sum_ptr->val[2] = ir_sum;
+        Vec<float, 3> &depth_values = depth_ir_sum.at(y, x);
+        depth_values.val[0] = raw_depth;
+        depth_values.val[1] = m_max_edge_test.at(y, x) == 1 ? raw_depth : 0;
+        depth_values.val[2] = ir_sum;
       }
 
-    m_max_edge_test_ptr = m_max_edge_test.ptr(0, 0);
-
     for(int y = 0; y < 424; ++y)
-      for(int x = 0; x < 512; ++x, ++m_max_edge_test_ptr)
+      for(int x = 0; x < 512; ++x)
       {
-        impl_->filterPixelStage2(x, y, depth_ir_sum, *m_max_edge_test_ptr == 1, out_depth.ptr(423 - y, x));
+        impl_->filterPixelStage2(x, y, depth_ir_sum, m_max_edge_test.at(y, x) == 1, out_depth.ptr(423 - y, x));
       }
   }
   else
   {
     for(int y = 0; y < 424; ++y)
-      for(int x = 0; x < 512; ++x, m_ptr += 9)
+      for(int x = 0; x < 512; ++x)
       {
-        impl_->processPixelStage2(x, y, m_ptr + 0, m_ptr + 3, m_ptr + 6, out_ir.ptr(423 - y, x), out_depth.ptr(423 - y, x), 0);
+        float *measurements = processed_measurements->ptr(y, x)->val;
+        impl_->processPixelStage2(x, y, measurements + 0, measurements + 3, measurements + 6, out_ir.ptr(423 - y, x), out_depth.ptr(423 - y, x), 0);
       }
   }
 
@@ -976,4 +972,3 @@ void CpuDepthPacketProcessor::process(const DepthPacket &packet)
 }
 
 } /* namespace libfreenect2 */
-

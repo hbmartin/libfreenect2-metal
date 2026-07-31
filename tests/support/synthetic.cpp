@@ -177,7 +177,9 @@ void loadSyntheticTables(libfreenect2::DepthPacketProcessor& proc,
                          const libfreenect2::Freenect2Device::IrCameraParams& ir, uint32_t seed)
 {
   std::vector<unsigned char> p0 = makeSyntheticP0Tables(seed);
-  proc.loadP0TablesFromCommandResponse(p0.data(), p0.size());
+  std::vector<unsigned char> unaligned_p0(p0.size() + 1);
+  std::memcpy(unaligned_p0.data() + 1, p0.data(), p0.size());
+  proc.loadP0TablesFromCommandResponse(unaligned_p0.data() + 1, p0.size());
 
   std::vector<float> xtable, ztable;
   makeSyntheticXZTables(ir, xtable, ztable);

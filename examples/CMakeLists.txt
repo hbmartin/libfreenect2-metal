@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.5)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.16)
 
 if(WIN32 AND NOT MINGW)
   if(NOT DEFINED CMAKE_DEBUG_POSTFIX)
@@ -55,10 +55,8 @@ IF(ENABLE_OPENGL)
   FIND_PACKAGE(GLFW3)
   FIND_PACKAGE(OpenGL)
   IF(GLFW3_FOUND AND OPENGL_FOUND)
-    INCLUDE_DIRECTORIES(
-      ${GLFW3_INCLUDE_DIRS}
-      ${flextGL_INCLUDE_DIRS}
-    )
+    INCLUDE_DIRECTORIES(${flextGL_INCLUDE_DIRS})
+    INCLUDE_DIRECTORIES(SYSTEM ${GLFW3_INCLUDE_DIRS})
 
     LIST(APPEND Protonect_DLLS ${GLFW3_DLL})
     LIST(APPEND Protonect_src
@@ -81,6 +79,9 @@ ENDIF(ENABLE_OPENGL)
 ADD_EXECUTABLE(Protonect
   ${Protonect_src}
 )
+IF(COMMAND libfreenect2_apply_quality)
+  libfreenect2_apply_quality(Protonect PRIVATE)
+ENDIF()
 
 TARGET_LINK_LIBRARIES(Protonect
   ${Protonect_LIBRARIES}
@@ -89,6 +90,9 @@ TARGET_LINK_LIBRARIES(Protonect
 ADD_EXECUTABLE(KinectCapture
   KinectCapture.cpp
 )
+IF(COMMAND libfreenect2_apply_quality)
+  libfreenect2_apply_quality(KinectCapture PRIVATE)
+ENDIF()
 
 TARGET_COMPILE_FEATURES(KinectCapture PRIVATE cxx_std_11)
 

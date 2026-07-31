@@ -114,10 +114,10 @@ void Viewer::initialize()
 void Viewer::winsize_callbackstatic(GLFWwindow* window, int w, int h)
 {
     Viewer* viewer = reinterpret_cast<Viewer*>(glfwGetWindowUserPointer(window));
-    viewer->winsize_callback(window, w, h);
+    viewer->winsize_callback(w, h);
 }
 
-void Viewer::winsize_callback(GLFWwindow* window, int w, int h)
+void Viewer::winsize_callback(int w, int h)
 {
     win_width = w/2;
     win_height = h/2;
@@ -126,10 +126,12 @@ void Viewer::winsize_callback(GLFWwindow* window, int w, int h)
 void Viewer::key_callbackstatic(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
     Viewer* viewer = reinterpret_cast<Viewer*>(glfwGetWindowUserPointer(window));
-    viewer->key_callback(window, key, scancode, action, mods);
+    viewer->key_callback(key, action);
+    (void)scancode;
+    (void)mods;
 }
 
-void Viewer::key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+void Viewer::key_callback(int key, int action)
 {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
         shouldStop = true;

@@ -65,8 +65,8 @@ protected:
     libusb_transfer *transfer;
     TransferPool *pool;
     bool stopped;
-    Transfer(libusb_transfer *transfer, TransferPool *pool):
-      transfer(transfer), pool(pool), stopped(true) {}
+    Transfer(libusb_transfer *transfer_arg, TransferPool *pool_arg):
+      transfer(transfer_arg), pool(pool_arg), stopped(true) {}
     void setStopped(bool value)
     {
       libfreenect2::lock_guard guard(pool->stopped_mutex);

@@ -40,6 +40,11 @@
 namespace libfreenect2
 {
 
+/** Runtime identity of the loaded library. */
+LIBFREENECT2_API std::string getVersion();
+LIBFREENECT2_API uint32_t getApiVersion();
+LIBFREENECT2_API std::string getBuildRevision();
+
 /** @defgroup device Initialization and Device Control
  * Find, open, and control Kinect v2 devices. */
 ///@{
@@ -131,6 +136,7 @@ public:
 
   virtual std::string getSerialNumber() = 0;
   virtual std::string getFirmwareVersion() = 0;
+  virtual std::string getPacketPipelineName() = 0;
 
   /** Get current color parameters.
    * @copydetails ColorCameraParams
@@ -331,6 +337,17 @@ class Freenect2ReplayImpl;
 class LIBFREENECT2_API Freenect2Replay
 {
 public:
+  /** Calibration required to decode raw depth recordings without hardware. */
+  struct Calibration
+  {
+    Freenect2Device::ColorCameraParams color;
+    Freenect2Device::IrCameraParams ir;
+    std::vector<unsigned char> p0_tables;
+    std::vector<float> x_table;
+    std::vector<float> z_table;
+    std::vector<short> lookup_table;
+  };
+
   /**
    * Creates the context.
    */
@@ -356,6 +373,10 @@ public:
    * @return New device object, or NULL on failure
    */
   Freenect2Device *openDevice(const std::vector<std::string>& frame_filenames, const PacketPipeline *factory);
+
+  /** Open replay data with the calibration needed for depth decoding. */
+  Freenect2Device *openDevice(const std::vector<std::string>& frame_filenames, const Calibration &calibration);
+  Freenect2Device *openDevice(const std::vector<std::string>& frame_filenames, const Calibration &calibration, const PacketPipeline *factory);
 
 private:
   Freenect2ReplayImpl *impl_;

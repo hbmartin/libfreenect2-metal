@@ -136,9 +136,15 @@ private:
 
     while(!shutdown_)
     {
-      WAIT_CONDITION(packet_condition_, packet_mutex_, l);
+      // Check the state before blocking. process() can enqueue and notify
+      // before this worker reaches wait(); waiting unconditionally would lose
+      // that notification and leave the queued packet stuck indefinitely.
+      while(!current_packet_available_ && !shutdown_)
+      {
+        WAIT_CONDITION(packet_condition_, packet_mutex_, l);
+      }
 
-      if(current_packet_available_)
+      if(!shutdown_ && current_packet_available_)
       {
         // invoke process impl
         if (processor_->good())

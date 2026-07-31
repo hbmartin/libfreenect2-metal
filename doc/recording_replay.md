@@ -27,6 +27,18 @@ must follow `<prefix>_<timestamp>_<sequence>.<suffix>` where the suffix is
 recordings through a different or newer pipeline (e.g. `metal`) at full
 quality.
 
+Depth decoding requires the device calibration that was active during
+recording. In 0.3, `Freenect2Replay::Calibration` carries color and IR camera
+parameters plus validated P0, X, Z, and lookup tables. Pass it to the
+corresponding `openDevice()` overload. Incomplete or incorrectly sized table
+sets are rejected instead of reaching a packet processor in a partially ready
+state. Color-only loose-file replay does not require calibration.
+
+The C++ replay API deliberately remains format-neutral. `pylibfreenect3`
+defines the schema-v1 directory bundle: Python validates `manifest.json`, safe
+relative paths, table dtype/shape/length/SHA-256 metadata, and ordered raw frame
+entries before passing filenames and calibration into this API.
+
 ### Video streaming/recording: `tools/streamer_recorder`
 
 A contributed Protonect variant that records decoded streams or streams

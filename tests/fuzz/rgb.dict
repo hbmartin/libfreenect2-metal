@@ -1,0 +1,3 @@
+magic_header="\x39\x39\x39\x39"
+magic_footer="\x42\x42\x42\x42"
+jpeg_eoi="\xff\xd9"

@@ -29,6 +29,8 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <atomic>
+#include <cerrno>
 #include <libusb.h>
 #include <limits>
 #include <cmath>
@@ -36,7 +38,8 @@
 #include <cstring>
 #include <fstream>
 
-#define WRITE_LIBUSB_ERROR(__RESULT) libusb_error_name(__RESULT) << " " << libusb_strerror((libusb_error)__RESULT)
+#define WRITE_LIBUSB_ERROR(__RESULT) \
+  libusb_error_name((__RESULT)) << " " << libusb_strerror(static_cast<libusb_error>((__RESULT)))
 
 #include <libfreenect2/libfreenect2.hpp>
 
@@ -56,6 +59,55 @@ namespace libfreenect2
 using namespace libfreenect2;
 using namespace libfreenect2::usb;
 using namespace libfreenect2::protocol;
+
+std::string getVersion()
+{
+  return LIBFREENECT2_VERSION;
+}
+
+uint32_t getApiVersion()
+{
+  return LIBFREENECT2_API_VERSION;
+}
+
+std::string getBuildRevision()
+{
+  return LIBFREENECT2_BUILD_REVISION;
+}
+
+template<typename UnsignedT>
+bool parseUnsignedDecimal(const char *text, UnsignedT *value)
+{
+  if(text == NULL || text[0] == '\0' || text[0] == '-')
+    return false;
+
+  errno = 0;
+  char *end = NULL;
+  const unsigned long long parsed = strtoull(text, &end, 10);
+  if(errno == ERANGE || end == text || *end != '\0' ||
+     parsed > static_cast<unsigned long long>(std::numeric_limits<UnsignedT>::max()))
+    return false;
+
+  *value = static_cast<UnsignedT>(parsed);
+  return true;
+}
+
+void overrideUnsignedFromEnvironment(const char *name, unsigned *value)
+{
+  const char *text = std::getenv(name);
+  if(text == NULL)
+    return;
+
+  unsigned parsed = 0;
+  if(parseUnsignedDecimal(text, &parsed) && parsed != 0)
+  {
+    *value = parsed;
+  }
+  else
+  {
+    LOG_WARNING << "ignoring invalid positive integer in " << name;
+  }
+}
 
 /*
 For detailed analysis see https://github.com/OpenKinect/libfreenect2/issues/144
@@ -243,6 +295,7 @@ public:
 
   virtual std::string getSerialNumber();
   virtual std::string getFirmwareVersion();
+  virtual std::string getPacketPipelineName();
 
   virtual Freenect2Device::ColorCameraParams getColorCameraParams();
   virtual Freenect2Device::IrCameraParams getIrCameraParams();
@@ -273,11 +326,12 @@ public:
 class Freenect2ReplayDevice : public Freenect2Device
 {
 public:
-  Freenect2ReplayDevice(Freenect2ReplayImpl *context_, const std::vector<std::string>& frame_filenames, const PacketPipeline* pipeline);
+  Freenect2ReplayDevice(Freenect2ReplayImpl *context_, const std::vector<std::string>& frame_filenames, const PacketPipeline* pipeline, const Freenect2Replay::Calibration *calibration);
   virtual ~Freenect2ReplayDevice();
 
   virtual std::string getSerialNumber();
   virtual std::string getFirmwareVersion();
+  virtual std::string getPacketPipelineName();
 
   virtual ColorCameraParams getColorCameraParams();
   virtual IrCameraParams getIrCameraParams();
@@ -288,14 +342,14 @@ public:
   virtual void setColorFrameListener(FrameListener* listener);
   virtual void setIrAndDepthFrameListener(FrameListener* listener);
 
-  virtual void setColorAutoExposure(float exposure_compensation) {}
-  virtual void setColorSemiAutoExposure(float pseudo_exposure_time_ms) {}
-  virtual void setColorManualExposure(float integration_time_ms, float analog_gain) {}
-  virtual void setColorSetting(ColorSettingCommandType cmd, uint32_t value) {}
-  virtual void setColorSetting(ColorSettingCommandType cmd, float value) {}
-  virtual uint32_t getColorSetting(ColorSettingCommandType cmd) { return 0u; }
-  virtual float getColorSettingFloat(ColorSettingCommandType cmd) { return 0.0f; }
-  virtual void setLedStatus(LedSettings led) {}
+  virtual void setColorAutoExposure(float) {}
+  virtual void setColorSemiAutoExposure(float) {}
+  virtual void setColorManualExposure(float, float) {}
+  virtual void setColorSetting(ColorSettingCommandType, uint32_t) {}
+  virtual void setColorSetting(ColorSettingCommandType, float) {}
+  virtual uint32_t getColorSetting(ColorSettingCommandType) { return 0u; }
+  virtual float getColorSettingFloat(ColorSettingCommandType) { return 0.0f; }
+  virtual void setLedStatus(LedSettings) {}
 
   bool open();
 
@@ -322,7 +376,12 @@ private:
 
   std::vector<std::string> frame_filenames_;
   libfreenect2::thread* t_;
-  bool running_;
+  std::atomic<bool> running_;
+  bool closed_;
+  bool enable_rgb_;
+  bool enable_depth_;
+  bool has_calibration_;
+  Freenect2Replay::Calibration calibration_;
 
   Freenect2Device::IrCameraParams ir_camera_params_;
   Freenect2Device::ColorCameraParams rgb_camera_params_;
@@ -508,7 +567,7 @@ public:
         libusb_device *dev = device_list[idx];
         libusb_device_descriptor dev_desc;
 
-        int r = libusb_get_device_descriptor(dev, &dev_desc); // this is always successful
+        libusb_get_device_descriptor(dev, &dev_desc); // this is always successful
 
         if(dev_desc.idVendor == Freenect2Device::VendorId && (dev_desc.idProduct == Freenect2Device::ProductId || dev_desc.idProduct == Freenect2Device::ProductIdPreview))
         {
@@ -527,7 +586,7 @@ public:
           else
           {
             libusb_device_handle *dev_handle;
-            r = libusb_open(dev, &dev_handle);
+            int r = libusb_open(dev, &dev_handle);
 
             if(r == LIBUSB_SUCCESS)
             {
@@ -631,7 +690,7 @@ public:
     }
   }
 
-  Freenect2Device *openDevice(const std::vector<std::string>& frame_filenames, const PacketPipeline *pipeline);
+  Freenect2Device *openDevice(const std::vector<std::string>& frame_filenames, const PacketPipeline *pipeline, const Freenect2Replay::Calibration *calibration = NULL);
 };
 
 Freenect2Device::~Freenect2Device()
@@ -696,6 +755,11 @@ std::string Freenect2DeviceImpl::getSerialNumber()
 std::string Freenect2DeviceImpl::getFirmwareVersion()
 {
   return firmware_;
+}
+
+std::string Freenect2DeviceImpl::getPacketPipelineName()
+{
+  return pipeline_ == NULL ? std::string() : pipeline_->getName();
 }
 
 Freenect2Device::ColorCameraParams Freenect2DeviceImpl::getColorCameraParams()
@@ -859,15 +923,10 @@ bool Freenect2DeviceImpl::open()
   ir_num_xfers = 8;
 #endif
 
-  const char *xfer_str;
-  xfer_str = std::getenv("LIBFREENECT2_RGB_TRANSFER_SIZE");
-  if(xfer_str) rgb_xfer_size = std::atoi(xfer_str);
-  xfer_str = std::getenv("LIBFREENECT2_RGB_TRANSFERS");
-  if(xfer_str) rgb_num_xfers = std::atoi(xfer_str);
-  xfer_str = std::getenv("LIBFREENECT2_IR_PACKETS");
-  if(xfer_str) ir_pkts_per_xfer = std::atoi(xfer_str);
-  xfer_str = std::getenv("LIBFREENECT2_IR_TRANSFERS");
-  if(xfer_str) ir_num_xfers = std::atoi(xfer_str);
+  overrideUnsignedFromEnvironment("LIBFREENECT2_RGB_TRANSFER_SIZE", &rgb_xfer_size);
+  overrideUnsignedFromEnvironment("LIBFREENECT2_RGB_TRANSFERS", &rgb_num_xfers);
+  overrideUnsignedFromEnvironment("LIBFREENECT2_IR_PACKETS", &ir_pkts_per_xfer);
+  overrideUnsignedFromEnvironment("LIBFREENECT2_IR_TRANSFERS", &ir_num_xfers);
 
   LOG_INFO << "transfer pool sizes"
            << " rgb: " << rgb_num_xfers << "*" << rgb_xfer_size
@@ -1087,27 +1146,70 @@ bool Freenect2DeviceImpl::close()
   return true;
 }
 
-PacketPipeline *createPacketPipelineByName(std::string name)
+PacketPipeline *createPacketPipeline(const std::string &name, int device_id)
 {
+  (void)device_id;
 #if defined(LIBFREENECT2_WITH_OPENGL_SUPPORT)
-  if (name == "gl")
+  if (name == "opengl")
     return new OpenGLPacketPipeline();
 #endif
 #if defined(LIBFREENECT2_WITH_CUDA_SUPPORT)
   if (name == "cuda")
-    return new CudaPacketPipeline();
+    return new CudaPacketPipeline(device_id);
+  if (name == "cuda_kde")
+    return new CudaKdePacketPipeline(device_id);
 #endif
 #if defined(LIBFREENECT2_WITH_OPENCL_SUPPORT)
-  if (name == "cl")
-    return new OpenCLPacketPipeline();
+  if (name == "opencl")
+    return new OpenCLPacketPipeline(device_id);
+  if (name == "opencl_kde")
+    return new OpenCLKdePacketPipeline(device_id);
 #endif
 #if defined(LIBFREENECT2_WITH_METAL_SUPPORT)
   if (name == "metal")
-    return new MetalPacketPipeline();
+    return new MetalPacketPipeline(device_id);
 #endif
   if (name == "cpu")
     return new CpuPacketPipeline();
+  if (name == "dump")
+    return new DumpPacketPipeline();
   return NULL;
+}
+
+std::vector<std::string> getCompiledPacketPipelines()
+{
+  std::vector<std::string> names;
+  names.push_back("cpu");
+  names.push_back("dump");
+#if defined(LIBFREENECT2_WITH_METAL_SUPPORT)
+  names.push_back("metal");
+#endif
+#if defined(LIBFREENECT2_WITH_OPENGL_SUPPORT)
+  names.push_back("opengl");
+#endif
+#if defined(LIBFREENECT2_WITH_OPENCL_SUPPORT)
+  names.push_back("opencl");
+  names.push_back("opencl_kde");
+#endif
+#if defined(LIBFREENECT2_WITH_CUDA_SUPPORT)
+  names.push_back("cuda");
+  names.push_back("cuda_kde");
+#endif
+  return names;
+}
+
+std::vector<std::string> getAvailablePacketPipelines()
+{
+  const std::vector<std::string> compiled = getCompiledPacketPipelines();
+  std::vector<std::string> available;
+  for(std::vector<std::string>::const_iterator it = compiled.begin(); it != compiled.end(); ++it)
+  {
+    PacketPipeline *pipeline = createPacketPipeline(*it);
+    if(pipeline != NULL && pipeline->good())
+      available.push_back(*it);
+    delete pipeline;
+  }
+  return available;
 }
 
 #if defined(LIBFREENECT2_WITH_METAL_SUPPORT) || defined(LIBFREENECT2_WITH_OPENGL_SUPPORT) \
@@ -1133,11 +1235,16 @@ PacketPipeline *createDefaultPacketPipeline()
   const char *pipeline_env = std::getenv("LIBFREENECT2_PIPELINE");
   if (pipeline_env)
   {
-    PacketPipeline *pipeline = createPacketPipelineByName(pipeline_env);
-    if (pipeline)
+    std::string requested(pipeline_env);
+    if(requested == "gl")
+      requested = "opengl";
+    else if(requested == "cl")
+      requested = "opencl";
+    PacketPipeline *pipeline = createPacketPipeline(requested);
+    if (pipeline != NULL && pipeline->good())
       return pipeline;
-    else
-      LOG_WARNING << "`" << pipeline_env << "' pipeline is not available.";
+    delete pipeline;
+    LOG_WARNING << "`" << pipeline_env << "' pipeline is not available.";
   }
 
   // Prefer GPU pipelines in order, but probe each for a usable runtime device
@@ -1341,12 +1448,16 @@ Freenect2Device *Freenect2::openDefaultDevice(const PacketPipeline *pipeline)
   return openDevice(0, pipeline);
 }
 
-Freenect2ReplayDevice::Freenect2ReplayDevice(Freenect2ReplayImpl *context, const std::vector<std::string>& frame_filenames, const PacketPipeline* pipeline)
-  :context_(context), pipeline_(pipeline), frame_filenames_(frame_filenames), running_(false)
+Freenect2ReplayDevice::Freenect2ReplayDevice(Freenect2ReplayImpl *context, const std::vector<std::string>& frame_filenames, const PacketPipeline* pipeline, const Freenect2Replay::Calibration *calibration)
+  :context_(context), pipeline_(pipeline), frame_filenames_(frame_filenames), t_(NULL), running_(false), closed_(false),
+   enable_rgb_(true), enable_depth_(true), has_calibration_(calibration != NULL)
 {
+  if(calibration != NULL)
+    calibration_ = *calibration;
   size_t single_image = 512*424*11/8;
   buffer_size_ = 10 * single_image;
-  pipeline_->getDepthPacketProcessor()->allocateBuffer(packet_, buffer_size_);
+  if(pipeline_ != NULL && pipeline_->getDepthPacketProcessor() != NULL)
+    pipeline_->getDepthPacketProcessor()->allocateBuffer(packet_, buffer_size_);
 }
 
 Freenect2ReplayDevice::~Freenect2ReplayDevice()
@@ -1366,6 +1477,11 @@ std::string Freenect2ReplayDevice::getFirmwareVersion()
 {
   // Reasonable assumption given it is a software serial for apps that display this
   return LIBFREENECT2_VERSION;
+}
+
+std::string Freenect2ReplayDevice::getPacketPipelineName()
+{
+  return pipeline_ == NULL ? std::string() : pipeline_->getName();
 }
 
 Freenect2Device::ColorCameraParams Freenect2ReplayDevice::getColorCameraParams()
@@ -1424,7 +1540,38 @@ bool Freenect2ReplayDevice::open()
 {
   LOG_INFO << "opening...";
 
-  // May add file checking or params loading
+  if(pipeline_ == NULL || frame_filenames_.empty())
+    return false;
+
+  if(has_calibration_)
+  {
+    DepthPacketProcessor *proc = pipeline_->getDepthPacketProcessor();
+    if(calibration_.p0_tables.size() != sizeof(protocol::P0TablesResponse))
+    {
+      LOG_ERROR << "invalid replay P0 table length: " << calibration_.p0_tables.size();
+      return false;
+    }
+    if(calibration_.x_table.size() != DepthPacketProcessor::TABLE_SIZE ||
+       calibration_.z_table.size() != DepthPacketProcessor::TABLE_SIZE)
+    {
+      LOG_ERROR << "invalid replay X/Z table length";
+      return false;
+    }
+    if(calibration_.lookup_table.size() != DepthPacketProcessor::LUT_SIZE)
+    {
+      LOG_ERROR << "invalid replay lookup table length: " << calibration_.lookup_table.size();
+      return false;
+    }
+
+    setColorCameraParams(calibration_.color);
+    setIrCameraParams(calibration_.ir);
+    if(proc != NULL)
+    {
+      proc->loadP0TablesFromCommandResponse(&calibration_.p0_tables[0], calibration_.p0_tables.size());
+      proc->loadXZTables(&calibration_.x_table[0], &calibration_.z_table[0]);
+      proc->loadLookupTable(&calibration_.lookup_table[0]);
+    }
+  }
 
   return true;
 }
@@ -1433,24 +1580,21 @@ bool Freenect2ReplayDevice::close()
 {
   LOG_INFO << "closing...";
 
-  if(running_ == false)
+  if(closed_)
   {
     LOG_INFO << "already closed, doing nothing";
     return true;
   }
 
-  if(running_ == true)
-  {
-    stop();
-  }
+  stop();
 
-  if(pipeline_->getRgbPacketProcessor() != 0)
+  if(pipeline_ != NULL && pipeline_->getRgbPacketProcessor() != 0)
     pipeline_->getRgbPacketProcessor()->setFrameListener(0);
 
-  if(pipeline_->getDepthPacketProcessor() != 0)
+  if(pipeline_ != NULL && pipeline_->getDepthPacketProcessor() != 0)
     pipeline_->getDepthPacketProcessor()->setFrameListener(0);
 
-  running_ = false;
+  closed_ = true;
   LOG_INFO << "closed";
   return true;
 }
@@ -1514,25 +1658,37 @@ void Freenect2ReplayDevice::static_execute(void* arg)
 
 bool Freenect2ReplayDevice::start()
 {
-  running_ = true;
-  t_ = new libfreenect2::thread(static_execute, this);
-  LOG_INFO << "replay started";
-  return running_;
+  return startStreams(true, true);
 }
 
 bool Freenect2ReplayDevice::startStreams(bool enable_rgb, bool enable_depth)
 {
   LOG_INFO << "Freenect2ReplayDevice: starting: rgb: " << enable_rgb << ", depth: " << enable_depth;
-  LOG_INFO << "Freenect2ReplayDevice: unimplemented";
-  return false;
+  if(closed_ || running_.load() || (!enable_rgb && !enable_depth))
+    return false;
+  if(t_ != NULL)
+  {
+    t_->join();
+    delete t_;
+    t_ = NULL;
+  }
+  enable_rgb_ = enable_rgb;
+  enable_depth_ = enable_depth;
+  running_.store(true);
+  t_ = new libfreenect2::thread(static_execute, this);
+  LOG_INFO << "replay started";
+  return true;
 }
 
 bool Freenect2ReplayDevice::stop()
 {
-  running_ = false;
-  t_->join();
-  delete t_;
-  t_ = NULL;
+  running_.store(false);
+  if(t_ != NULL)
+  {
+    t_->join();
+    delete t_;
+    t_ = NULL;
+  }
   LOG_INFO << "replay stopped";
   return true;
 }
@@ -1558,12 +1714,20 @@ bool parseFrameFilename(const std::string& frame_filename, size_t timestamp_sequ
     return false;
   }
   
-  size_t ix1 = frame_filename.find("_");
-  size_t ix2 = frame_filename.find("_", ix1 + 1);
-  size_t ix3 = frame_filename.find(".", ix2 + 1);
+  const size_t path_sep = frame_filename.find_last_of("/\\");
+  const size_t basename = path_sep == std::string::npos ? 0 : path_sep + 1;
+  const size_t ix3 = frame_filename.find_last_of('.');
+  const size_t ix2 = ix3 == std::string::npos ? std::string::npos : frame_filename.rfind('_', ix3);
+  const size_t ix1 = ix2 == std::string::npos ? std::string::npos : frame_filename.rfind('_', ix2 - 1);
 
-  std::string ts = frame_filename.substr(0, ix1);
-  std::string seq = frame_filename.substr(ix2 + 1, ix3);
+  if(ix1 == std::string::npos || ix1 < basename || ix2 == std::string::npos || ix3 == std::string::npos)
+  {
+    LOG_ERROR << "could not find timestamp and sequence delimiters";
+    return false;
+  }
+
+  std::string ts = frame_filename.substr(ix1 + 1, ix2 - ix1 - 1);
+  std::string seq = frame_filename.substr(ix2 + 1, ix3 - ix2 - 1);
 
   LOG_DEBUG << "ts: " << ts << ", seq: " << seq;
 
@@ -1573,8 +1737,12 @@ bool parseFrameFilename(const std::string& frame_filename, size_t timestamp_sequ
     return false;
   }
   
-  timestamp_sequence[0] = atoi(ts.c_str());
-  timestamp_sequence[1] = atoi(seq.c_str());
+  if(!parseUnsignedDecimal(ts.c_str(), &timestamp_sequence[0]) ||
+     !parseUnsignedDecimal(seq.c_str(), &timestamp_sequence[1]))
+  {
+    LOG_ERROR << "timestamp or sequence is not an unsigned decimal integer";
+    return false;
+  }
 
   LOG_DEBUG << "ts: " << timestamp_sequence[0] << ", seq: " << timestamp_sequence[1];
 
@@ -1591,7 +1759,7 @@ void Freenect2ReplayDevice::run()
 {
   size_t timestamp_sequence[2] = {0};
     
-  for (size_t i = 0; i < frame_filenames_.size() && running_; i++)
+  for (size_t i = 0; i < frame_filenames_.size() && running_.load(); i++)
   {
     std::string frame = frame_filenames_[i];
 
@@ -1601,54 +1769,83 @@ void Freenect2ReplayDevice::run()
       continue;
     }
 
-    if (hasSuffix(frame, ".depth"))
+    const bool is_depth = hasSuffix(frame, ".depth");
+    const bool is_color = hasSuffix(frame, ".jpg") || hasSuffix(frame, ".jpeg");
+    if((is_depth && !enable_depth_) || (is_color && !enable_rgb_))
+      continue;
+
+    std::ifstream fd(frame.c_str(), std::ios::in | std::ios::binary);
+    if(!fd)
     {
-      std::ifstream fd(frame.c_str());
-      
-      if(!fd)
-      {
-        LOG_ERROR << "failed to open replay frame: " << frame << ", skipping...";
-        continue;
-      }
+      LOG_ERROR << "failed to open replay frame: " << frame << ", skipping...";
+      continue;
+    }
 
-      fd.seekg(0, fd.end);
-      size_t length = fd.tellg();
-      fd.seekg(0, fd.beg);
+    fd.seekg(0, fd.end);
+    const std::streamoff end = fd.tellg();
+    fd.seekg(0, fd.beg);
+    if(end <= 0)
+    {
+      LOG_ERROR << "empty replay frame: " << frame << ", skipping...";
+      continue;
+    }
+    const size_t length = static_cast<size_t>(end);
 
-      if(length != buffer_size_)
+    if(is_depth)
+    {
+      DepthPacketProcessor *processor = pipeline_->getDepthPacketProcessor();
+      if(processor == NULL || packet_.memory == NULL || length != buffer_size_)
       {
-        LOG_ERROR << "file length: " << length
-                  << "exceeds depth image buffer size: "
-                  << buffer_size_ << "; skipping...";
+        LOG_ERROR << "invalid replay depth frame length: " << length
+                  << " (expected " << buffer_size_ << "); skipping...";
         continue;
       }
 
       fd.read(reinterpret_cast<char*>(packet_.memory->data), length);
-      if(!fd || (size_t)fd.gcount() != length)
+      if(!fd || static_cast<size_t>(fd.gcount()) != length)
       {
-        LOG_ERROR << "failed to read replay frame: " << frame << ": "
-                  << fd.gcount() << " vs. " << length << " bytes";
+        LOG_ERROR << "failed to read replay frame: " << frame;
         continue;
       }
 
-      if(pipeline_->getDepthPacketProcessor()->ready())
+      if(!processor->ready())
       {
-        packet_.timestamp = timestamp_sequence[0];
-        packet_.sequence = timestamp_sequence[1];
-        packet_.buffer = packet_.memory->data;
-        packet_.buffer_length = length;
+        LOG_WARNING << "skipping replay depth packet because calibration is incomplete: " << frame;
+        continue;
+      }
 
-        pipeline_->getDepthPacketProcessor()->process(packet_);
-        pipeline_->getDepthPacketProcessor()->allocateBuffer(packet_, buffer_size_);
-      }
-      else
+      packet_.timestamp = timestamp_sequence[0];
+      packet_.sequence = timestamp_sequence[1];
+      packet_.buffer = packet_.memory->data;
+      packet_.buffer_length = length;
+      processor->process(packet_);
+      processor->allocateBuffer(packet_, buffer_size_);
+    }
+    else if(is_color)
+    {
+      RgbPacketProcessor *processor = pipeline_->getRgbPacketProcessor();
+      if(processor == NULL)
+        continue;
+      std::vector<unsigned char> jpeg(length);
+      fd.read(reinterpret_cast<char*>(&jpeg[0]), length);
+      if(!fd || static_cast<size_t>(fd.gcount()) != length)
       {
-        LOG_DEBUG
-          << "skipping a replay depth packet for " << frame
-          << " as depth processor is not ready";
+        LOG_ERROR << "failed to read replay frame: " << frame;
+        continue;
       }
+
+      RgbPacket rgb;
+      rgb.timestamp = timestamp_sequence[0];
+      rgb.sequence = timestamp_sequence[1];
+      rgb.jpeg_buffer = &jpeg[0];
+      rgb.jpeg_buffer_length = length;
+      rgb.exposure = 0.0f;
+      rgb.gain = 0.0f;
+      rgb.gamma = 0.0f;
+      processor->process(rgb);
     }
   }
+  running_.store(false);
 }
 
 Freenect2Replay::Freenect2Replay() :
@@ -1668,12 +1865,22 @@ Freenect2Device *Freenect2Replay::openDevice(const std::vector<std::string>& fra
 
 Freenect2Device *Freenect2Replay::openDevice(const std::vector<std::string>& frame_filenames, const PacketPipeline *pipeline)
 {
-  return impl_->openDevice(frame_filenames, pipeline);
+  return impl_->openDevice(frame_filenames, pipeline, NULL);
 }
 
-Freenect2Device *Freenect2ReplayImpl::openDevice(const std::vector<std::string>& frame_filenames, const PacketPipeline *pipeline)
+Freenect2Device *Freenect2Replay::openDevice(const std::vector<std::string>& frame_filenames, const Calibration &calibration)
 {
-  Freenect2ReplayDevice *device = new Freenect2ReplayDevice(this, frame_filenames, pipeline);
+  return impl_->openDevice(frame_filenames, createDefaultPacketPipeline(), &calibration);
+}
+
+Freenect2Device *Freenect2Replay::openDevice(const std::vector<std::string>& frame_filenames, const Calibration &calibration, const PacketPipeline *pipeline)
+{
+  return impl_->openDevice(frame_filenames, pipeline, &calibration);
+}
+
+Freenect2Device *Freenect2ReplayImpl::openDevice(const std::vector<std::string>& frame_filenames, const PacketPipeline *pipeline, const Freenect2Replay::Calibration *calibration)
+{
+  Freenect2ReplayDevice *device = new Freenect2ReplayDevice(this, frame_filenames, pipeline, calibration);
   addDevice(device);
 
   if(!device->open())

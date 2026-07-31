@@ -47,7 +47,15 @@
 #endif //CL_VERSION_1_2
 #endif //LIBFREENECT2_OPENCL_ICD_LOADER_IS_OLD
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-copy-with-user-provided-copy"
+#pragma clang diagnostic ignored "-Wundef"
+#endif
 #include <CL/cl.hpp>
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #ifndef REG_OPENCL_FILE
 #define REG_OPENCL_FILE ""
@@ -237,7 +245,8 @@ public:
     , programInitialized(false)
     , runtimeOk(true)
   {
-#if _BSD_SOURCE || _POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600
+#if defined(_BSD_SOURCE) || (defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 200112L) || \
+    (defined(_XOPEN_SOURCE) && _XOPEN_SOURCE >= 600)
     setenv("OCL_IGNORE_SELF_TEST", "1", 0);
     setenv("OCL_STRICT_CONFORMANCE", "0", 0);
 #endif
@@ -656,7 +665,7 @@ public:
     depth_frame->format = Frame::Float;
   }
 
-  bool fill_trig_table(const libfreenect2::protocol::P0TablesResponse *p0table)
+  bool fill_trig_table(const unsigned char *p0table)
   {
     if(!deviceInitialized)
     {
@@ -669,14 +678,15 @@ public:
     for(int r = 0; r < 424; ++r)
     {
       cl_float3 *it = &p0_table[r * 512];
-      const uint16_t *it0 = &p0table->p0table0[r * 512];
-      const uint16_t *it1 = &p0table->p0table1[r * 512];
-      const uint16_t *it2 = &p0table->p0table2[r * 512];
-      for(int c = 0; c < 512; ++c, ++it, ++it0, ++it1, ++it2)
+      for(int c = 0; c < 512; ++c, ++it)
       {
-        it->s[0] = -((float)*it0) * 0.000031 * M_PI;
-        it->s[1] = -((float)*it1) * 0.000031 * M_PI;
-        it->s[2] = -((float)*it2) * 0.000031 * M_PI;
+        const size_t index = static_cast<size_t>(r * 512 + c);
+        it->s[0] = -((float)libfreenect2::protocol::readP0TableValue(
+            p0table, offsetof(libfreenect2::protocol::P0TablesResponse, p0table0), index)) * 0.000031 * M_PI;
+        it->s[1] = -((float)libfreenect2::protocol::readP0TableValue(
+            p0table, offsetof(libfreenect2::protocol::P0TablesResponse, p0table1), index)) * 0.000031 * M_PI;
+        it->s[2] = -((float)libfreenect2::protocol::readP0TableValue(
+            p0table, offsetof(libfreenect2::protocol::P0TablesResponse, p0table2), index)) * 0.000031 * M_PI;
         it->s[3] = 0.0f;
       }
     }
@@ -754,15 +764,13 @@ void OpenCLDepthPacketProcessor::setConfiguration(const libfreenect2::DepthPacke
 
 void OpenCLDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char *buffer, size_t buffer_length)
 {
-  libfreenect2::protocol::P0TablesResponse *p0table = (libfreenect2::protocol::P0TablesResponse *)buffer;
-
-  if(buffer_length < sizeof(libfreenect2::protocol::P0TablesResponse))
+  if(buffer == 0 || buffer_length < sizeof(libfreenect2::protocol::P0TablesResponse))
   {
     LOG_ERROR << "P0Table response too short!";
     return;
   }
 
-  impl_->fill_trig_table(p0table);
+  impl_->fill_trig_table(buffer);
 }
 
 void OpenCLDepthPacketProcessor::loadXZTables(const float *xtable, const float *ztable)
@@ -820,4 +828,3 @@ Allocator *OpenCLDepthPacketProcessor::getAllocator()
   return impl_->input_buffer_allocator;
 }
 } /* namespace libfreenect2 */
-

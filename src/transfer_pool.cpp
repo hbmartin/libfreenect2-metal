@@ -29,7 +29,8 @@
 #include <libfreenect2/usb/transfer_pool.h>
 #include <libfreenect2/logging.h>
 
-#define WRITE_LIBUSB_ERROR(__RESULT) libusb_error_name(__RESULT) << " " << libusb_strerror((libusb_error)__RESULT)
+#define WRITE_LIBUSB_ERROR(__RESULT) \
+  libusb_error_name((__RESULT)) << " " << libusb_strerror(static_cast<libusb_error>((__RESULT)))
 
 namespace libfreenect2
 {
@@ -341,4 +342,3 @@ void IsoTransferPool::processTransfer(libusb_transfer* transfer)
 
 } /* namespace usb */
 } /* namespace libfreenect2 */
-

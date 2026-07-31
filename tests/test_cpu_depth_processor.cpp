@@ -33,6 +33,7 @@ using libfreenect2::testing::CollectingFrameListener;
 using libfreenect2::testing::loadSyntheticTables;
 using libfreenect2::testing::makeIrParams;
 using libfreenect2::testing::makeSyntheticDepthBuffer;
+using libfreenect2::testing::makeSyntheticP0Tables;
 
 namespace
 {
@@ -107,4 +108,16 @@ TEST(CpuDepthProcessor, IsDeterministic)
   EXPECT_EQ(0, std::memcmp(a.depth()->data, b.depth()->data, bytes))
       << "depth frame is not deterministic";
   EXPECT_EQ(0, std::memcmp(a.ir()->data, b.ir()->data, bytes)) << "ir frame is not deterministic";
+}
+
+TEST(CpuDepthProcessor, AcceptsUnalignedP0CommandResponse)
+{
+  CpuDepthPacketProcessor proc;
+  std::vector<unsigned char> p0 = makeSyntheticP0Tables();
+  std::vector<unsigned char> unaligned(p0.size() + 1);
+  std::memcpy(unaligned.data() + 1, p0.data(), p0.size());
+
+  // USB command responses are byte buffers and do not guarantee uint16_t
+  // alignment. Sanitizers exercise the decoding path for this exact layout.
+  proc.loadP0TablesFromCommandResponse(unaligned.data() + 1, p0.size());
 }

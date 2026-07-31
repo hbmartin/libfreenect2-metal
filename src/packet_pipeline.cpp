@@ -103,11 +103,21 @@ PacketPipelineComponents::~PacketPipelineComponents()
   delete depth_processor_;
 }
 
-PacketPipeline::PacketPipeline(): comp_(new PacketPipelineComponents()) {}
+PacketPipeline::PacketPipeline(const std::string &name): name_(name), comp_(new PacketPipelineComponents()) {}
 
 PacketPipeline::~PacketPipeline()
 {
   delete comp_;
+}
+
+const std::string &PacketPipeline::getName() const
+{
+  return name_;
+}
+
+bool PacketPipeline::good() const
+{
+  return comp_->depth_processor_ == NULL || comp_->depth_processor_->good();
 }
 
 PacketPipeline::PacketParser *PacketPipeline::getRgbPacketParser() const
@@ -130,7 +140,7 @@ DepthPacketProcessor *PacketPipeline::getDepthPacketProcessor() const
   return comp_->depth_processor_;
 }
 
-CpuPacketPipeline::CpuPacketPipeline()
+CpuPacketPipeline::CpuPacketPipeline() : PacketPipeline("cpu")
 {
   comp_->initialize(getDefaultRgbPacketProcessor(), new CpuDepthPacketProcessor());
 }
@@ -138,7 +148,7 @@ CpuPacketPipeline::CpuPacketPipeline()
 CpuPacketPipeline::~CpuPacketPipeline() { }
 
 #ifdef LIBFREENECT2_WITH_OPENGL_SUPPORT
-OpenGLPacketPipeline::OpenGLPacketPipeline(void *parent_opengl_context, bool debug) : parent_opengl_context_(parent_opengl_context), debug_(debug)
+OpenGLPacketPipeline::OpenGLPacketPipeline(void *parent_opengl_context, bool debug) : PacketPipeline("opengl"), parent_opengl_context_(parent_opengl_context), debug_(debug)
 {
   comp_->initialize(getDefaultRgbPacketProcessor(), new OpenGLDepthPacketProcessor(parent_opengl_context_, debug_));
 }
@@ -148,7 +158,7 @@ OpenGLPacketPipeline::~OpenGLPacketPipeline() { }
 
 
 #ifdef LIBFREENECT2_WITH_OPENCL_SUPPORT
-OpenCLPacketPipeline::OpenCLPacketPipeline(const int deviceId) : deviceId(deviceId)
+OpenCLPacketPipeline::OpenCLPacketPipeline(const int deviceId) : PacketPipeline("opencl"), deviceId(deviceId)
 {
   comp_->initialize(getDefaultRgbPacketProcessor(), new OpenCLDepthPacketProcessor(deviceId));
 }
@@ -156,7 +166,7 @@ OpenCLPacketPipeline::OpenCLPacketPipeline(const int deviceId) : deviceId(device
 OpenCLPacketPipeline::~OpenCLPacketPipeline() { }
 
 
-OpenCLKdePacketPipeline::OpenCLKdePacketPipeline(const int deviceId) : deviceId(deviceId)
+OpenCLKdePacketPipeline::OpenCLKdePacketPipeline(const int deviceId) : PacketPipeline("opencl_kde"), deviceId(deviceId)
 {
   comp_->initialize(getDefaultRgbPacketProcessor(), new OpenCLKdeDepthPacketProcessor(deviceId));
 }
@@ -165,14 +175,14 @@ OpenCLKdePacketPipeline::~OpenCLKdePacketPipeline() { }
 #endif // LIBFREENECT2_WITH_OPENCL_SUPPORT
 
 #ifdef LIBFREENECT2_WITH_CUDA_SUPPORT
-CudaPacketPipeline::CudaPacketPipeline(const int deviceId) : deviceId(deviceId)
+CudaPacketPipeline::CudaPacketPipeline(const int deviceId) : PacketPipeline("cuda"), deviceId(deviceId)
 {
   comp_->initialize(getDefaultRgbPacketProcessor(), new CudaDepthPacketProcessor(deviceId));
 }
 
 CudaKdePacketPipeline::~CudaKdePacketPipeline() { }
 
-CudaKdePacketPipeline::CudaKdePacketPipeline(const int deviceId) : deviceId(deviceId)
+CudaKdePacketPipeline::CudaKdePacketPipeline(const int deviceId) : PacketPipeline("cuda_kde"), deviceId(deviceId)
 {
   comp_->initialize(getDefaultRgbPacketProcessor(), new CudaKdeDepthPacketProcessor(deviceId));
 }
@@ -181,7 +191,7 @@ CudaPacketPipeline::~CudaPacketPipeline() { }
 #endif // LIBFREENECT2_WITH_CUDA_SUPPORT
 
 #ifdef LIBFREENECT2_WITH_METAL_SUPPORT
-MetalPacketPipeline::MetalPacketPipeline(const int deviceId) : deviceId(deviceId)
+MetalPacketPipeline::MetalPacketPipeline(const int deviceId) : PacketPipeline("metal"), deviceId(deviceId)
 {
   comp_->initialize(getDefaultRgbPacketProcessor(), new MetalDepthPacketProcessor(deviceId));
 }
@@ -189,7 +199,7 @@ MetalPacketPipeline::MetalPacketPipeline(const int deviceId) : deviceId(deviceId
 MetalPacketPipeline::~MetalPacketPipeline() { }
 #endif // LIBFREENECT2_WITH_METAL_SUPPORT
 
-DumpPacketPipeline::DumpPacketPipeline()
+DumpPacketPipeline::DumpPacketPipeline() : PacketPipeline("dump")
 {
   RgbPacketProcessor *rgb = new DumpRgbPacketProcessor();
   DepthPacketProcessor *depth = new DumpDepthPacketProcessor();

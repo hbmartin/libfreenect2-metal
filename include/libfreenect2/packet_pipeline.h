@@ -32,6 +32,8 @@
 #include <libfreenect2/config.h>
 
 #include <stdlib.h>
+#include <string>
+#include <vector>
 
 namespace libfreenect2
 {
@@ -56,8 +58,14 @@ class LIBFREENECT2_API PacketPipeline
 public:
   typedef DataCallback PacketParser;
 
-  PacketPipeline();
+  explicit PacketPipeline(const std::string &name = "unknown");
   virtual ~PacketPipeline();
+
+  /** Stable canonical pipeline name (for example `cpu` or `metal`). */
+  const std::string &getName() const;
+
+  /** Whether the pipeline's depth processor is usable on this machine. */
+  bool good() const;
 
   virtual PacketParser *getRgbPacketParser() const;
   virtual PacketParser *getIrPacketParser() const;
@@ -65,8 +73,22 @@ public:
   virtual RgbPacketProcessor *getRgbPacketProcessor() const;
   virtual DepthPacketProcessor *getDepthPacketProcessor() const;
 protected:
+  std::string name_;
   PacketPipelineComponents *comp_;
 };
+
+/** Construct a compiled pipeline by canonical name, or return NULL. The caller
+ * owns the returned object until it is passed to Freenect2::openDevice(). */
+LIBFREENECT2_API PacketPipeline *createPacketPipeline(const std::string &name, int device_id = -1);
+
+/** Construct the environment-selected/default pipeline. */
+LIBFREENECT2_API PacketPipeline *createDefaultPacketPipeline();
+
+/** Canonical names of pipelines compiled into this library. */
+LIBFREENECT2_API std::vector<std::string> getCompiledPacketPipelines();
+
+/** Canonical names of compiled pipelines usable on this machine. */
+LIBFREENECT2_API std::vector<std::string> getAvailablePacketPipelines();
 
  class LIBFREENECT2_API DumpPacketPipeline: public PacketPipeline
  {

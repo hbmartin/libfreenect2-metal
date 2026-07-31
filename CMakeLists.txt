@@ -1,10 +1,22 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.5)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.16)
 
 SET(PROJECT_VER_MAJOR 0)
-SET(PROJECT_VER_MINOR 2)
+SET(PROJECT_VER_MINOR 3)
 SET(PROJECT_VER_PATCH 0)
 SET(PROJECT_VER "${PROJECT_VER_MAJOR}.${PROJECT_VER_MINOR}.${PROJECT_VER_PATCH}")
 SET(PROJECT_APIVER "${PROJECT_VER_MAJOR}.${PROJECT_VER_MINOR}")
+
+EXECUTE_PROCESS(
+  COMMAND git rev-parse --short=12 HEAD
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  RESULT_VARIABLE LIBFREENECT2_GIT_RESULT
+  OUTPUT_VARIABLE LIBFREENECT2_BUILD_REVISION
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
+)
+IF(NOT LIBFREENECT2_GIT_RESULT EQUAL 0 OR LIBFREENECT2_BUILD_REVISION STREQUAL "")
+  SET(LIBFREENECT2_BUILD_REVISION "unknown")
+ENDIF()
 
 if(WIN32 AND NOT MINGW)
   if(NOT DEFINED CMAKE_DEBUG_POSTFIX)
@@ -42,12 +54,14 @@ OPTION(ENABLE_VAAPI "Enable VA-API support" ON)
 OPTION(ENABLE_TEGRAJPEG "Enable Tegra HW JPEG support" ON)
 OPTION(ENABLE_PROFILING "Collect profiling stats (memory consuming)" OFF)
 OPTION(BUILD_TESTING "Build the unit test suite" OFF)
-OPTION(ENABLE_SANITIZERS "Build the tests with AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
+OPTION(ENABLE_SANITIZERS "Build project targets with AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
 IF(APPLE)
   OPTION(ENABLE_METAL "Enable Metal GPU depth processing (Apple platforms)" ON)
 ELSE()
   OPTION(ENABLE_METAL "Enable Metal GPU depth processing (Apple platforms)" OFF)
 ENDIF()
+
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules/QualityChecks.cmake)
 
 IF(ENABLE_PROFILING)
   SET(LIBFREENECT2_WITH_PROFILING 1)
@@ -59,8 +73,7 @@ IF(MSVC)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4267 /wd4244 /wd4200 /wd4305 /wd4146")
   ADD_DEFINITIONS(-D_CRT_SECURE_NO_WARNINGS) # no warning for getenv()
 ELSE()
-  # Heed warnings from non-MSVC compilers
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+  # Target-scoped warnings are configured in QualityChecks.cmake.
 ENDIF()
 
 SET(HAVE_CXX11 disabled)
@@ -155,8 +168,8 @@ INCLUDE_DIRECTORIES(
   "${MY_DIR}/include/internal"
   ${PROJECT_BINARY_DIR} # for generated headers
   ${LIBFREENECT2_THREADING_INCLUDE_DIR}
-  ${LibUSB_INCLUDE_DIRS}
 )
+INCLUDE_DIRECTORIES(SYSTEM ${LibUSB_INCLUDE_DIRS})
 
 SET(RESOURCES_INC_FILE "${PROJECT_BINARY_DIR}/resources.inc.h")
 
@@ -275,7 +288,7 @@ IF(ENABLE_VAAPI)
     SET(LIBFREENECT2_WITH_VAAPI_SUPPORT 1)
     SET(HAVE_VAAPI yes)
 
-    INCLUDE_DIRECTORIES(${VAAPI_INCLUDE_DIRS})
+    INCLUDE_DIRECTORIES(SYSTEM ${VAAPI_INCLUDE_DIRS})
 
     LIST(APPEND SOURCES
       src/vaapi_rgb_packet_processor.cpp
@@ -296,7 +309,7 @@ IF(ENABLE_TEGRAJPEG)
     SET(LIBFREENECT2_WITH_TEGRAJPEG_SUPPORT 1)
     SET(HAVE_TegraJPEG yes)
 
-    INCLUDE_DIRECTORIES(${TegraJPEG_INCLUDE_DIRS})
+    INCLUDE_DIRECTORIES(SYSTEM ${TegraJPEG_INCLUDE_DIRS})
 
     LIST(APPEND SOURCES
       src/tegra_jpeg_rgb_packet_processor.cpp
@@ -323,7 +336,7 @@ IF(TurboJPEG_FOUND)
   SET(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT 1)
   SET(HAVE_TurboJPEG yes)
 
-  INCLUDE_DIRECTORIES(${TurboJPEG_INCLUDE_DIRS})
+  INCLUDE_DIRECTORIES(SYSTEM ${TurboJPEG_INCLUDE_DIRS})
 
   LIST(APPEND SOURCES
     src/turbo_jpeg_rgb_packet_processor.cpp
@@ -365,7 +378,7 @@ IF(ENABLE_OPENGL)
     SET(LIBFREENECT2_WITH_OPENGL_SUPPORT 1)
     SET(HAVE_OpenGL yes)
 
-    INCLUDE_DIRECTORIES(${GLFW3_INCLUDE_DIRS})
+    INCLUDE_DIRECTORIES(SYSTEM ${GLFW3_INCLUDE_DIRS})
 
     LIST(APPEND LIBFREENECT2_DLLS ${GLFW3_DLL})
     LIST(APPEND LIBRARIES
@@ -412,7 +425,7 @@ IF(ENABLE_OPENCL)
         MESSAGE(WARNING "Your libOpenCL.so is incompatible with CL/cl.h. Install ocl-icd-opencl-dev to update libOpenCL.so?")
       ENDIF()
     ENDIF()
-    INCLUDE_DIRECTORIES(${OpenCL_INCLUDE_DIRS})
+    INCLUDE_DIRECTORIES(SYSTEM ${OpenCL_INCLUDE_DIRS})
 
     LIST(APPEND SOURCES
       src/opencl_depth_packet_processor.cpp
@@ -646,6 +659,7 @@ GENERATE_RESOURCES(${RESOURCES_INC_FILE} ${MY_DIR} ${RESOURCES})
 
 ADD_DEFINITIONS(-DRESOURCES_INC)
 ADD_LIBRARY(freenect2 ${SOURCES})
+libfreenect2_apply_quality(freenect2 PRIVATE)
 
 IF(LIBFREENECT2_WITH_METAL_SUPPORT)
   ADD_DEPENDENCIES(freenect2 MetalShaders)
@@ -691,6 +705,7 @@ INSTALL(FILES
   "${MY_DIR}/doc/depth_accuracy.md"
   "${MY_DIR}/doc/faq.md"
   "${MY_DIR}/doc/python.md"
+  "${MY_DIR}/doc/quality.md"
   "${MY_DIR}/doc/recording_replay.md"
   "${MY_DIR}/doc/registration.md"
   "${MY_DIR}/doc/webcam.md"
@@ -713,7 +728,8 @@ IF(BUILD_OPENNI2_DRIVER)
     SET(HAVE_OpenNI2 yes)
     FILE(GLOB OPENNI2_DRIVER_SOURCES src/openni2/*.cpp)
     ADD_LIBRARY(freenect2-openni2 ${OPENNI2_DRIVER_SOURCES} ${LIBFREENECT2_THREADING_SOURCE})
-    TARGET_INCLUDE_DIRECTORIES(freenect2-openni2 PRIVATE ${OpenNI2_INCLUDE_DIRS})
+    TARGET_INCLUDE_DIRECTORIES(freenect2-openni2 SYSTEM PRIVATE ${OpenNI2_INCLUDE_DIRS})
+    libfreenect2_apply_quality(freenect2-openni2 PRIVATE)
     TARGET_LINK_LIBRARIES(freenect2-openni2 freenect2 ${LIBFREENECT2_THREADING_LIBRARIES})
     SET_TARGET_PROPERTIES(freenect2-openni2 PROPERTIES SOVERSION 0)
     IF(NOT ${CMAKE_INSTALL_PREFIX} MATCHES "^/usr")
@@ -736,6 +752,15 @@ IF(BUILD_STREAMER_RECORDER)
   ADD_SUBDIRECTORY(${MY_DIR}/tools/streamer_recorder)
 ENDIF()
 
+OPTION(BUILD_MEDIAPIPE_DEMO "Build the native bridge for the MediaPipe pose demo" OFF)
+SET(HAVE_mediapipe_demo disabled)
+IF(BUILD_MEDIAPIPE_DEMO)
+  SET(HAVE_mediapipe_demo yes)
+  MESSAGE(STATUS "Configuring MediaPipe Kinect pose demo bridge")
+  ADD_SUBDIRECTORY(${MY_DIR}/tools/mediapipe_pose)
+  libfreenect2_apply_quality(mediapipe_kinect_bridge PRIVATE)
+ENDIF()
+
 SET(HAVE_Tests disabled)
 IF(BUILD_TESTING)
   SET(HAVE_Tests yes)
@@ -747,6 +772,7 @@ IF(BUILD_TESTING)
   # sources with default visibility that the tests link against instead. The
   # shipping library is left untouched.
   ADD_LIBRARY(freenect2_testlib STATIC ${SOURCES})
+  libfreenect2_apply_quality(freenect2_testlib PUBLIC)
   TARGET_LINK_LIBRARIES(freenect2_testlib ${LIBRARIES})
   # Inherits the global INCLUDE_DIRECTORIES (include/internal + the binary dir
   # with generated config.h / resources.inc.h) and the global -DRESOURCES_INC,
@@ -754,14 +780,6 @@ IF(BUILD_TESTING)
   # the real library.
   IF(LIBFREENECT2_WITH_METAL_SUPPORT)
     ADD_DEPENDENCIES(freenect2_testlib MetalShaders)
-  ENDIF()
-
-  IF(ENABLE_SANITIZERS)
-    MESSAGE(STATUS "  Building tests with ASan + UBSan")
-    TARGET_COMPILE_OPTIONS(freenect2_testlib PUBLIC
-      -fsanitize=address,undefined -fno-omit-frame-pointer)
-    TARGET_LINK_OPTIONS(freenect2_testlib PUBLIC
-      -fsanitize=address,undefined)
   ENDIF()
 
   ENABLE_TESTING()

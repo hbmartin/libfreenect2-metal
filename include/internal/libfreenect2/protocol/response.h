@@ -32,6 +32,7 @@
 #include <iomanip>
 #include <stdint.h>
 #include <algorithm>
+#include <cstring>
 #include <libfreenect2/config.h>
 #include <libfreenect2/libfreenect2.hpp>
 
@@ -47,18 +48,12 @@ private:
 public:
   SerialNumberResponse(const std::vector<unsigned char> &data)
   {
-    int length = data.size();
-    char *c = new char[length / 2 + 1]();
-
-    for(int i = 0, j = 0; i < length; i += 2, ++j)
+    for(size_t i = 0; i < data.size(); i += 2)
     {
-      c[j] = (char)data[i];
-      if(c[j] == 0) break;
+      const char character = static_cast<char>(data[i]);
+      if(character == 0) break;
+      serial_.push_back(character);
     }
-
-    serial_.assign(c);
-
-    delete[] c;
   }
 
   std::string toString()
@@ -82,6 +77,7 @@ private:
       maj_min = 0;
       revision = 0;
       build = 0;
+      reserved0 = 0;
     }
   };
 
@@ -89,13 +85,12 @@ private:
 public:
   FirmwareVersionResponse(const std::vector<unsigned char> &data)
   {
-    int length = data.size();
-    int n = length / sizeof(FWSubsystemVersion);
-    const FWSubsystemVersion *sv = reinterpret_cast<const FWSubsystemVersion *>(&data[0]);
-
-    for(int i = 0; i < 7 && i < n; ++i)
+    const size_t count = std::min<size_t>(7, data.size() / sizeof(FWSubsystemVersion));
+    for(size_t i = 0; i < count; ++i)
     {
-      versions_.push_back(sv[i]);
+      FWSubsystemVersion version;
+      std::memcpy(&version, &data[i * sizeof(FWSubsystemVersion)], sizeof(version));
+      versions_.push_back(version);
     }
   }
 
@@ -120,9 +115,10 @@ class Status0x090000Response
 private:
   uint32_t status_;
 public:
-  Status0x090000Response(const std::vector<unsigned char> &data)
+  Status0x090000Response(const std::vector<unsigned char> &data) : status_(0)
   {
-    status_ = *reinterpret_cast<const uint32_t *>(&data[0]);
+    if(data.size() >= sizeof(status_))
+      std::memcpy(&status_, &data[0], sizeof(status_));
   }
 
   uint32_t toNumber()
@@ -216,7 +212,9 @@ LIBFREENECT2_PACK(struct RgbCameraParamsResponse
 
   RgbCameraParamsResponse(const std::vector<unsigned char> &data)
   {
-    *this = *reinterpret_cast<const RgbCameraParamsResponse *>(&data[0]);
+    std::fill_n(reinterpret_cast<unsigned char *>(this), sizeof(*this), 0);
+    if(!data.empty())
+      std::memcpy(this, &data[0], std::min(data.size(), sizeof(*this)));
   }
 
   Freenect2Device::ColorCameraParams toColorCameraParams()
@@ -277,7 +275,9 @@ LIBFREENECT2_PACK(struct DepthCameraParamsResponse
 
   DepthCameraParamsResponse(const std::vector<unsigned char> &data)
   {
-    *this = *reinterpret_cast<const DepthCameraParamsResponse *>(&data[0]);
+    std::fill_n(reinterpret_cast<unsigned char *>(this), sizeof(*this), 0);
+    if(!data.empty())
+      std::memcpy(this, &data[0], std::min(data.size(), sizeof(*this)));
   }
 
   Freenect2Device::IrCameraParams toIrCameraParams()
@@ -322,6 +322,14 @@ LIBFREENECT2_PACK(struct P0TablesResponse
 
   uint8_t  unknownD[];
 });
+
+inline uint16_t readP0TableValue(const unsigned char *buffer, size_t table_offset,
+                                 size_t value_index)
+{
+  uint16_t value;
+  std::memcpy(&value, buffer + table_offset + value_index * sizeof(value), sizeof(value));
+  return value;
+}
 
 // RGB camera settings reply for a single setting change.
 // Equivalent of NUISENSOR_RGB_CHANGE_STREAM_SETTING_REPLY in NuiSensorLib.h

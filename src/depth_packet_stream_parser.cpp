@@ -35,7 +35,7 @@ namespace libfreenect2
 
 DepthPacketStreamParser::DepthPacketStreamParser() :
     processor_(noopProcessor<DepthPacket>()),
-    processed_packets_(-1),
+    processed_packets_(UINT32_MAX),
     current_sequence_(0),
     current_subsequence_(0),
     null_buffer_logged_(false)
@@ -141,7 +141,7 @@ void DepthPacketStreamParser::onDataReceived(unsigned char* buffer, size_t in_le
               processed_packets_++;
               if (processed_packets_ == 0)
                 processed_packets_ = current_sequence_;
-              int diff = current_sequence_ - processed_packets_;
+              const int32_t diff = static_cast<int32_t>(current_sequence_ - processed_packets_);
               const int interval = 30;
               if ((current_sequence_ % interval == 0 && diff != 0) || diff >= interval)
               {

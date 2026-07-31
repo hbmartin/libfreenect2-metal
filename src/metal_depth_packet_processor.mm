@@ -717,10 +717,7 @@ void MetalDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char *b
     return;
   }
 
-  libfreenect2::protocol::P0TablesResponse *p0table =
-      (libfreenect2::protocol::P0TablesResponse *)buffer;
-
-  if(buffer_length < sizeof(libfreenect2::protocol::P0TablesResponse))
+  if(buffer == 0 || buffer_length < sizeof(libfreenect2::protocol::P0TablesResponse))
   {
     LOG_ERROR << "P0Table response too short!";
     return;
@@ -733,15 +730,15 @@ void MetalDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char *b
   for(int r = 0; r < 424; ++r)
   {
     float *it = p0_dst + r * 512 * 4; /* 4 floats per float3 slot */
-    const uint16_t *it0 = &p0table->p0table0[r * 512];
-    const uint16_t *it1 = &p0table->p0table1[r * 512];
-    const uint16_t *it2 = &p0table->p0table2[r * 512];
-
-    for(int c = 0; c < 512; ++c, it += 4, ++it0, ++it1, ++it2)
+    for(int c = 0; c < 512; ++c, it += 4)
     {
-      it[0] = -((float)*it0) * 0.000031f * (float)M_PI;
-      it[1] = -((float)*it1) * 0.000031f * (float)M_PI;
-      it[2] = -((float)*it2) * 0.000031f * (float)M_PI;
+      const size_t index = static_cast<size_t>(r * 512 + c);
+      it[0] = -((float)libfreenect2::protocol::readP0TableValue(
+          buffer, offsetof(libfreenect2::protocol::P0TablesResponse, p0table0), index)) * 0.000031f * (float)M_PI;
+      it[1] = -((float)libfreenect2::protocol::readP0TableValue(
+          buffer, offsetof(libfreenect2::protocol::P0TablesResponse, p0table1), index)) * 0.000031f * (float)M_PI;
+      it[2] = -((float)libfreenect2::protocol::readP0TableValue(
+          buffer, offsetof(libfreenect2::protocol::P0TablesResponse, p0table2), index)) * 0.000031f * (float)M_PI;
       it[3] = 0.0f;
     }
   }

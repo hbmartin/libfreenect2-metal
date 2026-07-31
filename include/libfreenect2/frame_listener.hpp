@@ -76,12 +76,13 @@ class LIBFREENECT2_API Frame
   Format format;          ///< Byte format. Informative only, doesn't indicate errors.
 
   /** Construct a new frame.
-   * @param width Width in pixel
-   * @param height Height in pixel
-   * @param bytes_per_pixel Bytes per pixel
-   * @param data_ Memory to store frame data. If `NULL`, new memory is allocated.
+   * @param width_arg Width in pixel
+   * @param height_arg Height in pixel
+   * @param bytes_per_pixel_arg Bytes per pixel
+   * @param data_arg Memory to store frame data. If `NULL`, new memory is allocated.
    */
-  Frame(size_t width, size_t height, size_t bytes_per_pixel, unsigned char *data_ = NULL);
+  Frame(size_t width_arg, size_t height_arg, size_t bytes_per_pixel_arg,
+        unsigned char *data_arg = NULL);
   virtual ~Frame();
 
   protected:
