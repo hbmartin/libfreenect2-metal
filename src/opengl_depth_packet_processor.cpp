@@ -324,10 +324,24 @@ public:
   {
   }
 
-  ~Texture()
+  void release()
   {
+    if (texture != 0)
+    {
+      if (gl() == 0)
+        return;
+      glDeleteTextures(1, &texture);
+      texture = 0;
+    }
+
     delete[] data;
+    data = 0;
+    size = 0;
+    width = 0;
+    height = 0;
   }
+
+  ~Texture() { delete[] data; }
 
   void bindToUnit(GLenum unit)
   {
