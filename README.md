@@ -32,12 +32,19 @@ This driver supports:
 * RGB image transfer
 * IR and depth image transfer
 * registration of RGB and depth images
+* reusable BGR/RGB conversion and color/depth landmark geometry
 
 The 0.3 API also exposes runtime version/API/build-revision queries and public
 packet-pipeline discovery. Canonical pipeline names are `cpu`, `metal`,
 `opengl`, `opencl`, `opencl_kde`, `cuda`, `cuda_kde`, and `dump`; the returned
 device reports the pipeline it actually consumed. The older `gl` and `cl`
 spellings remain accepted only through `LIBFREENECT2_PIPELINE`.
+
+The installed C++11 `libfreenect2/vision.h` interface provides validated
+caller-buffer color conversion, forward/reverse registration maps, coherent
+depth selection, and batched metric XYZ lifting. The canonical Python OpenCV
+and MediaPipe examples live in
+[pylibfreenect3](https://github.com/hbmartin/pylibfreenect3/tree/master/examples).
 
 Missing features:
 * firmware updates (see [issue #460](https://github.com/OpenKinect/libfreenect2/issues/460) for WiP)

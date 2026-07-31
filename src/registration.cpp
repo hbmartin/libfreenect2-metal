@@ -130,11 +130,19 @@ void RegistrationImpl::apply(const Frame *rgb, const Frame *depth_frame, Frame *
 {
   // Check if all frames are valid and have the correct size
   if (!rgb || !depth_frame || !undistorted || !registered ||
+      !rgb->data || !depth_frame->data || !undistorted->data || !registered->data ||
       rgb->width != 1920 || rgb->height != 1080 || rgb->bytes_per_pixel != 4 ||
-      depth_frame->width != 512 || depth_frame->height != 424 || depth_frame->bytes_per_pixel != 4 ||
+      (rgb->format != Frame::BGRX && rgb->format != Frame::RGBX) ||
+      depth_frame->width != 512 || depth_frame->height != 424 || depth_frame->bytes_per_pixel != 4 || depth_frame->format != Frame::Float ||
       undistorted->width != 512 || undistorted->height != 424 || undistorted->bytes_per_pixel != 4 ||
-      registered->width != 512 || registered->height != 424 || registered->bytes_per_pixel != 4)
+      registered->width != 512 || registered->height != 424 || registered->bytes_per_pixel != 4 ||
+      (bigdepth && (!bigdepth->data || bigdepth->width != 1920 || bigdepth->height != 1082 || bigdepth->bytes_per_pixel != 4)))
     return;
+
+  undistorted->format = Frame::Float;
+  registered->format = rgb->format;
+  if (bigdepth)
+    bigdepth->format = Frame::Float;
 
   const float *depth_data = (float*)depth_frame->data;
   const unsigned int *rgb_data = (unsigned int*)rgb->data;
@@ -195,7 +203,7 @@ void RegistrationImpl::apply(const Frame *rgb, const Frame *depth_frame, Frame *
     *undistorted_data = z;
 
     // checking for invalid depth value
-    if(z <= 0.0f){
+    if(!std::isfinite(z) || z <= 0.0f){
       *map_c_off = -1;
       continue;
     }
@@ -283,9 +291,12 @@ void RegistrationImpl::undistortDepth(const Frame *depth_frame, Frame *undistort
 {
   // Check if all frames are valid and have the correct size
   if (!depth_frame || !undistorted ||
-      depth_frame->width != 512 || depth_frame->height != 424 || depth_frame->bytes_per_pixel != 4 ||
+      !depth_frame->data || !undistorted->data ||
+      depth_frame->width != 512 || depth_frame->height != 424 || depth_frame->bytes_per_pixel != 4 || depth_frame->format != Frame::Float ||
       undistorted->width != 512 || undistorted->height != 424 || undistorted->bytes_per_pixel != 4)
     return;
+
+  undistorted->format = Frame::Float;
 
   const float *depth_data = (float*)depth_frame->data;
   float *undistorted_data = (float*)undistorted->data;
