@@ -377,26 +377,8 @@ int main(int argc, char** argv)
     std::cerr << "Unable to open Kinect " << serial << "\n";
     return 1;
   }
-  const std::string firmware = device->getFirmwareVersion();
+  std::string firmware;
   bool correction_device_match = true;
-  if (apply_depth_correction)
-  {
-    correction_device_match =
-        correction_profile.serial == serial && correction_profile.firmware == firmware;
-    if (!correction_device_match)
-    {
-      std::cerr << "Warning: depth correction profile was fitted for "
-                << correction_profile.serial << " / " << correction_profile.firmware
-                << ", but the open device is " << serial << " / " << firmware << "\n";
-      if (!allow_device_mismatch)
-      {
-        std::cerr << "Refusing to apply a mismatched profile without "
-                     "--allow-device-mismatch\n";
-        device->close();
-        return 2;
-      }
-    }
-  }
 
   if (recording_mode)
   {
@@ -415,6 +397,7 @@ int main(int argc, char** argv)
       device->close();
       return 1;
     }
+    firmware = device->getFirmwareVersion();
 
     libfreenect2::CalibrationData calibration;
     if (!device->getCalibrationData(calibration) ||
@@ -475,6 +458,26 @@ int main(int argc, char** argv)
     std::cerr << "Unable to start Kinect streams\n";
     device->close();
     return 1;
+  }
+  firmware = device->getFirmwareVersion();
+  if (apply_depth_correction)
+  {
+    correction_device_match =
+        correction_profile.serial == serial && correction_profile.firmware == firmware;
+    if (!correction_device_match)
+    {
+      std::cerr << "Warning: depth correction profile was fitted for "
+                << correction_profile.serial << " / " << correction_profile.firmware
+                << ", but the open device is " << serial << " / " << firmware << "\n";
+      if (!allow_device_mismatch)
+      {
+        std::cerr << "Refusing to apply a mismatched profile without "
+                     "--allow-device-mismatch\n";
+        device->stop();
+        device->close();
+        return 2;
+      }
+    }
   }
 
   libfreenect2::FrameMap frames;
