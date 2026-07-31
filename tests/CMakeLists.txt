@@ -59,10 +59,12 @@ INCLUDE(GoogleTest)
 # framework) via `ctest -LE gpu`, while still running in the main build.
 gtest_discover_tests(unit_tests
   TEST_FILTER "MetalCpuParity.*:OpenCLCpuParity.*:OpenGLCpuParity.*"
+  DISCOVERY_TIMEOUT 60
   PROPERTIES LABELS "gpu"
 )
 gtest_discover_tests(unit_tests
   TEST_FILTER "-MetalCpuParity.*:OpenCLCpuParity.*:OpenGLCpuParity.*"
+  DISCOVERY_TIMEOUT 60
   PROPERTIES LABELS "unit"
 )
 
