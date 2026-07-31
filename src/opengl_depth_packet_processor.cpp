@@ -159,8 +159,15 @@ struct ShaderProgram : public WithOpenGLBindings
     if (is_mesa_checked)
       return;
     is_mesa_checked = true;
-    std::string ren((const char*)glGetString(GL_RENDERER));
-    std::string ver((const char*)glGetString(GL_VERSION));
+    const GLubyte* renderer = glGetString(GL_RENDERER);
+    const GLubyte* version = glGetString(GL_VERSION);
+    if (renderer == 0 || version == 0)
+    {
+      LOG_ERROR << "OpenGL context did not report renderer and version strings.";
+      return;
+    }
+    std::string ren(reinterpret_cast<const char*>(renderer));
+    std::string ver(reinterpret_cast<const char*>(version));
     if (ren.find("Mesa DRI Intel") == 0)
     {
       size_t mesa_pos = ver.rfind("Mesa ");
@@ -170,7 +177,8 @@ struct ShaderProgram : public WithOpenGLBindings
         if (mesa_ver < 10.3)
         {
           defines += "#define MESA_BUGGY_BOOL_CMP\n";
-          LOG_WARNING << "Working around buggy boolean instructions in your Mesa driver. Mesa DRI 10.3+ is recommended.";
+          LOG_WARNING << "Working around buggy boolean instructions in your Mesa driver. Mesa DRI "
+                         "10.3+ is recommended.";
         }
       }
     }
@@ -179,7 +187,7 @@ struct ShaderProgram : public WithOpenGLBindings
   void setVertexShader(const std::string& src)
   {
     checkMesaBug();
-    const GLchar *sources[] = {"#version 140\n", defines.c_str(), src.c_str()};
+    const GLchar* sources[] = {"#version 140\n", defines.c_str(), src.c_str()};
     vertex_shader = gl()->glCreateShader(GL_VERTEX_SHADER);
     gl()->glShaderSource(vertex_shader, 3, sources, NULL);
     CHECKGL();
@@ -188,46 +196,45 @@ struct ShaderProgram : public WithOpenGLBindings
   void setFragmentShader(const std::string& src)
   {
     checkMesaBug();
-    const GLchar *sources[] = {"#version 140\n", defines.c_str(), src.c_str()};
+    const GLchar* sources[] = {"#version 140\n", defines.c_str(), src.c_str()};
     fragment_shader = gl()->glCreateShader(GL_FRAGMENT_SHADER);
     gl()->glShaderSource(fragment_shader, 3, sources, NULL);
     CHECKGL();
   }
 
-  void bindFragDataLocation(const std::string &name, int output)
-  {
-    frag_data_map_[name] = output;
-  }
+  void bindFragDataLocation(const std::string& name, int output) { frag_data_map_[name] = output; }
 
-  void build()
+  bool build()
   {
     GLint status;
 
     gl()->glCompileShader(vertex_shader);
     gl()->glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &status);
 
-    if(status != GL_TRUE)
+    if (status != GL_TRUE)
     {
       gl()->glGetShaderInfoLog(vertex_shader, sizeof(error_buffer), NULL, error_buffer);
 
       LOG_ERROR << "failed to compile vertex shader!" << std::endl << error_buffer;
+      return false;
     }
 
     gl()->glCompileShader(fragment_shader);
 
     gl()->glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &status);
-    if(status != GL_TRUE)
+    if (status != GL_TRUE)
     {
       gl()->glGetShaderInfoLog(fragment_shader, sizeof(error_buffer), NULL, error_buffer);
 
       LOG_ERROR << "failed to compile fragment shader!" << std::endl << error_buffer;
+      return false;
     }
 
     program = gl()->glCreateProgram();
     gl()->glAttachShader(program, vertex_shader);
     gl()->glAttachShader(program, fragment_shader);
 
-    for(FragDataMap::iterator it = frag_data_map_.begin(); it != frag_data_map_.end(); ++it)
+    for (FragDataMap::iterator it = frag_data_map_.begin(); it != frag_data_map_.end(); ++it)
     {
       gl()->glBindFragDataLocation(program, it->second, it->first.c_str());
     }
@@ -236,12 +243,14 @@ struct ShaderProgram : public WithOpenGLBindings
 
     gl()->glGetProgramiv(program, GL_LINK_STATUS, &status);
 
-    if(status != GL_TRUE)
+    if (status != GL_TRUE)
     {
       gl()->glGetProgramInfoLog(program, sizeof(error_buffer), NULL, error_buffer);
       LOG_ERROR << "failed to link shader program!" << std::endl << error_buffer;
+      return false;
     }
     CHECKGL();
+    return true;
   }
 
   GLint getAttributeLocation(const std::string& name)
@@ -621,7 +630,7 @@ public:
     stage1.bindFragDataLocation("B", 2);
     stage1.bindFragDataLocation("Norm", 3);
     stage1.bindFragDataLocation("Infrared", 4);
-    stage1.build();
+    if(!stage1.build()) return false;
 
     filter1.setVertexShader(loadShaderSource("default.vs"));
     filter1.setFragmentShader(loadShaderSource("filter1.fs"));
@@ -629,27 +638,27 @@ public:
     filter1.bindFragDataLocation("FilterA", 1);
     filter1.bindFragDataLocation("FilterB", 2);
     filter1.bindFragDataLocation("MaxEdgeTest", 3);
-    filter1.build();
+    if(!filter1.build()) return false;
 
     stage2.setVertexShader(loadShaderSource("default.vs"));
     stage2.setFragmentShader(loadShaderSource("stage2.fs"));
     stage2.bindFragDataLocation("Debug", 0);
     stage2.bindFragDataLocation("Depth", 1);
     stage2.bindFragDataLocation("DepthAndIrSum", 2);
-    stage2.build();
+    if(!stage2.build()) return false;
 
     filter2.setVertexShader(loadShaderSource("default.vs"));
     filter2.setFragmentShader(loadShaderSource("filter2.fs"));
     filter2.bindFragDataLocation("Debug", 0);
     filter2.bindFragDataLocation("FilterDepth", 1);
-    filter2.build();
+    if(!filter2.build()) return false;
 
     if (do_debug)
     {
       debug.setVertexShader(loadShaderSource("default.vs"));
       debug.setFragmentShader(loadShaderSource("debug.fs"));
       debug.bindFragDataLocation("Debug", 0);
-      debug.build();
+      if(!debug.build()) return false;
     }
 
     GLenum debug_attachment = do_debug ? GL_COLOR_ATTACHMENT0 : GL_NONE;
