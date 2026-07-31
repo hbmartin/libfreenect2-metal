@@ -70,6 +70,9 @@ CalibrationData sampleCalibrationData()
   CalibrationData calibration = {};
   calibration.color.fx = 1081.0f;
   calibration.ir.fx = 365.0f;
+  calibration.ir.fy = 365.0f;
+  calibration.ir.cx = 255.5f;
+  calibration.ir.cy = 211.5f;
   calibration.p0_tables.resize(sizeof(protocol::P0TablesResponse), 0x2a);
   return calibration;
 }
@@ -393,6 +396,59 @@ TEST(RecordingReplay, ReplaysJournaledColorWithRecordedMetadata)
   EXPECT_FLOAT_EQ(1.25f, actual->exposure);
   EXPECT_EQ(4u, actual->bytes_per_pixel);
   listener.release(frames);
+  EXPECT_TRUE(device->stop());
+  EXPECT_TRUE(device->close());
+  removeTestRecording(directory);
+}
+
+TEST(RecordingReplay, HonorsRequestedStreamCombinations)
+{
+  const std::string directory = uniqueRecordingDirectory();
+  RecordingWriter writer(directory, 4);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
+      << writer.getLastError();
+
+  Frame color(1, 1, 4);
+  color.format = Frame::Raw;
+  color.timestamp = 100;
+  color.sequence = 1;
+  color.arrival_timestamp_us = monotonicTimeMicroseconds();
+  std::memset(color.data, 0x11, 4);
+  EXPECT_FALSE(writer.onNewFrame(Frame::Color, &color));
+
+  const size_t depth_size = 10 * (512 * 424 * 11 / 8);
+  Frame depth(1, 1, depth_size);
+  depth.format = Frame::Raw;
+  depth.timestamp = 200;
+  depth.sequence = 2;
+  depth.arrival_timestamp_us = monotonicTimeMicroseconds();
+  std::memset(depth.data, 0x22, depth_size);
+  EXPECT_FALSE(writer.onNewFrame(Frame::Depth, &depth));
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  Freenect2Replay replay;
+  Freenect2Device* device =
+      replay.openRecording(directory, new DumpPacketPipeline(), ReplayOptions());
+  ASSERT_NE(static_cast<Freenect2Device*>(0), device);
+  SyncMultiFrameListener color_listener(Frame::Color);
+  SyncMultiFrameListener depth_listener(Frame::Depth);
+  device->setColorFrameListener(&color_listener);
+  device->setIrAndDepthFrameListener(&depth_listener);
+
+  ASSERT_TRUE(device->startStreams(true, false));
+  FrameMap frames;
+  ASSERT_TRUE(color_listener.waitForNewFrame(frames, 1000));
+  EXPECT_EQ(100u, frames[Frame::Color]->timestamp);
+  color_listener.release(frames);
+  EXPECT_FALSE(depth_listener.waitForNewFrame(frames, 20));
+  EXPECT_TRUE(device->stop());
+
+  ASSERT_TRUE(device->startStreams(false, true));
+  ASSERT_TRUE(depth_listener.waitForNewFrame(frames, 1000));
+  EXPECT_EQ(200u, frames[Frame::Depth]->timestamp);
+  depth_listener.release(frames);
+  EXPECT_FALSE(color_listener.waitForNewFrame(frames, 20));
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
   removeTestRecording(directory);

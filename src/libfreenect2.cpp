@@ -2181,6 +2181,7 @@ void Freenect2ReplayDevice::run()
       packet_.buffer = packet_.memory->data;
       packet_.buffer_length = length;
       processor->process(packet_);
+      processor->releaseBuffer(packet_);
       processor->allocateBuffer(packet_, buffer_size_);
     }
     else if (is_color)
@@ -2221,6 +2222,9 @@ void Freenect2ReplayDevice::runRecording()
   for (std::vector<recording::JournalEntry>::const_iterator entry = recording_.entries.begin();
        entry != recording_.entries.end() && running_.load(); ++entry)
   {
+    if ((entry->stream == "color" && !enable_rgb_) || (entry->stream == "depth" && !enable_depth_))
+      continue;
+
     std::vector<unsigned char> data;
     std::string error;
     const std::string path = recording::joinPath(recording_.directory, entry->path);
@@ -2246,6 +2250,7 @@ void Freenect2ReplayDevice::runRecording()
       packet_.buffer = packet_.memory->data;
       packet_.buffer_length = data.size();
       processor->process(packet_);
+      processor->releaseBuffer(packet_);
       processor->allocateBuffer(packet_, buffer_size_);
     }
     else
