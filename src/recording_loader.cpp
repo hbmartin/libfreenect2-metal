@@ -67,10 +67,10 @@ bool loadRecordingMetadata(const std::string& directory, bool salvage_incomplete
       *error = local_error;
     return false;
   }
-  if (loaded.calibration.p0_tables.size() != sizeof(protocol::P0TablesResponse))
+  if (loaded.calibration.p0_tables.size() < sizeof(protocol::P0TablesResponse))
   {
     if (error != 0)
-      *error = "recording calibration contains an invalid P0 table length";
+      *error = "recording calibration contains a truncated P0 table response";
     return false;
   }
 

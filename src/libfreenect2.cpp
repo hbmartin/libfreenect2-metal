@@ -1886,10 +1886,10 @@ bool Freenect2ReplayDevice::open()
   if (has_calibration_)
   {
     DepthPacketProcessor* proc = pipeline_->getDepthPacketProcessor();
-    if (calibration_.p0_tables.size() != sizeof(protocol::P0TablesResponse))
+    if (calibration_.p0_tables.size() < sizeof(protocol::P0TablesResponse))
     {
-      LOG_ERROR << "invalid replay P0 table length: " << calibration_.p0_tables.size();
-      return fail("invalid replay P0 table length");
+      LOG_ERROR << "truncated replay P0 table response: " << calibration_.p0_tables.size();
+      return fail("truncated replay P0 table response");
     }
     if (calibration_.x_table.size() != DepthPacketProcessor::TABLE_SIZE ||
         calibration_.z_table.size() != DepthPacketProcessor::TABLE_SIZE)

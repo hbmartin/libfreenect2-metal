@@ -90,6 +90,8 @@ CalibrationData sampleCalibrationData()
   calibration.color = testing::makeColorParams();
   calibration.ir = testing::makeIrParams();
   calibration.p0_tables = testing::makeSyntheticP0Tables();
+  calibration.p0_tables.push_back(0xa5);
+  calibration.p0_tables.push_back(0x5a);
   return calibration;
 }
 

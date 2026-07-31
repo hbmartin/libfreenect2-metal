@@ -160,9 +160,9 @@ public:
       last_error_ = "recording calibration requires a serial and firmware";
       return false;
     }
-    if (calibration.p0_tables.size() != sizeof(protocol::P0TablesResponse))
+    if (calibration.p0_tables.size() < sizeof(protocol::P0TablesResponse))
     {
-      last_error_ = "recording calibration contains an invalid P0 table length";
+      last_error_ = "recording calibration contains a truncated P0 table response";
       return false;
     }
 
