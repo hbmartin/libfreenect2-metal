@@ -26,9 +26,13 @@
 namespace
 {
 
-void writeColorPpm(const std::string& path, const libfreenect2::Frame& frame)
+bool writeColorPpm(const std::string& path, const libfreenect2::Frame& frame)
 {
   std::ofstream out(path, std::ios::binary);
+  if (!out || frame.bytes_per_pixel < 4 ||
+      (frame.format != libfreenect2::Frame::BGRX && frame.format != libfreenect2::Frame::RGBX))
+    return false;
+
   out << "P6\n" << frame.width << " " << frame.height << "\n255\n";
   for (size_t i = 0; i < frame.width * frame.height; ++i)
   {
@@ -41,6 +45,8 @@ void writeColorPpm(const std::string& path, const libfreenect2::Frame& frame)
       out.write(reinterpret_cast<const char*>(rgb), 3);
     }
   }
+  out.flush();
+  return out.good();
 }
 
 void hsvToRgb(float hue, unsigned char& r, unsigned char& g, unsigned char& b)
@@ -92,15 +98,17 @@ struct DepthStats
   double sum = 0.0;
 };
 
-DepthStats writeDepth(const std::string& raw_path, const std::string& visual_path,
-                      const libfreenect2::Frame& frame)
+bool writeDepth(const std::string& raw_path, const std::string& visual_path,
+                const libfreenect2::Frame& frame, DepthStats& stats)
 {
   const float* depth = reinterpret_cast<const float*>(frame.data);
   std::ofstream raw(raw_path, std::ios::binary);
   std::ofstream visual(visual_path, std::ios::binary);
+  if (!raw || !visual || frame.bytes_per_pixel != sizeof(float))
+    return false;
+
   raw << "P5\n" << frame.width << " " << frame.height << "\n65535\n";
   visual << "P6\n" << frame.width << " " << frame.height << "\n255\n";
-  DepthStats stats;
 
   for (size_t i = 0; i < frame.width * frame.height; ++i)
   {
@@ -123,12 +131,17 @@ DepthStats writeDepth(const std::string& raw_path, const std::string& visual_pat
     }
     visual.write(reinterpret_cast<const char*>(rgb), 3);
   }
-  return stats;
+  raw.flush();
+  visual.flush();
+  return raw.good() && visual.good();
 }
 
-void writeIrPgm(const std::string& path, const libfreenect2::Frame& frame)
+bool writeIrPgm(const std::string& path, const libfreenect2::Frame& frame)
 {
   const float* ir = reinterpret_cast<const float*>(frame.data);
+  if (frame.bytes_per_pixel != sizeof(float))
+    return false;
+
   std::vector<float> finite;
   finite.reserve(frame.width * frame.height);
   for (size_t i = 0; i < frame.width * frame.height; ++i)
@@ -147,6 +160,9 @@ void writeIrPgm(const std::string& path, const libfreenect2::Frame& frame)
   }
 
   std::ofstream out(path, std::ios::binary);
+  if (!out)
+    return false;
+
   out << "P5\n" << frame.width << " " << frame.height << "\n255\n";
   for (size_t i = 0; i < frame.width * frame.height; ++i)
   {
@@ -159,6 +175,8 @@ void writeIrPgm(const std::string& path, const libfreenect2::Frame& frame)
     const unsigned char value = static_cast<unsigned char>(std::sqrt(normalized) * 255.0f);
     out.write(reinterpret_cast<const char*>(&value), 1);
   }
+  out.flush();
+  return out.good();
 }
 
 } // namespace
@@ -229,9 +247,21 @@ int main(int argc, char** argv)
       listener.release(frames);
   }
 
-  libfreenect2::Frame* color = frames[libfreenect2::Frame::Color];
-  libfreenect2::Frame* ir = frames[libfreenect2::Frame::Ir];
-  libfreenect2::Frame* depth = frames[libfreenect2::Frame::Depth];
+  const libfreenect2::FrameMap::iterator color_it = frames.find(libfreenect2::Frame::Color);
+  const libfreenect2::FrameMap::iterator ir_it = frames.find(libfreenect2::Frame::Ir);
+  const libfreenect2::FrameMap::iterator depth_it = frames.find(libfreenect2::Frame::Depth);
+  libfreenect2::Frame* color = color_it == frames.end() ? 0 : color_it->second;
+  libfreenect2::Frame* ir = ir_it == frames.end() ? 0 : ir_it->second;
+  libfreenect2::Frame* depth = depth_it == frames.end() ? 0 : depth_it->second;
+  if (!color || !ir || !depth || color->status != 0 || ir->status != 0 || depth->status != 0)
+  {
+    std::cerr << "Received an incomplete or invalid synchronized frame set\n";
+    listener.release(frames);
+    device->stop();
+    device->close();
+    return 1;
+  }
+
   libfreenect2::Registration registration(device->getIrCameraParams(),
                                           device->getColorCameraParams());
   libfreenect2::Frame undistorted(512, 424, 4);
@@ -239,11 +269,13 @@ int main(int argc, char** argv)
   registered.format = libfreenect2::Frame::BGRX;
   registration.apply(color, depth, &undistorted, &registered);
 
-  writeColorPpm(output + "/rgb.ppm", *color);
-  writeColorPpm(output + "/registered.ppm", registered);
-  writeIrPgm(output + "/infrared.pgm", *ir);
-  const DepthStats stats =
-      writeDepth(output + "/depth_mm.pgm", output + "/depth_false_color.ppm", *depth);
+  DepthStats stats;
+  bool output_ok = writeColorPpm(output + "/rgb.ppm", *color);
+  output_ok = writeColorPpm(output + "/registered.ppm", registered) && output_ok;
+  output_ok = writeIrPgm(output + "/infrared.pgm", *ir) && output_ok;
+  output_ok =
+      writeDepth(output + "/depth_mm.pgm", output + "/depth_false_color.ppm", *depth, stats) &&
+      output_ok;
 
   std::ofstream metadata(output + "/metadata.json");
   metadata << std::fixed << std::setprecision(2) << "{\n"
@@ -259,10 +291,17 @@ int main(int argc, char** argv)
            << "  \"mean_depth_mm\": " << (stats.valid ? stats.sum / stats.valid : 0.0) << ",\n"
            << "  \"maximum_depth_mm\": " << (stats.valid ? stats.maximum : 0.0f) << "\n"
            << "}\n";
+  metadata.flush();
+  output_ok = metadata.good() && output_ok;
 
   listener.release(frames);
   device->stop();
   device->close();
+  if (!output_ok)
+  {
+    std::cerr << "Failed to write one or more capture artifacts to " << output << "\n";
+    return 1;
+  }
   std::cout << "Captured Kinect " << serial << ": " << stats.valid << " valid depth pixels\n";
   return 0;
 }

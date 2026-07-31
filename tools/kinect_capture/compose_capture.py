@@ -21,6 +21,10 @@ def font(candidates, size):
 
 
 def main():
+    if len(sys.argv) != 2:
+        print(f"usage: {sys.argv[0]} CAPTURE_DIRECTORY", file=sys.stderr)
+        return 2
+
     folder = sys.argv[1]
     with open(os.path.join(folder, "metadata.json"), encoding="utf-8") as stream:
         metadata = json.load(stream)
@@ -66,7 +70,8 @@ def main():
     )
     draw.text((30, top + panel_height * 2 + 18), summary, font=detail_font, fill="#cbd5df")
     sheet.save(os.path.join(folder, "kinect_contact_sheet.png"), optimize=True)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
