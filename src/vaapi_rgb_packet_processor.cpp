@@ -186,6 +186,7 @@ public:
   struct jpeg_error_mgr jerr;
 
   bool good;
+  std::string device_path;
 
   static const int WIDTH = 1920;
   static const int HEIGHT = 1080;
@@ -195,7 +196,8 @@ public:
   Allocator *buffer_allocator;
   Allocator *image_allocator;
 
-  VaapiRgbPacketProcessorImpl():
+  explicit VaapiRgbPacketProcessorImpl(const std::string &device_path):
+    device_path(device_path),
     frame(NULL),
     buffer_allocator(NULL),
     image_allocator(NULL)
@@ -253,6 +255,18 @@ public:
   bool initializeVaapi()
   {
     /* Open display */
+    if (!device_path.empty()) {
+      drm_fd = open(device_path.c_str(), O_RDWR);
+      if (drm_fd >= 0) {
+        display = vaGetDisplayDRM(drm_fd);
+        if (!vaDisplayIsValid(display)) {
+          close(drm_fd);
+          drm_fd = -1;
+          display = NULL;
+        }
+      }
+      CHECK_COND(vaDisplayIsValid(display));
+    } else {
     static const char *drm_devices[] = {
       "/dev/dri/renderD128",
       "/dev/dri/card0",
@@ -268,6 +282,7 @@ public:
       close(drm_fd);
       drm_fd = -1;
       display = NULL;
+    }
     }
     CHECK_COND(vaDisplayIsValid(display));
 
@@ -445,7 +460,12 @@ public:
 };
 
 VaapiRgbPacketProcessor::VaapiRgbPacketProcessor() :
-    impl_(new VaapiRgbPacketProcessorImpl())
+    impl_(new VaapiRgbPacketProcessorImpl(std::string()))
+{
+}
+
+VaapiRgbPacketProcessor::VaapiRgbPacketProcessor(const std::string &device_path) :
+    impl_(new VaapiRgbPacketProcessorImpl(device_path))
 {
 }
 

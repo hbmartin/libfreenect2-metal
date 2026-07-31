@@ -31,6 +31,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string>
 
 #include <libfreenect2/config.h>
 #include <libfreenect2/frame_listener.hpp>
@@ -117,6 +118,7 @@ class VaapiRgbPacketProcessor : public RgbPacketProcessor
 {
 public:
   VaapiRgbPacketProcessor();
+  explicit VaapiRgbPacketProcessor(const std::string &device_path);
   virtual ~VaapiRgbPacketProcessor();
   virtual bool good();
   virtual const char *name() { return "VAAPI"; }

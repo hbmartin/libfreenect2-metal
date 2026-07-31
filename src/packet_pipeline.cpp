@@ -100,12 +100,13 @@ static PacketPipelineConfig resolveRgbConfig(const PacketPipelineConfig &config)
   return resolved;
 }
 
-static RgbPacketProcessor *getDefaultRgbPacketProcessor()
+static RgbPacketProcessor *getDefaultRgbPacketProcessor(const PacketPipelineConfig &config)
 {
+  (void)config;
 #if defined(LIBFREENECT2_WITH_VT_SUPPORT)
   return new VTRgbPacketProcessor();
 #elif defined(LIBFREENECT2_WITH_VAAPI_SUPPORT)
-  RgbPacketProcessor *vaapi = new VaapiRgbPacketProcessor();
+  RgbPacketProcessor *vaapi = new VaapiRgbPacketProcessor(config.vaapi_device);
   if (vaapi->good())
     return vaapi;
   else
@@ -129,7 +130,7 @@ static RgbPacketProcessor *getConfiguredRgbPacketProcessor(const PacketPipelineC
 {
   const PacketPipelineConfig resolved = resolveRgbConfig(config);
   if(resolved.rgb_decoder == PacketPipelineConfig::Auto)
-    return getDefaultRgbPacketProcessor();
+    return getDefaultRgbPacketProcessor(resolved);
 
   RgbPacketProcessor *processor = 0;
   switch(resolved.rgb_decoder)
@@ -146,7 +147,7 @@ static RgbPacketProcessor *getConfiguredRgbPacketProcessor(const PacketPipelineC
     break;
   case PacketPipelineConfig::VAAPI:
 #if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT)
-    processor = new VaapiRgbPacketProcessor();
+    processor = new VaapiRgbPacketProcessor(resolved.vaapi_device);
 #endif
     break;
   case PacketPipelineConfig::TegraJPEG:
