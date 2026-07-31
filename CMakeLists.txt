@@ -694,6 +694,7 @@ INSTALL(FILES "${MY_DIR}/third_party/nlohmann/LICENSE.MIT"
 INSTALL(FILES
   "${MY_DIR}/README.md"
   "${MY_DIR}/doc/v0.3_migration.md"
+  "${MY_DIR}/doc/v0.3_upstream_coverage.md"
   "${MY_DIR}/doc/configuration.md"
   "${MY_DIR}/doc/depth_accuracy.md"
   "${MY_DIR}/doc/depth_calibration.md"

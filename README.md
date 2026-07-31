@@ -50,6 +50,7 @@ is published at https://hbmartin.github.io/libfreenect2-metal/.
 Additional guides (also rendered on the documentation site):
 
 * [Migrating to libfreenect2 0.3](doc/v0.3_migration.md)
+* [v0.3 upstream issue coverage](doc/v0.3_upstream_coverage.md)
 * [Depth accuracy and calibration](doc/depth_accuracy.md)
 * [Fitting and applying per-device depth correction](doc/depth_calibration.md)
 * [Using the Kinect v2 as a webcam](doc/webcam.md)
