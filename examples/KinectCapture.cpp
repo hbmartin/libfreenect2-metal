@@ -14,6 +14,7 @@
 #include <libfreenect2/registration.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
@@ -25,6 +26,33 @@
 
 namespace
 {
+
+const uint32_t DEFAULT_MAX_DELTA_TICKS = 200;
+
+bool parseUint32(const std::string& text, uint32_t& value)
+{
+  if (text.empty())
+    return false;
+
+  uint64_t parsed = 0;
+  for (std::string::const_iterator character = text.begin(); character != text.end(); ++character)
+  {
+    if (!std::isdigit(static_cast<unsigned char>(*character)))
+      return false;
+    parsed = parsed * 10 + static_cast<unsigned int>(*character - '0');
+    if (parsed > std::numeric_limits<uint32_t>::max())
+      return false;
+  }
+  value = static_cast<uint32_t>(parsed);
+  return true;
+}
+
+void printUsage()
+{
+  std::cerr << "usage: KinectCapture OUTPUT_DIRECTORY\n"
+            << "       KinectCapture snapshot OUTPUT_DIRECTORY "
+               "[--max-delta-ticks TICKS]\n";
+}
 
 bool writeColorPpm(const std::string& path, const libfreenect2::Frame& frame)
 {
@@ -183,12 +211,32 @@ bool writeIrPgm(const std::string& path, const libfreenect2::Frame& frame)
 
 int main(int argc, char** argv)
 {
-  if (argc != 2)
+  bool timestamp_aligned = false;
+  uint32_t max_delta_ticks = DEFAULT_MAX_DELTA_TICKS;
+  std::string output;
+  if (argc == 2)
   {
-    std::cerr << "usage: KinectCapture OUTPUT_DIRECTORY\n";
+    output = argv[1];
+  }
+  else if (argc >= 3 && std::string(argv[1]) == "snapshot")
+  {
+    timestamp_aligned = true;
+    output = argv[2];
+    for (int argument = 3; argument < argc; ++argument)
+    {
+      if (std::string(argv[argument]) != "--max-delta-ticks" || argument + 1 >= argc ||
+          !parseUint32(argv[++argument], max_delta_ticks))
+      {
+        printUsage();
+        return 2;
+      }
+    }
+  }
+  else
+  {
+    printUsage();
     return 2;
   }
-  const std::string output = argv[1];
 
   std::ofstream output_probe(output + "/metadata.json", std::ios::app);
   if (!output_probe)
@@ -222,10 +270,15 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  libfreenect2::SyncMultiFrameListener listener(
-      libfreenect2::Frame::Color | libfreenect2::Frame::Ir | libfreenect2::Frame::Depth);
-  device->setColorFrameListener(&listener);
-  device->setIrAndDepthFrameListener(&listener);
+  const unsigned int frame_types =
+      libfreenect2::Frame::Color | libfreenect2::Frame::Ir | libfreenect2::Frame::Depth;
+  libfreenect2::SyncMultiFrameListener legacy_listener(frame_types);
+  libfreenect2::TimestampAlignedFrameListener aligned_listener(frame_types, max_delta_ticks);
+  libfreenect2::FrameListener* listener =
+      timestamp_aligned ? static_cast<libfreenect2::FrameListener*>(&aligned_listener)
+                        : static_cast<libfreenect2::FrameListener*>(&legacy_listener);
+  device->setColorFrameListener(listener);
+  device->setIrAndDepthFrameListener(listener);
   if (!device->start())
   {
     std::cerr << "Unable to start Kinect streams\n";
@@ -236,15 +289,31 @@ int main(int argc, char** argv)
   libfreenect2::FrameMap frames;
   for (int i = 0; i < 20; ++i)
   {
-    if (!listener.waitForNewFrame(frames, 10000))
+    const bool received = timestamp_aligned ? aligned_listener.waitForNewFrame(frames, 10000)
+                                            : legacy_listener.waitForNewFrame(frames, 10000);
+    if (!received)
     {
-      std::cerr << "Timed out waiting for synchronized frame " << i << "\n";
+      std::cerr << "Timed out waiting for frame set " << i;
+      if (timestamp_aligned)
+      {
+        const libfreenect2::TimestampAlignedFrameListener::Statistics statistics =
+            aligned_listener.getStatistics();
+        std::cerr << " (threshold=" << max_delta_ticks
+                  << " ticks, delivered=" << statistics.delivered
+                  << ", dropped=" << statistics.dropped << ")";
+      }
+      std::cerr << "\n";
       device->stop();
       device->close();
       return 1;
     }
     if (i != 19)
-      listener.release(frames);
+    {
+      if (timestamp_aligned)
+        aligned_listener.release(frames);
+      else
+        legacy_listener.release(frames);
+    }
   }
 
   const libfreenect2::FrameMap::iterator color_it = frames.find(libfreenect2::Frame::Color);
@@ -256,7 +325,10 @@ int main(int argc, char** argv)
   if (!color || !ir || !depth || color->status != 0 || ir->status != 0 || depth->status != 0)
   {
     std::cerr << "Received an incomplete or invalid synchronized frame set\n";
-    listener.release(frames);
+    if (timestamp_aligned)
+      aligned_listener.release(frames);
+    else
+      legacy_listener.release(frames);
     device->stop();
     device->close();
     return 1;
@@ -278,6 +350,8 @@ int main(int argc, char** argv)
       output_ok;
 
   std::ofstream metadata(output + "/metadata.json");
+  const libfreenect2::TimestampAlignedFrameListener::Statistics alignment_statistics =
+      aligned_listener.getStatistics();
   metadata << std::fixed << std::setprecision(2) << "{\n"
            << "  \"serial\": \"" << serial << "\",\n"
            << "  \"firmware\": \"" << device->getFirmwareVersion() << "\",\n"
@@ -289,12 +363,38 @@ int main(int argc, char** argv)
            << (100.0 * stats.valid / (depth->width * depth->height)) << ",\n"
            << "  \"minimum_depth_mm\": " << (stats.valid ? stats.minimum : 0.0f) << ",\n"
            << "  \"mean_depth_mm\": " << (stats.valid ? stats.sum / stats.valid : 0.0) << ",\n"
-           << "  \"maximum_depth_mm\": " << (stats.valid ? stats.maximum : 0.0f) << "\n"
+           << "  \"maximum_depth_mm\": " << (stats.valid ? stats.maximum : 0.0f) << ",\n"
+           << "  \"capture_mode\": \""
+           << (timestamp_aligned ? "timestamp_aligned" : "legacy_pairing") << "\",\n"
+           << "  \"frame_timestamps\": {\n"
+           << "    \"color\": {\"device_ticks\": " << color->timestamp
+           << ", \"arrival_us\": " << color->arrival_timestamp_us
+           << ", \"sequence\": " << color->sequence << "},\n"
+           << "    \"ir\": {\"device_ticks\": " << ir->timestamp
+           << ", \"arrival_us\": " << ir->arrival_timestamp_us << ", \"sequence\": " << ir->sequence
+           << "},\n"
+           << "    \"depth\": {\"device_ticks\": " << depth->timestamp
+           << ", \"arrival_us\": " << depth->arrival_timestamp_us
+           << ", \"sequence\": " << depth->sequence << "}\n"
+           << "  }";
+  if (timestamp_aligned)
+  {
+    metadata << ",\n"
+             << "  \"alignment\": {\"threshold_ticks\": " << max_delta_ticks
+             << ", \"delivered\": " << alignment_statistics.delivered
+             << ", \"dropped\": " << alignment_statistics.dropped
+             << ", \"last_delta_ticks\": " << alignment_statistics.last_delta_ticks
+             << ", \"maximum_delta_ticks\": " << alignment_statistics.maximum_delta_ticks << "}";
+  }
+  metadata << "\n"
            << "}\n";
   metadata.flush();
   output_ok = metadata.good() && output_ok;
 
-  listener.release(frames);
+  if (timestamp_aligned)
+    aligned_listener.release(frames);
+  else
+    legacy_listener.release(frames);
   device->stop();
   device->close();
   if (!output_ok)
@@ -302,6 +402,15 @@ int main(int argc, char** argv)
     std::cerr << "Failed to write one or more capture artifacts to " << output << "\n";
     return 1;
   }
-  std::cout << "Captured Kinect " << serial << ": " << stats.valid << " valid depth pixels\n";
+  std::cout << "Captured Kinect " << serial << ": " << stats.valid << " valid depth pixels";
+  if (timestamp_aligned)
+  {
+    std::cout << "; alignment threshold=" << max_delta_ticks
+              << " ticks, delivered=" << alignment_statistics.delivered
+              << ", dropped=" << alignment_statistics.dropped
+              << ", last delta=" << alignment_statistics.last_delta_ticks
+              << ", maximum delta=" << alignment_statistics.maximum_delta_ticks;
+  }
+  std::cout << "\n";
   return 0;
 }
