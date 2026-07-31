@@ -53,6 +53,83 @@ public:
   virtual void process(const RgbPacket &) {}
 };
 
+#if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT) && \
+    defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
+class VaapiFallbackRgbPacketProcessor : public RgbPacketProcessor
+{
+public:
+  explicit VaapiFallbackRgbPacketProcessor(VaapiRgbPacketProcessor *primary):
+    primary_(primary), fallback_(new TurboJpegRgbPacketProcessor()), using_fallback_(false)
+  {
+  }
+
+  virtual ~VaapiFallbackRgbPacketProcessor()
+  {
+    delete primary_;
+    delete fallback_;
+  }
+
+  virtual bool good()
+  {
+    return using_fallback_ ? fallback_->good() : primary_->good();
+  }
+
+  virtual const char *name()
+  {
+    return using_fallback_ ? fallback_->name() : primary_->name();
+  }
+
+  virtual void setFrameListener(FrameListener *listener)
+  {
+    RgbPacketProcessor::setFrameListener(listener);
+    primary_->setFrameListener(listener);
+    fallback_->setFrameListener(listener);
+  }
+
+  virtual void process(const RgbPacket &packet)
+  {
+    if(using_fallback_)
+    {
+      fallback_->process(packet);
+      return;
+    }
+    primary_->process(packet);
+    if(!primary_->good())
+    {
+      using_fallback_ = true;
+      LOG_WARNING << "VAAPI RGB decoding failed; using TurboJPEG for this and subsequent frames";
+      fallback_->process(packet);
+    }
+  }
+
+  virtual void releaseBuffer(RgbPacket &packet)
+  {
+    if(packet.memory != 0 && packet.memory->allocator != 0)
+      packet.memory->allocator->free(packet.memory);
+    packet.memory = 0;
+  }
+
+protected:
+  virtual Allocator *getAllocator()
+  {
+    return using_fallback_ ? fallback_->getPacketAllocator() : primary_->getPacketAllocator();
+  }
+
+private:
+  VaapiRgbPacketProcessor *primary_;
+  TurboJpegRgbPacketProcessor *fallback_;
+  bool using_fallback_;
+};
+
+static RgbPacketProcessor *withVaapiRuntimeFallback(VaapiRgbPacketProcessor *processor,
+                                                    bool allow_fallback)
+{
+  if(allow_fallback)
+    return new VaapiFallbackRgbPacketProcessor(processor);
+  return processor;
+}
+#endif
+
 static RgbPacketProcessor *turboJpegOrUnavailable()
 {
 #if defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
@@ -106,9 +183,13 @@ static RgbPacketProcessor *getDefaultRgbPacketProcessor(const PacketPipelineConf
 #if defined(LIBFREENECT2_WITH_VT_SUPPORT)
   return new VTRgbPacketProcessor();
 #elif defined(LIBFREENECT2_WITH_VAAPI_SUPPORT)
-  RgbPacketProcessor *vaapi = new VaapiRgbPacketProcessor(config.vaapi_device);
+  VaapiRgbPacketProcessor *vaapi = new VaapiRgbPacketProcessor(config.vaapi_device);
   if (vaapi->good())
+#if defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
+    return withVaapiRuntimeFallback(vaapi, config.allow_fallback);
+#else
     return vaapi;
+#endif
   else
     delete vaapi;
   return new TurboJpegRgbPacketProcessor();
@@ -160,7 +241,17 @@ static RgbPacketProcessor *getConfiguredRgbPacketProcessor(const PacketPipelineC
   }
 
   if(processor != 0 && processor->good())
+#if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT) && \
+    defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
+  {
+    if(resolved.rgb_decoder == PacketPipelineConfig::VAAPI)
+      return withVaapiRuntimeFallback(static_cast<VaapiRgbPacketProcessor *>(processor),
+                                      resolved.allow_fallback);
     return processor;
+  }
+#else
+    return processor;
+#endif
   delete processor;
   if(resolved.allow_fallback)
   {

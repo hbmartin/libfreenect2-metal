@@ -67,6 +67,7 @@ public:
 
   virtual bool good();
   virtual void setFrameListener(libfreenect2::FrameListener *listener);
+  Allocator *getPacketAllocator() { return getAllocator(); }
 protected:
   libfreenect2::FrameListener *listener_;
 };
