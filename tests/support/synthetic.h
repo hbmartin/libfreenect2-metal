@@ -19,6 +19,8 @@
 #ifndef LIBFREENECT2_TESTS_SYNTHETIC_H_
 #define LIBFREENECT2_TESTS_SYNTHETIC_H_
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -57,6 +59,26 @@ private:
   int depth_count_;
 };
 
+/** One of the four independent bilateral/edge-aware filter combinations. */
+struct DepthFilterConfiguration
+{
+  const char* name;
+  bool bilateral;
+  bool edge_aware;
+
+  libfreenect2::Freenect2Device::Config config() const;
+};
+
+/** Stable matrix used by CPU and accelerator-backend parity tests. */
+const std::array<DepthFilterConfiguration, 4>& depthFilterConfigurations();
+
+/** Pixel agreement summary for two depth/IR results. */
+struct DepthFrameAgreement
+{
+  double depth_ratio;
+  double ir_ratio;
+};
+
 /** Plausible factory-style IR (depth) camera intrinsics. */
 libfreenect2::Freenect2Device::IrCameraParams makeIrParams();
 
@@ -68,8 +90,8 @@ libfreenect2::Freenect2Device::ColorCameraParams makeColorParams();
  * P0TablesResponse. */
 std::vector<unsigned char> makeSyntheticP0Tables(uint32_t seed = 1);
 
-/** Fill X and Z back-projection tables (TABLE_SIZE entries each) with
- * deterministic, finite values derived from @p ir. */
+/** Fill X and Z phase-to-depth tables (TABLE_SIZE entries each) with a
+ * deterministic planar calibration. */
 void makeSyntheticXZTables(const libfreenect2::Freenect2Device::IrCameraParams& ir,
                            std::vector<float>& xtable, std::vector<float>& ztable);
 
@@ -78,13 +100,29 @@ void makeSyntheticXZTables(const libfreenect2::Freenect2Device::IrCameraParams& 
 void makeSyntheticLookupTable(std::vector<short>& lut);
 
 /** Raw depth buffer sized exactly to one assembled depth frame
- * (10 * 512*424*11/8 bytes), filled deterministically from @p seed. */
+ * (10 * 512*424*11/8 bytes), containing deterministic planar phase samples. */
 std::vector<unsigned char> makeSyntheticDepthBuffer(uint32_t seed = 1);
 
 /** Load synthetic P0/XZ/LUT tables into any DepthPacketProcessor. */
 void loadSyntheticTables(libfreenect2::DepthPacketProcessor& proc,
                          const libfreenect2::Freenect2Device::IrCameraParams& ir,
                          uint32_t seed = 1);
+
+/** Configure and run one deterministic synthetic packet through @p proc. */
+void runSyntheticDepthProcessor(libfreenect2::DepthPacketProcessor& proc,
+                                const libfreenect2::Freenect2Device::Config& config,
+                                uint32_t seed,
+                                CollectingFrameListener& listener);
+
+/** Count finite, positive depth samples in a Float depth frame. */
+size_t countValidDepthPixels(const libfreenect2::Frame* depth);
+
+/** Compare depth/IR output using the established backend tolerances. */
+DepthFrameAgreement compareDepthFrames(const libfreenect2::Frame* depth_a,
+                                       const libfreenect2::Frame* depth_b,
+                                       const libfreenect2::Frame* ir_a,
+                                       const libfreenect2::Frame* ir_b,
+                                       float depth_tolerance_mm = 1.0f);
 
 } // namespace testing
 } // namespace libfreenect2

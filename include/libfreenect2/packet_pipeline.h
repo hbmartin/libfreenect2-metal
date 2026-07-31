@@ -32,6 +32,8 @@
 #include <libfreenect2/config.h>
 
 #include <stdlib.h>
+#include <string>
+#include <vector>
 
 namespace libfreenect2
 {
@@ -40,6 +42,25 @@ class DataCallback;
 class RgbPacketProcessor;
 class DepthPacketProcessor;
 class PacketPipelineComponents;
+
+/** Per-pipeline color decoder policy. */
+struct LIBFREENECT2_API PacketPipelineConfig
+{
+  enum RgbDecoder
+  {
+    Auto,
+    TurboJPEG,
+    VideoToolbox,
+    VAAPI,
+    TegraJPEG
+  };
+
+  PacketPipelineConfig();
+
+  RgbDecoder rgb_decoder;
+  std::string vaapi_device;
+  bool allow_fallback;
+};
 
 /** @defgroup pipeline Packet Pipelines
  * Implement various methods to decode color and depth images with different performance and platform support
@@ -56,8 +77,14 @@ class LIBFREENECT2_API PacketPipeline
 public:
   typedef DataCallback PacketParser;
 
-  PacketPipeline();
+  explicit PacketPipeline(const std::string &name = "unknown");
   virtual ~PacketPipeline();
+
+  /** Stable canonical pipeline name (for example `cpu` or `metal`). */
+  const std::string &getName() const;
+
+  /** Whether the pipeline's depth processor is usable on this machine. */
+  bool good() const;
 
   virtual PacketParser *getRgbPacketParser() const;
   virtual PacketParser *getIrPacketParser() const;
@@ -65,8 +92,33 @@ public:
   virtual RgbPacketProcessor *getRgbPacketProcessor() const;
   virtual DepthPacketProcessor *getDepthPacketProcessor() const;
 protected:
+  std::string name_;
   PacketPipelineComponents *comp_;
 };
+
+/** Construct a compiled pipeline by canonical name, or return NULL. The caller
+ * owns the returned object until it is passed to Freenect2::openDevice(). */
+LIBFREENECT2_API PacketPipeline *createPacketPipeline(const std::string &name, int device_id = -1);
+LIBFREENECT2_API PacketPipeline *createPacketPipeline(const std::string &name,
+                                                       const PacketPipelineConfig &config,
+                                                       int device_id = -1);
+
+/** Construct the environment-selected/default pipeline. */
+LIBFREENECT2_API PacketPipeline *createDefaultPacketPipeline();
+LIBFREENECT2_API PacketPipeline *createDefaultPacketPipeline(const PacketPipelineConfig &config);
+
+/** Canonical names of pipelines compiled into this library. */
+LIBFREENECT2_API std::vector<std::string> getCompiledPacketPipelines();
+
+/**
+ * Canonical names of compiled pipelines usable on this machine.
+ *
+ * Availability probing constructs each compiled pipeline and can initialize
+ * graphics or compute runtimes and create a hidden OpenGL context. The call
+ * can therefore be relatively expensive and have process-global driver side
+ * effects; avoid using it on latency-sensitive paths.
+ */
+LIBFREENECT2_API std::vector<std::string> getAvailablePacketPipelines();
 
  class LIBFREENECT2_API DumpPacketPipeline: public PacketPipeline
  {
@@ -87,6 +139,7 @@ class LIBFREENECT2_API CpuPacketPipeline : public PacketPipeline
 {
 public:
   CpuPacketPipeline();
+  explicit CpuPacketPipeline(const PacketPipelineConfig &config);
   virtual ~CpuPacketPipeline();
 };
 
@@ -99,6 +152,8 @@ protected:
   bool debug_;
 public:
   OpenGLPacketPipeline(void *parent_opengl_context = 0, bool debug = false);
+  explicit OpenGLPacketPipeline(const PacketPipelineConfig& config, void* parent_opengl_context = 0,
+                                bool debug = false);
   virtual ~OpenGLPacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_OPENGL_SUPPORT
@@ -111,6 +166,7 @@ protected:
   const int deviceId;
 public:
   OpenCLPacketPipeline(const int deviceId = -1);
+  explicit OpenCLPacketPipeline(const PacketPipelineConfig& config, const int deviceId = -1);
   virtual ~OpenCLPacketPipeline();
 };
 
@@ -126,6 +182,7 @@ protected:
   const int deviceId;
 public:
   OpenCLKdePacketPipeline(const int deviceId = -1);
+  explicit OpenCLKdePacketPipeline(const PacketPipelineConfig& config, const int deviceId = -1);
   virtual ~OpenCLKdePacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_OPENCL_SUPPORT
@@ -136,7 +193,8 @@ class LIBFREENECT2_API CudaPacketPipeline : public PacketPipeline
 protected:
   const int deviceId;
 public:
-  CudaPacketPipeline(const int deviceId = -1);
+  CudaPacketPipeline(const int device_id = -1);
+  explicit CudaPacketPipeline(const PacketPipelineConfig& config, const int device_id = -1);
   virtual ~CudaPacketPipeline();
 };
 
@@ -151,7 +209,8 @@ class LIBFREENECT2_API CudaKdePacketPipeline : public PacketPipeline
 protected:
   const int deviceId;
 public:
-  CudaKdePacketPipeline(const int deviceId = -1);
+  CudaKdePacketPipeline(const int device_id = -1);
+  explicit CudaKdePacketPipeline(const PacketPipelineConfig& config, const int device_id = -1);
   virtual ~CudaKdePacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_CUDA_SUPPORT
@@ -164,6 +223,7 @@ protected:
   const int deviceId;
 public:
   MetalPacketPipeline(const int deviceId = -1);
+  explicit MetalPacketPipeline(const PacketPipelineConfig& config, const int deviceId = -1);
   virtual ~MetalPacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_METAL_SUPPORT

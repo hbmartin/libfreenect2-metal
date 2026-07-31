@@ -15,6 +15,7 @@
  * Skips gracefully when Metal is unavailable. Tests live in the "MetalCpuParity"
  * suite so CI can label them "gpu". */
 
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -34,9 +35,15 @@ using libfreenect2::DepthPacketProcessor;
 using libfreenect2::Frame;
 using libfreenect2::Freenect2Device;
 using libfreenect2::testing::CollectingFrameListener;
+using libfreenect2::testing::DepthFilterConfiguration;
+using libfreenect2::testing::DepthFrameAgreement;
+using libfreenect2::testing::compareDepthFrames;
+using libfreenect2::testing::countValidDepthPixels;
+using libfreenect2::testing::depthFilterConfigurations;
 using libfreenect2::testing::loadSyntheticTables;
 using libfreenect2::testing::makeIrParams;
 using libfreenect2::testing::makeSyntheticDepthBuffer;
+using libfreenect2::testing::runSyntheticDepthProcessor;
 
 #ifdef LIBFREENECT2_WITH_METAL_SUPPORT
 
@@ -96,6 +103,7 @@ DepthPacket makePacket(std::vector<unsigned char>& buffer)
   DepthPacket p;
   p.sequence = 1;
   p.timestamp = 100;
+  p.arrival_timestamp_us = 123456;
   p.buffer = buffer.data();
   p.buffer_length = buffer.size();
   p.memory = 0;
@@ -186,6 +194,36 @@ TEST(MetalCpuParity, ReconfigurationIsAdoptedCleanly)
   EXPECT_GT(a.depth_ratio, 0.95) << "Post-reconfig Metal depth diverges from CPU";
 }
 
+TEST(MetalCpuParity, SupportsEveryFilterCombination)
+{
+  libfreenect2::MetalDepthPacketProcessor metal;
+  if(!metal.good())
+    GTEST_SKIP() << "No usable Metal device on this machine";
+
+  const std::array<DepthFilterConfiguration, 4>& configurations =
+      depthFilterConfigurations();
+  for(size_t i = 0; i < configurations.size(); ++i)
+  {
+    const DepthFilterConfiguration& filter = configurations[i];
+    SCOPED_TRACE(filter.name);
+
+    CpuDepthPacketProcessor cpu;
+    CollectingFrameListener cpu_output;
+    CollectingFrameListener metal_output;
+    runSyntheticDepthProcessor(cpu, filter.config(), 23, cpu_output);
+    runSyntheticDepthProcessor(metal, filter.config(), 23, metal_output);
+
+    ASSERT_NE(cpu_output.depth(), nullptr);
+    ASSERT_NE(metal_output.depth(), nullptr);
+    EXPECT_GT(countValidDepthPixels(metal_output.depth()), 0u);
+
+    const DepthFrameAgreement agreement = compareDepthFrames(
+        cpu_output.depth(), metal_output.depth(), cpu_output.ir(), metal_output.ir());
+    EXPECT_GT(agreement.ir_ratio, 0.99);
+    EXPECT_GT(agreement.depth_ratio, 0.95);
+  }
+}
+
 #else // !LIBFREENECT2_WITH_METAL_SUPPORT
 
 TEST(MetalCpuParity, IrAndDepthMatchReference)
@@ -194,6 +232,11 @@ TEST(MetalCpuParity, IrAndDepthMatchReference)
 }
 
 TEST(MetalCpuParity, ReconfigurationIsAdoptedCleanly)
+{
+  GTEST_SKIP() << "Built without Metal support (LIBFREENECT2_WITH_METAL_SUPPORT)";
+}
+
+TEST(MetalCpuParity, SupportsEveryFilterCombination)
 {
   GTEST_SKIP() << "Built without Metal support (LIBFREENECT2_WITH_METAL_SUPPORT)";
 }

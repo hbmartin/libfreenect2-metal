@@ -59,7 +59,7 @@ public:
 
   /** Wait milliseconds for new frames.
    * @param[out] frame Caller is responsible to release the frames in `frame`.
-   * @param milliseconds Timeout. This parameter is ignored if not built with C++11 threading support.
+   * @param milliseconds Timeout in milliseconds.
    * @return true if a frame is received; false if not.
    */
   bool waitForNewFrame(FrameMap &frame, int milliseconds);
@@ -79,6 +79,61 @@ private:
   /* Disable copy and assignment constructors */
   SyncMultiFrameListener(const SyncMultiFrameListener&);
   SyncMultiFrameListener& operator=(const SyncMultiFrameListener&);
+};
+
+class TimestampAlignedFrameListenerImpl;
+
+/** Collect timestamp-aligned combinations of multiple frame types.
+ *
+ * Unlike SyncMultiFrameListener, this listener keeps a bounded queue for each
+ * subscribed stream and selects the queued combination with the smallest
+ * wrap-safe device-timestamp span.
+ */
+class LIBFREENECT2_API TimestampAlignedFrameListener : public FrameListener
+{
+public:
+  /** Snapshot of listener delivery and drop counters. */
+  struct Statistics
+  {
+    uint64_t delivered;           ///< Number of frame sets returned to callers.
+    uint64_t dropped;             ///< Number of individual frames discarded.
+    uint32_t last_delta_ticks;    ///< Span of the most recently delivered set.
+    uint32_t maximum_delta_ticks; ///< Largest span delivered so far.
+
+    Statistics();
+  };
+
+  /**
+   * @param frame_types Use bitwise or to combine multiple types.
+   * @param max_delta_ticks Largest accepted device-timestamp span, in 0.125 ms ticks.
+   * @param queue_capacity Maximum number of queued frames per subscribed type.
+   */
+  TimestampAlignedFrameListener(unsigned int frame_types, uint32_t max_delta_ticks,
+                                size_t queue_capacity = 8);
+  virtual ~TimestampAlignedFrameListener();
+
+  /** Test whether an aligned frame set is ready. Non-blocking. */
+  bool hasNewFrame() const;
+
+  /** Wait milliseconds for an aligned frame set. */
+  bool waitForNewFrame(FrameMap& frame, int milliseconds);
+
+  /** Wait indefinitely for an aligned frame set. */
+  void waitForNewFrame(FrameMap& frame);
+
+  /** Delete all frames in @p frame. */
+  void release(FrameMap& frame);
+
+  /** Return a thread-safe snapshot of the listener statistics. */
+  Statistics getStatistics() const;
+
+  virtual bool onNewFrame(Frame::Type type, Frame* frame);
+
+private:
+  TimestampAlignedFrameListenerImpl* impl_;
+
+  TimestampAlignedFrameListener(const TimestampAlignedFrameListener&);
+  TimestampAlignedFrameListener& operator=(const TimestampAlignedFrameListener&);
 };
 
 ///@}

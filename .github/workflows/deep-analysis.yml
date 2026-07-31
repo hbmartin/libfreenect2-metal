@@ -1,0 +1,125 @@
+name: Deep analysis
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    - cron: "23 9 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: deep-analysis-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    name: CodeQL security-extended
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: c-cpp
+          build-mode: manual
+          queries: security-extended
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build pkg-config libusb-1.0-0-dev libturbojpeg0-dev
+
+      - name: Build analyzed configuration
+        run: |
+          cmake -S . -B build-codeql -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_EXAMPLES=ON \
+            -DBUILD_OPENNI2_DRIVER=OFF \
+            -DCMAKE_CXX_STANDARD=11 \
+            -DENABLE_OPENCL=OFF \
+            -DENABLE_CUDA=OFF \
+            -DENABLE_OPENGL=OFF \
+            -DENABLE_VAAPI=OFF \
+            -DENABLE_TEGRAJPEG=OFF
+          cmake --build build-codeql -j 2
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:c-cpp
+
+  gcc-analyzer:
+    name: GCC path-sensitive analyzer
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build g++ pkg-config libusb-1.0-0-dev libturbojpeg0-dev
+
+      - name: Analyze while compiling
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          cmake -S . -B build-analyzer -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS=-fanalyzer \
+            -DENABLE_WARNINGS_AS_ERRORS=ON \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_OPENNI2_DRIVER=OFF \
+            -DCMAKE_CXX_STANDARD=11 \
+            -DENABLE_OPENCL=OFF \
+            -DENABLE_CUDA=OFF \
+            -DENABLE_OPENGL=OFF \
+            -DENABLE_VAAPI=OFF \
+            -DENABLE_TEGRAJPEG=OFF
+          cmake --build build-analyzer -j 2
+
+  strict-ubsan:
+    name: UBSan implicit conversions
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang
+      CXX: clang++
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build clang pkg-config libusb-1.0-0-dev libturbojpeg0-dev
+
+      - name: Build and test
+        run: |
+          cmake -S . -B build-strict-ubsan -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=ON \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_OPENNI2_DRIVER=OFF \
+            -DCMAKE_CXX_STANDARD=11 \
+            -DENABLE_UBSAN_IMPLICIT_CONVERSIONS=ON \
+            -DENABLE_OPENCL=OFF \
+            -DENABLE_CUDA=OFF \
+            -DENABLE_OPENGL=OFF \
+            -DENABLE_VAAPI=OFF \
+            -DENABLE_TEGRAJPEG=OFF
+          cmake --build build-strict-ubsan -j 2
+          ctest --test-dir build-strict-ubsan -L unit --timeout 180 --output-on-failure

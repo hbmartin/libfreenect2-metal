@@ -131,15 +131,19 @@ void DumpDepthPacketProcessor::process(const DepthPacket &packet) {
   Frame* depth_frame = new Frame(1, 1, packet.buffer_length);
 
   depth_frame->timestamp = packet.timestamp;
+  depth_frame->arrival_timestamp_us = packet.arrival_timestamp_us;
   depth_frame->sequence = packet.sequence;
   depth_frame->format = Frame::Raw;
   std::memcpy(depth_frame->data, packet.buffer, packet.buffer_length);
 
-  Frame* ir_frame = new Frame(1, 1, packet.buffer_length, depth_frame->data);
+  // The IR frame owns its own copy: a listener may retain one frame and
+  // reject the other, so the two must not share a buffer.
+  Frame* ir_frame = new Frame(1, 1, packet.buffer_length);
   ir_frame->timestamp = packet.timestamp;
+  ir_frame->arrival_timestamp_us = packet.arrival_timestamp_us;
   ir_frame->sequence = packet.sequence;
-  ir_frame->data = packet.buffer;
   ir_frame->format = Frame::Raw;
+  std::memcpy(ir_frame->data, packet.buffer, packet.buffer_length);
 
   if (!listener_->onNewFrame(Frame::Ir, ir_frame)) {
     delete ir_frame;

@@ -24,11 +24,11 @@ protected:
     WithOpenGLBindings() : bindings(0) {}
     virtual ~WithOpenGLBindings() {}
 
-    virtual void onOpenGLBindingsChanged(OpenGLBindings *b) { }
+    virtual void onOpenGLBindingsChanged(OpenGLBindings *) { }
 public:
-    void gl(OpenGLBindings *bindings)
+    void gl(OpenGLBindings *new_bindings)
     {
-        this->bindings = bindings;
+        bindings = new_bindings;
         onOpenGLBindingsChanged(this->bindings);
     }
 
@@ -111,9 +111,9 @@ public:
         downloadToBuffer(data);
     }
 
-    void downloadToBuffer(unsigned char *data)
+    void downloadToBuffer(unsigned char *output)
     {
-        glReadPixels(0, 0, width, height, FormatT::Format, FormatT::Type, data);
+        glReadPixels(0, 0, width, height, FormatT::Format, FormatT::Type, output);
     }
 
     void flipY()
@@ -121,13 +121,13 @@ public:
         flipYBuffer(data);
     }
 
-    void flipYBuffer(unsigned char *data)
+    void flipYBuffer(unsigned char *output)
     {
         typedef unsigned char type;
 
         size_t linestep = width * bytes_per_pixel / sizeof(type);
 
-        type *first_line = reinterpret_cast<type *>(data), *last_line = reinterpret_cast<type *>(data) + (height - 1) * linestep;
+        type *first_line = reinterpret_cast<type *>(output), *last_line = reinterpret_cast<type *>(output) + (height - 1) * linestep;
 
         for (size_t y = 0; y < height / 2; ++y)
         {
@@ -279,8 +279,8 @@ public:
     virtual void onOpenGLBindingsChanged(OpenGLBindings *b);
     bool render();
     void addFrame(std::string id,libfreenect2::Frame* frame);
-    void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
-    void winsize_callback(GLFWwindow* window, int w, int h);
+    void key_callback(int key, int action);
+    void winsize_callback(int w, int h);
     static void key_callbackstatic(GLFWwindow* window, int key, int scancode, int action, int mods);
     static void winsize_callbackstatic(GLFWwindow* window, int w, int h);
 };

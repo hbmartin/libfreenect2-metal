@@ -1,22 +1,10 @@
-# Continuous integration for the libfreenect2 macOS / Metal fork.
-#
-# Runs on a self-hosted macOS runner that must provide:
-#   * Full Xcode with the Metal toolchain — verify with `xcrun -sdk macosx metal --version`
-#     (on Xcode 26+ also run `xcodebuild -downloadComponent MetalToolchain`)
-#   * Homebrew deps: `brew install libusb glfw3 jpeg-turbo`
-#   * A real GPU / logged-in graphics session so the Metal parity test can run
-#   * For the advisory jobs: `brew install clang-format llvm` (clang-tidy)
-#
-# Enforcement: build + test failures block; formatting and static analysis are
-# advisory (continue-on-error) so they report without blocking merges.
-# Each job uses its own build directory to stay isolated on the persistent runner.
-
 name: CI
 
 on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -25,122 +13,489 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  CTEST_OUTPUT_ON_FAILURE: "1"
+
 jobs:
-  build-test:
-    name: Build & unit tests (Metal)
+  build-test-metal:
+    name: AppleClang, Metal, C++11
+    # Fork PRs must never execute on the persistent self-hosted runner.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
         with:
           clean: true
+          persist-credentials: false
 
       - name: Configure
-        run: cmake -B build -DBUILD_TESTING=ON -DENABLE_METAL=ON -DBUILD_EXAMPLES=ON
+        run: >-
+          cmake -S . -B build-metal -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTING=ON
+          -DBUILD_EXAMPLES=ON
+          -DCMAKE_CXX_STANDARD=11
+          -DENABLE_METAL=ON
+          -DENABLE_WARNINGS_AS_ERRORS=ON
+          -DENABLE_STDLIB_HARDENING=ON
 
       - name: Build
-        run: cmake --build build -j
+        run: cmake --build build-metal -j
 
-      - name: Test (includes Metal-vs-CPU parity on the GPU)
-        run: ctest --test-dir build --output-on-failure
+      - name: Test, including Metal parity
+        run: ctest --test-dir build-metal --timeout 120
+
+  linux-builds:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GCC, shared, C++11
+            cc: gcc
+            cxx: g++
+            shared: ON
+          - name: GCC, static, C++11
+            cc: gcc
+            cxx: g++
+            shared: OFF
+          - name: Clang, shared, C++11
+            cc: clang
+            cxx: clang++
+            shared: ON
+          - name: Clang, static, C++11
+            cc: clang
+            cxx: clang++
+            shared: OFF
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build pkg-config libusb-1.0-0-dev libturbojpeg0-dev
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_SHARED_LIBS=${{ matrix.shared }}
+          -DBUILD_TESTING=ON
+          -DBUILD_EXAMPLES=ON
+          -DBUILD_OPENNI2_DRIVER=OFF
+          -DCMAKE_CXX_STANDARD=11
+          -DENABLE_OPENCL=OFF
+          -DENABLE_CUDA=OFF
+          -DENABLE_OPENGL=OFF
+          -DENABLE_VAAPI=OFF
+          -DENABLE_TEGRAJPEG=OFF
+          -DENABLE_WARNINGS_AS_ERRORS=ON
+          -DENABLE_STDLIB_HARDENING=ON
+
+      - name: Build
+        run: cmake --build build -j 2
+
+      - name: Test
+        run: ctest --test-dir build -LE gpu --timeout 120
+
+      - name: Test installed package with out-of-tree examples
+        run: |
+          cmake --install build --prefix "$PWD/build/install"
+          cmake -S examples -B build-installed-examples -G Ninja \
+            -DENABLE_OPENGL=OFF \
+            -Dfreenect2_DIR="$PWD/build/install/lib/cmake/freenect2"
+          cmake --build build-installed-examples -j 2
+
+  linux-filter-backends:
+    name: Clang, PoCL and llvmpipe filter parity
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang
+      CXX: clang++
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      POCL_DEVICES: pthread
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install software OpenCL and OpenGL runtimes
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang ninja-build pkg-config libusb-1.0-0-dev libturbojpeg0-dev \
+            ocl-icd-opencl-dev pocl-opencl-icd \
+            libglfw3-dev libgl1-mesa-dev mesa-utils xvfb
+
+      - name: Configure filter backends
+        run: >-
+          cmake -S . -B build-filter-backends -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_STANDARD=11
+          -DBUILD_TESTING=ON
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_OPENNI2_DRIVER=OFF
+          -DENABLE_OPENCL=ON
+          -DENABLE_OPENGL=ON
+          -DENABLE_CUDA=OFF
+          -DENABLE_VAAPI=OFF
+          -DENABLE_TEGRAJPEG=OFF
+          -DENABLE_WARNINGS_AS_ERRORS=ON
+
+      - name: Build filter parity tests
+        run: cmake --build build-filter-backends -j 2 --target unit_tests
+
+      - name: Test all OpenCL and OpenGL filter combinations
+        run: >-
+          xvfb-run -a -s '-screen 0 1024x768x24'
+          ctest --test-dir build-filter-backends
+          -R '^(OpenCLCpuParity|OpenGLCpuParity)\.'
+          --timeout 120 --output-on-failure
+
+  linux-vaapi:
+    name: Clang, VAAPI selection and fake failover
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install VAAPI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang ninja-build pkg-config libusb-1.0-0-dev libturbojpeg0-dev \
+            libjpeg-dev libva-dev
+
+      - name: Configure VAAPI
+        run: >-
+          cmake -S . -B build-vaapi -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_STANDARD=11
+          -DBUILD_TESTING=ON
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_OPENNI2_DRIVER=OFF
+          -DENABLE_OPENCL=OFF
+          -DENABLE_OPENGL=OFF
+          -DENABLE_CUDA=OFF
+          -DENABLE_VAAPI=ON
+          -DENABLE_TEGRAJPEG=OFF
+          -DENABLE_WARNINGS_AS_ERRORS=ON
+
+      - name: Compile VAAPI and failover paths
+        run: cmake --build build-vaapi -j 2 --target freenect2 unit_tests
+
+      - name: Test initialization and runtime failover
+        run: >-
+          ctest --test-dir build-vaapi
+          -R '^(RgbDecoderFallback\.|PublicApi\.VaapiInitializationFailure)'
+          --timeout 120 --output-on-failure
+
+  cuda-12-3:
+    name: CUDA 12.3 compile-only
+    runs-on: ubuntu-24.04
+    container: nvidia/cuda:12.3.2-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install CUDA build dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install --yes \
+            cmake ninja-build git pkg-config libusb-1.0-0-dev libturbojpeg0-dev
+
+      - name: Configure both CUDA depth pipelines
+        run: >-
+          cmake -S . -B build-cuda -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=11
+          -DCMAKE_CUDA_ARCHITECTURES=75
+          -DBUILD_TESTING=OFF
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_OPENNI2_DRIVER=OFF
+          -DENABLE_CUDA=ON
+          -DENABLE_OPENCL=OFF
+          -DENABLE_OPENGL=OFF
+          -DENABLE_VAAPI=OFF
+          -DENABLE_TEGRAJPEG=OFF
+          -DENABLE_WARNINGS_AS_ERRORS=ON
+
+      - name: Compile standard and KDE CUDA pipelines
+        run: cmake --build build-cuda -j 2 --target freenect2
+
+  windows-msvc:
+    name: MSVC, static, C++11
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        shell: pwsh
+        run: >-
+          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install
+          libusb:x64-windows libjpeg-turbo:x64-windows
+
+      - name: Configure
+        shell: pwsh
+        run: >-
+          cmake -S . -B build-msvc -A x64
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+          -DBUILD_SHARED_LIBS=OFF
+          -DBUILD_TESTING=ON
+          -DBUILD_EXAMPLES=ON
+          -DBUILD_OPENNI2_DRIVER=OFF
+          -DCMAKE_CXX_STANDARD=11
+          -DENABLE_OPENCL=OFF
+          -DENABLE_CUDA=OFF
+          -DENABLE_OPENGL=OFF
+          -DENABLE_VAAPI=OFF
+          -DENABLE_TEGRAJPEG=OFF
+          -DENABLE_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build-msvc --config Debug -j 2
+
+      - name: Test
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/debug/bin;$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin;$env:PATH"
+          ctest --test-dir build-msvc -C Debug -LE gpu --timeout 120
 
   sanitizers:
-    name: Sanitizers (ASan + UBSan)
-    runs-on: [self-hosted, macOS]
-    needs: build-test
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ASan + UBSan + LeakSanitizer
+            flags: -DENABLE_ASAN=ON -DENABLE_UBSAN=ON
+          - name: TSan, C++11
+            flags: -DENABLE_TSAN=ON
     env:
-      # Focus on memory-safety + UB; leak detection off to avoid noise from
-      # system frameworks. Metal is disabled here so the host code is checked in
-      # isolation (the GPU parity cases are excluded via `-LE gpu`).
-      ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+      CC: clang
+      CXX: clang++
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:strict_string_checks=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build clang pkg-config libusb-1.0-0-dev libturbojpeg0-dev
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build-sanitized -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTING=ON
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_OPENNI2_DRIVER=OFF
+          -DCMAKE_CXX_STANDARD=11
+          -DENABLE_OPENCL=OFF
+          -DENABLE_CUDA=OFF
+          -DENABLE_OPENGL=OFF
+          -DENABLE_VAAPI=OFF
+          -DENABLE_TEGRAJPEG=OFF
+          ${{ matrix.flags }}
+
+      - name: Build
+        run: cmake --build build-sanitized -j 2
+
+      - name: Test under sanitizer
+        run: ctest --test-dir build-sanitized -L unit --timeout 180
+
+  fuzzers:
+    name: Parser fuzz smoke tests
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang
+      CXX: clang++
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
     steps:
       - uses: actions/checkout@v4
         with:
-          clean: true
+          persist-credentials: false
 
-      - name: Configure (sanitizers, no Metal)
-        run: cmake -B build-asan -DBUILD_TESTING=ON -DENABLE_SANITIZERS=ON -DENABLE_METAL=OFF -DBUILD_EXAMPLES=OFF
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build clang pkg-config libusb-1.0-0-dev libturbojpeg0-dev
 
-      - name: Build
-        run: cmake --build build-asan -j
+      - name: Configure
+        run: >-
+          cmake -S . -B build-fuzz -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DENABLE_FUZZING=ON
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_OPENNI2_DRIVER=OFF
+          -DCMAKE_CXX_STANDARD=11
+          -DENABLE_OPENCL=OFF
+          -DENABLE_CUDA=OFF
+          -DENABLE_OPENGL=OFF
+          -DENABLE_VAAPI=OFF
+          -DENABLE_TEGRAJPEG=OFF
 
-      - name: Test under sanitizers (hardware-free suite)
-        run: ctest --test-dir build-asan -LE gpu --output-on-failure
+      - name: Build fuzzers
+        run: >-
+          cmake --build build-fuzz -j 2 --target
+          fuzz_rgb_stream_parser fuzz_depth_stream_parser fuzz_protocol_response
+          fuzz_recording_metadata
+
+      - name: Run bounded fuzz smoke tests
+        run: ctest --test-dir build-fuzz -L fuzz --timeout 180
+
+  coverage:
+    name: Coverage floor
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build clang llvm pkg-config python3 \
+            libusb-1.0-0-dev libturbojpeg0-dev
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build-coverage -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTING=ON
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_OPENNI2_DRIVER=OFF
+          -DCMAKE_CXX_STANDARD=11
+          -DENABLE_COVERAGE=ON
+          -DENABLE_OPENCL=OFF
+          -DENABLE_CUDA=OFF
+          -DENABLE_OPENGL=OFF
+          -DENABLE_VAAPI=OFF
+          -DENABLE_TEGRAJPEG=OFF
+
+      - name: Build and test
+        run: |
+          cmake --build build-coverage -j 2
+          LLVM_PROFILE_FILE="$PWD/build-coverage/unit-%p.profraw" \
+            ctest --test-dir build-coverage -L unit --timeout 120
+
+      - name: Generate and enforce coverage report
+        run: |
+          llvm-profdata merge -sparse build-coverage/*.profraw -o build-coverage/unit.profdata
+          llvm-cov report build-coverage/bin/unit_tests \
+            -instr-profile=build-coverage/unit.profdata \
+            -ignore-filename-regex='(_deps/|tests/|include/internal/CL/|tools/generate_resources)' \
+            "$PWD/src" "$PWD/include/libfreenect2" "$PWD/include/internal/libfreenect2" \
+            | tee build-coverage/coverage.txt
+          python3 tools/quality/check_coverage.py build-coverage/coverage.txt \
+            --min-lines 30 --min-branches 25
+          llvm-cov export build-coverage/bin/unit_tests \
+            -instr-profile=build-coverage/unit.profdata \
+            -ignore-filename-regex='(_deps/|tests/|include/internal/CL/|tools/generate_resources)' \
+            -format=lcov > build-coverage/coverage.lcov
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llvm-coverage
+          path: |
+            build-coverage/coverage.txt
+            build-coverage/coverage.lcov
 
   format:
     name: clang-format (advisory)
-    runs-on: [self-hosted, macOS]
+    runs-on: ubuntu-24.04
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
-          clean: true
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Check formatting of changed files
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install --yes clang-format
+
+      - name: Check changed C++ files
+        shell: bash
+        env:
+          GH_EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          if ! command -v clang-format >/dev/null 2>&1; then
-            echo "::notice::clang-format not installed on runner (brew install clang-format); skipping"
-            exit 0
-          fi
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="${{ github.event.pull_request.base.sha }}"
+          if [[ "$GH_EVENT_NAME" == "pull_request" ]]; then
+            base="$PR_BASE_SHA"
           else
-            base="${{ github.event.before }}"
+            base="$PUSH_BEFORE_SHA"
           fi
-          # Fall back to the previous commit if the base is unavailable.
           if ! git cat-file -e "$base" 2>/dev/null; then
             base="HEAD~1"
           fi
-          files=$(git diff --name-only "$base" HEAD -- '*.cpp' '*.h' '*.hpp' '*.mm' || true)
-          if [ -z "$files" ]; then
-            echo "No changed C/C++ files to check."
-            exit 0
+          # git clang-format --diff exits 1 when formatting differs; keep the
+          # output and let the content check below decide pass/fail.
+          format_diff=$(git clang-format --diff "$base" HEAD || true)
+          if [[ "$format_diff" == *"diff --git"* ]]; then
+            echo "$format_diff"
+            echo "Changed C++ lines are not clang-formatted." >&2
+            exit 1
           fi
-          echo "Checking:"; echo "$files"
-          clang-format --dry-run --Werror $files
 
   static-analysis:
-    name: clang-tidy (advisory)
-    runs-on: [self-hosted, macOS]
-    continue-on-error: true
+    name: clang-tidy
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang
+      CXX: clang++
     steps:
       - uses: actions/checkout@v4
         with:
-          clean: true
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Configure with compile commands
-        run: cmake -B build-tidy -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_METAL=ON -DBUILD_EXAMPLES=OFF
-
-      - name: Build (generate resource / shader headers used by sources)
-        run: cmake --build build-tidy -j
-
-      - name: Run clang-tidy on changed files
+      - name: Install dependencies
         run: |
-          set -euo pipefail
-          tidy="clang-tidy"
-          if ! command -v "$tidy" >/dev/null 2>&1; then
-            if [ -x /opt/homebrew/opt/llvm/bin/clang-tidy ]; then
-              tidy=/opt/homebrew/opt/llvm/bin/clang-tidy
-            else
-              echo "::notice::clang-tidy not installed on runner (brew install llvm); skipping"
-              exit 0
-            fi
-          fi
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="${{ github.event.pull_request.base.sha }}"
-          else
-            base="${{ github.event.before }}"
-          fi
-          if ! git cat-file -e "$base" 2>/dev/null; then
-            base="HEAD~1"
-          fi
-          files=$(git diff --name-only "$base" HEAD -- 'src/*.cpp' | { grep -v -E '\.(cu|mm)$' || true; })
-          if [ -z "$files" ]; then
-            echo "No changed .cpp sources to analyze."
-            exit 0
-          fi
-          echo "Analyzing:"; echo "$files"
-          "$tidy" -p build-tidy $files
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build clang clang-tidy pkg-config python3 \
+            libusb-1.0-0-dev libturbojpeg0-dev
+
+      - name: Configure compile database
+        run: >-
+          cmake -S . -B build-tidy -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          -DBUILD_TESTING=ON
+          -DBUILD_EXAMPLES=ON
+          -DBUILD_OPENNI2_DRIVER=OFF
+          -DCMAKE_CXX_STANDARD=11
+          -DENABLE_OPENCL=OFF
+          -DENABLE_CUDA=OFF
+          -DENABLE_OPENGL=OFF
+          -DENABLE_VAAPI=OFF
+          -DENABLE_TEGRAJPEG=OFF
+
+      - name: Build generated inputs
+        run: cmake --build build-tidy -j 2
+
+      - name: Analyze every first-party translation unit
+        run: python3 tools/quality/run_clang_tidy.py build-tidy --jobs 2

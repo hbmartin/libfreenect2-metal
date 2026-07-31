@@ -34,9 +34,9 @@
 
 #include <libfreenect2/depth_packet_processor.h>
 #include <libfreenect2/protocol/response.h>
+#include "libfreenect2/cuda_math.h"
 #include "libfreenect2/logging.h"
 
-#include <helper_math.h>
 #include <math_constants.h>
 
 __constant__ static unsigned int BFI_BITMASK;
@@ -407,30 +407,6 @@ void phaseUnWrapper(float t0, float t1,float t2, float* phase_first, float* phas
 }
 
 /*******************************************************************************
- * Predict phase variance from amplitude direct quadratic model
- ******************************************************************************/
-static __device__
-void calculatePhaseUnwrappingVarDirect(float3 ir, float3* var)
-{
-  //Model: sigma = 1/(gamma0*a+gamma1*a^2+gamma2). Possibly better than calculatePhaseUnwrappingVar
-  //The gammas are optimized using lsqnonlin in matlab.
-  //For more details see the paper "Efficient Phase Unwrapping using Kernel Density Estimation"
-  //section 3.3 and 4.4.
-  float sigma_max = 0.5f * M_PI_F;
-
-  //Set sigma = pi/2 as a maximum standard deviation of the phase. Cut off function after root
-  float q0 = ir.x > 5.244404f ? 0.7919451669f * ir.x - 0.002363097609f * ir.x * ir.x - 3.088285897f : 1.0f / sigma_max;
-  float q1 = ir.y > 4.084835f ? 1.214266794f * ir.y - 0.00581082634f * ir.y * ir.y - 3.863119924f : 1.0f / sigma_max;
-  float q2 = ir.z > 6.379475f ? 0.6101457464f * ir.z - 0.00113679233f * ir.z * ir.z - 2.84614442f : 1.0f / sigma_max;
-  float3 q = make_float3(q0, q1, q2);
-  float3 roots = make_float3(5.244404f, 4.084835f, 6.379475f);
-  float3 sigma = make_float3(1.0f)/q;
-  sigma = select(sigma, make_float3(sigma_max), isless(make_float3(sigma_max), sigma));
-  *var = sigma;
-}
-
-
-/*******************************************************************************
  * Predict phase variance from amplitude (quadratic atan model)
  ******************************************************************************/
 static __device__
@@ -445,7 +421,6 @@ void calculatePhaseUnwrappingVar(float3 ir, float3 *var)
   float3 q = make_float3(q0, q1, q2);
   q *= q;
   float3 roots = make_float3(5.64173671f, 4.31705182f, 6.84453530f);
-  float3 asdf = atan2(make_float3(0.5f), make_float3(1.0f));
   float3 sigma = select(select(make_float3(0.5f * M_PI_F), roots * 0.5f * M_PI_F / ir, isless(roots,ir)), atan2(sqrt(make_float3(1.0f) / (q - make_float3(1.0f))), make_float3(1.0f)), isless(make_float3(1.0f), q));
   sigma = select(sigma, make_float3(0.001f), isless(sigma, make_float3(0.001f)));
   *var = sigma*sigma;
@@ -1314,17 +1289,18 @@ public:
     depth_frame->format = Frame::Float;
   }
 
-  void fill_trig_table(const protocol::P0TablesResponse *p0table)
+  void fill_trig_table(const unsigned char *p0table)
   {
     for (int r = 0; r < 424; ++r) {
       float4 *it = &h_p0table[r * 512];
-      const uint16_t *it0 = &p0table->p0table0[r * 512];
-      const uint16_t *it1 = &p0table->p0table1[r * 512];
-      const uint16_t *it2 = &p0table->p0table2[r * 512];
-      for (int c = 0; c < 512; ++c, ++it, ++it0, ++it1, ++it2) {
-        it->x = -((float) * it0) * 0.000031 * M_PI;
-        it->y = -((float) * it1) * 0.000031 * M_PI;
-        it->z = -((float) * it2) * 0.000031 * M_PI;
+      for (int c = 0; c < 512; ++c, ++it) {
+        const size_t index = static_cast<size_t>(r * 512 + c);
+        it->x = -((float)protocol::readP0TableValue(
+            p0table, offsetof(protocol::P0TablesResponse, p0table0), index)) * 0.000031 * M_PI;
+        it->y = -((float)protocol::readP0TableValue(
+            p0table, offsetof(protocol::P0TablesResponse, p0table1), index)) * 0.000031 * M_PI;
+        it->z = -((float)protocol::readP0TableValue(
+            p0table, offsetof(protocol::P0TablesResponse, p0table2), index)) * 0.000031 * M_PI;
         it->w = 0.0f;
       }
     }
@@ -1362,7 +1338,12 @@ void CudaKdeDepthPacketProcessor::setConfiguration(const DepthPacketProcessor::C
 
 void CudaKdeDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char *buffer, size_t buffer_length)
 {
-  impl_->fill_trig_table((protocol::P0TablesResponse *)buffer);
+  if(buffer == 0 || buffer_length < sizeof(protocol::P0TablesResponse))
+  {
+    LOG_ERROR << "P0Table response too short!";
+    return;
+  }
+  impl_->fill_trig_table(buffer);
   cudaMemcpy(impl_->d_p0table, impl_->h_p0table, impl_->d_p0table_size, cudaMemcpyHostToDevice);
 }
 
@@ -1394,6 +1375,8 @@ void CudaKdeDepthPacketProcessor::process(const DepthPacket &packet)
 
   impl_->ir_frame->timestamp = packet.timestamp;
   impl_->depth_frame->timestamp = packet.timestamp;
+  impl_->ir_frame->arrival_timestamp_us = packet.arrival_timestamp_us;
+  impl_->depth_frame->arrival_timestamp_us = packet.arrival_timestamp_us;
   impl_->ir_frame->sequence = packet.sequence;
   impl_->depth_frame->sequence = packet.sequence;
 

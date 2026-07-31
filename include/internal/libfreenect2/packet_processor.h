@@ -93,7 +93,7 @@ public:
   NoopPacketProcessor() {}
   virtual ~NoopPacketProcessor() {}
 
-  virtual void process(const PacketT &packet) {}
+  virtual void process(const PacketT &) {}
 };
 
 /**

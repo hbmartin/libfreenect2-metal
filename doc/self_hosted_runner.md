@@ -12,6 +12,18 @@ Apple GPU:
 This guide sets up a machine to serve that workflow. No Kinect hardware is
 required — every test is hardware-free; only a Metal-capable GPU is used.
 
+The separate, manually dispatched `Kinect hardware soak` workflow targets a
+runner that also has the `kinect` label and a physically connected Kinect v2.
+It defaults to 100 start/capture/stop/close cycles on both CPU and Metal, then
+starts an operator-assisted reconnect check. Watch the job log; when
+`KinectReconnect` asks, unplug the Kinect and reconnect it within 60 seconds.
+The check requires the old pointer to reach a terminal state and capture to
+resume through a newly opened device object.
+
+Set the workflow's `reconnect_cycles` input to `0` only when the runner is
+unattended. That run does not satisfy the unplug/replug release gate and must
+be identified as such in the release checklist.
+
 ## 1. Machine requirements
 
 - A Mac (Apple Silicon or Intel) running a current macOS.

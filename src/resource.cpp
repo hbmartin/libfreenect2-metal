@@ -46,8 +46,10 @@ struct ResourceDescriptor
 #include "resources.inc.h"
 #else
 static ResourceDescriptor resource_descriptors[] = {{NULL, NULL, 0}};
-static int resource_descriptors_length = 0;
 #endif
+
+static const size_t resource_descriptors_length =
+    sizeof(resource_descriptors) / sizeof(resource_descriptors[0]) - 1;
 
 /**
  * Find data of a requested resource.
@@ -60,7 +62,7 @@ bool loadResource(const std::string &name, unsigned char const**data, size_t *le
 {
   bool result = false;
 
-  for(int i = 0; i < resource_descriptors_length; ++i)
+  for(size_t i = 0; i < resource_descriptors_length; ++i)
   {
     if(name.compare(resource_descriptors[i].filename) == 0)
     {

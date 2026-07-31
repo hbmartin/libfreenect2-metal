@@ -1,15 +1,29 @@
-# Static-analysis checks for libfreenect2 (advisory CI job, changed files only).
+# Static-analysis checks for all first-party libfreenect2 translation units.
 # Conservative, high-signal set; naming/readability churn is intentionally off.
 Checks: >
   -*,
   bugprone-*,
   clang-analyzer-*,
+  concurrency-*,
   performance-*,
+  portability-*,
   misc-definitions-in-headers,
   -bugprone-easily-swappable-parameters,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-branch-clone,
+  -bugprone-exception-escape,
+  -bugprone-implicit-widening-of-multiplication-result,
   -bugprone-narrowing-conversions,
   -bugprone-reserved-identifier,
-  -clang-analyzer-optin.performance.Padding
-WarningsAsErrors: ''
+  -bugprone-signal-handler,
+  -bugprone-throwing-static-initialization,
+  -clang-analyzer-optin.cplusplus.VirtualCall,
+  -clang-analyzer-optin.performance.Padding,
+  -concurrency-mt-unsafe,
+  -performance-avoid-endl,
+  -performance-enum-size,
+  -performance-no-int-to-ptr,
+  -portability-template-virtual-member-function
+WarningsAsErrors: '*'
 HeaderFilterRegex: '.*/libfreenect2/.*'
 FormatStyle: file

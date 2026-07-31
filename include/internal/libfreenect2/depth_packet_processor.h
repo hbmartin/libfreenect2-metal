@@ -45,6 +45,7 @@ struct DepthPacket
 {
   uint32_t sequence;
   uint32_t timestamp;
+  uint64_t arrival_timestamp_us;
   unsigned char *buffer; ///< Depth data.
   size_t buffer_length;  ///< Size of depth data.
 

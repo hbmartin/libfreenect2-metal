@@ -101,7 +101,6 @@ int main(int argc, char **argv)
 
   cout << "  {NULL, NULL, 0}," << endl;
   cout << "};" << endl;
-  cout << "static int resource_descriptors_length = " << (argc - 2) << ";" << endl;
   
   return 0;
 }

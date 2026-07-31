@@ -31,6 +31,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string>
 
 #include <libfreenect2/config.h>
 #include <libfreenect2/frame_listener.hpp>
@@ -45,6 +46,7 @@ struct RgbPacket
   uint32_t sequence;
 
   uint32_t timestamp;
+  uint64_t arrival_timestamp_us;
   unsigned char *jpeg_buffer; ///< JPEG data.
   size_t jpeg_buffer_length;  ///< Length of the JPEG data.
   float exposure;
@@ -63,7 +65,9 @@ public:
   RgbPacketProcessor();
   virtual ~RgbPacketProcessor();
 
+  virtual bool good();
   virtual void setFrameListener(libfreenect2::FrameListener *listener);
+  Allocator *getPacketAllocator() { return getAllocator(); }
 protected:
   libfreenect2::FrameListener *listener_;
 };
@@ -115,6 +119,7 @@ class VaapiRgbPacketProcessor : public RgbPacketProcessor
 {
 public:
   VaapiRgbPacketProcessor();
+  explicit VaapiRgbPacketProcessor(const std::string &device_path);
   virtual ~VaapiRgbPacketProcessor();
   virtual bool good();
   virtual const char *name() { return "VAAPI"; }

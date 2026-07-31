@@ -89,12 +89,17 @@ WARN_LOGFILE           =
 
 INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/mainpage.dox \
                          @CMAKE_CURRENT_SOURCE_DIR@/guides.dox \
+                         @CMAKE_CURRENT_SOURCE_DIR@/v0.3_migration.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/v0.3_upstream_coverage.md \
                          @CMAKE_SOURCE_DIR@/include \
                          @CMAKE_CURRENT_SOURCE_DIR@/faq.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/frame_timing.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/configuration.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/registration.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/depth_accuracy.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/depth_calibration.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/recording_replay.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/quality.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/webcam.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/python.md
 INPUT_ENCODING         = UTF-8

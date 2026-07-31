@@ -26,9 +26,9 @@
 
 #include <libfreenect2/depth_packet_processor.h>
 #include <libfreenect2/protocol/response.h>
+#include "libfreenect2/cuda_math.h"
 #include "libfreenect2/logging.h"
 
-#include <helper_math.h>
 #include <math_constants.h>
 
 __constant__ static unsigned int BFI_BITMASK;
@@ -846,6 +846,9 @@ public:
     if (config.EnableBilateralFilter) {
       filterPixelStage1<<<grid_size, block_size>>>(d_a, d_b, d_n, d_a_filtered, d_b_filtered, d_edge_test);
     }
+    else {
+      CHECK_CUDA(cudaMemsetAsync(d_edge_test, 1, IMAGE_SIZE * sizeof(char)));
+    }
 
     processPixelStage2<<<grid_size, block_size>>>(
       config.EnableBilateralFilter ? d_a_filtered : d_a,
@@ -876,17 +879,18 @@ public:
     depth_frame->format = Frame::Float;
   }
 
-  void fill_trig_table(const protocol::P0TablesResponse *p0table)
+  void fill_trig_table(const unsigned char *p0table)
   {
     for (int r = 0; r < 424; ++r) {
       float4 *it = &h_p0table[r * 512];
-      const uint16_t *it0 = &p0table->p0table0[r * 512];
-      const uint16_t *it1 = &p0table->p0table1[r * 512];
-      const uint16_t *it2 = &p0table->p0table2[r * 512];
-      for (int c = 0; c < 512; ++c, ++it, ++it0, ++it1, ++it2) {
-        it->x = -((float) * it0) * 0.000031 * M_PI;
-        it->y = -((float) * it1) * 0.000031 * M_PI;
-        it->z = -((float) * it2) * 0.000031 * M_PI;
+      for (int c = 0; c < 512; ++c, ++it) {
+        const size_t index = static_cast<size_t>(r * 512 + c);
+        it->x = -((float)protocol::readP0TableValue(
+            p0table, offsetof(protocol::P0TablesResponse, p0table0), index)) * 0.000031 * M_PI;
+        it->y = -((float)protocol::readP0TableValue(
+            p0table, offsetof(protocol::P0TablesResponse, p0table1), index)) * 0.000031 * M_PI;
+        it->z = -((float)protocol::readP0TableValue(
+            p0table, offsetof(protocol::P0TablesResponse, p0table2), index)) * 0.000031 * M_PI;
         it->w = 0.0f;
       }
     }
@@ -912,7 +916,12 @@ void CudaDepthPacketProcessor::setConfiguration(const DepthPacketProcessor::Conf
 
 void CudaDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char *buffer, size_t buffer_length)
 {
-  impl_->fill_trig_table((protocol::P0TablesResponse *)buffer);
+  if(buffer == 0 || buffer_length < sizeof(protocol::P0TablesResponse))
+  {
+    LOG_ERROR << "P0Table response too short!";
+    return;
+  }
+  impl_->fill_trig_table(buffer);
   cudaMemcpy(impl_->d_p0table, impl_->h_p0table, impl_->d_p0table_size, cudaMemcpyHostToDevice);
 }
 
@@ -941,6 +950,8 @@ void CudaDepthPacketProcessor::process(const DepthPacket &packet)
 
   impl_->ir_frame->timestamp = packet.timestamp;
   impl_->depth_frame->timestamp = packet.timestamp;
+  impl_->ir_frame->arrival_timestamp_us = packet.arrival_timestamp_us;
+  impl_->depth_frame->arrival_timestamp_us = packet.arrival_timestamp_us;
   impl_->ir_frame->sequence = packet.sequence;
   impl_->depth_frame->sequence = packet.sequence;
 

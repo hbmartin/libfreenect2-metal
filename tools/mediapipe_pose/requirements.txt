@@ -1,0 +1,2 @@
+mediapipe==0.10.35
+Pillow==12.3.0

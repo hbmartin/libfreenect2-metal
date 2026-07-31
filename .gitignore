@@ -1,7 +1,11 @@
 build
+/build-*/
 /captures/
+/tools/mediapipe_pose/models/*.task
+/tools/mediapipe_pose/.venv/
 __pycache__/
 *.py[cod]
+*.profraw
 
 # Dependency folders
 depends/*/

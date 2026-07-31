@@ -91,7 +91,7 @@ namespace libusb_ext
     uint16_t wValue  = 0;
     uint16_t wIndex  = 0;
     uint16_t wLength = 6;
-    unsigned char data[6]   = { 0x55, 0, 0x55, 0, 0, 0 };
+    unsigned char data[6] = { u1sel, u1pel, u2sel, 0, u2pel, 0 };
 
     return libusb_control_transfer(handle, bmRequestType, bRequest, wValue, wIndex, data, wLength, timeout);
   }
@@ -189,8 +189,11 @@ UsbControl::~UsbControl()
 {
 }
 
-#define CHECK_LIBUSB_RESULT(__CODE, __RESULT) if((__CODE = (__RESULT == LIBUSB_SUCCESS ? Success : Error)) == Error) LOG_ERROR
-#define WRITE_LIBUSB_ERROR(__RESULT) libusb_error_name(__RESULT) << " " << libusb_strerror((libusb_error)__RESULT) << ". Try debugging with environment variable: export LIBUSB_DEBUG=3 ."
+#define CHECK_LIBUSB_RESULT(__CODE, __RESULT) \
+  if(((__CODE) = ((__RESULT) == LIBUSB_SUCCESS ? Success : Error)) == Error) LOG_ERROR
+#define WRITE_LIBUSB_ERROR(__RESULT) \
+  libusb_error_name((__RESULT)) << " " << libusb_strerror(static_cast<libusb_error>((__RESULT))) \
+                                 << ". Try debugging with environment variable: export LIBUSB_DEBUG=3 ."
 
 UsbControl::ResultCode UsbControl::setConfiguration()
 {

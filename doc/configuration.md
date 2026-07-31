@@ -11,6 +11,23 @@ Set via `dev->setConfiguration(config)` **before** `start()`:
 | `EnableBilateralFilter` | true | joint bilateral filter; removes "flying pixels" |
 | `EnableEdgeAwareFilter` | true | suppresses noisy pixels on depth edges |
 
+The two filter switches are independent in the CPU, OpenCL, CUDA, OpenGL, and
+Metal depth processors:
+
+| Bilateral | Edge-aware | Processing |
+|---|---|---|
+| on | on | default two-stage spatial filtering |
+| on | off | bilateral smoothing only |
+| off | on | edge-aware filtering of the un-smoothed phase result |
+| off | off | no conventional spatial filtering |
+
+When bilateral filtering is off, the backends provide an explicit all-valid
+stage-1 edge mask. This makes edge-only output deterministic and prevents a
+fresh or previously reconfigured processor from consuming unwritten GPU/CPU
+memory. The edge-aware stage still applies its own depth-neighborhood and IR
+consistency checks. The OpenCL/CUDA KDE pipelines retain their separate KDE
+final-filter behavior.
+
 Limits and behavior that were previously undocumented
 ([#163](https://github.com/OpenKinect/libfreenect2/issues/163)):
 
@@ -26,18 +43,64 @@ Limits and behavior that were previously undocumented
   strengths (`DepthPacketProcessor::Parameters`) are internal constants
   compiled into the processors and are not part of the public `Config`.
 * Disabling both filters gives raw, noisier depth including flying pixels —
-  useful when you do your own filtering.
+  useful when you do your own filtering. Edge-only mode is supported when you
+  want discontinuity rejection without bilateral smoothing.
 
 ## Environment variables
 
 | Variable | Effect |
 |---|---|
-| `LIBFREENECT2_PIPELINE` | select pipeline: `gl`, `cuda`, `cl`, `metal`, `cpu` (falls back to the default order if unavailable) |
+| `LIBFREENECT2_PIPELINE` | select pipeline: `cpu`, `metal`, `opengl`, `opencl`, `opencl_kde`, `cuda`, `cuda_kde`, or `dump` (legacy `gl`/`cl` aliases are accepted here only; falls back to the default order if unavailable) |
+| `LIBFREENECT2_RGB_PROCESSOR` | in automatic mode, select the RGB decoder: `auto`, `turbojpeg`, `videotoolbox`, `vaapi`, or `tegrajpeg` |
+| `LIBFREENECT2_VAAPI_DEVICE` | in automatic mode, use one explicit VAAPI DRM node, such as `/dev/dri/renderD128` |
 | `LIBFREENECT2_LOGGER_LEVEL` | `debug`, `info`, `warning`, `error`, or `none` |
 | `LIBFREENECT2_TJ_FAST` | `1` enables TurboJPEG fast DCT/upsampling for RGB decode |
 | `LIBFREENECT2_RGB_TRANSFERS` / `LIBFREENECT2_RGB_TRANSFER_SIZE` | tune the RGB bulk transfer pool |
 | `LIBFREENECT2_IR_TRANSFERS` / `LIBFREENECT2_IR_PACKETS` | tune the depth isochronous transfer pool |
 | `LIBUSB_DEBUG` | `3` for verbose libusb diagnostics of USB problems |
+
+## RGB decoder selection (`PacketPipelineConfig`)
+
+RGB decoding is configured independently for each packet pipeline. Pass the
+configuration to a pipeline constructor or to the configured pipeline factory:
+
+```cpp
+libfreenect2::PacketPipelineConfig config;
+config.rgb_decoder = libfreenect2::PacketPipelineConfig::VAAPI;
+config.vaapi_device = "/dev/dri/renderD128";
+config.allow_fallback = true;
+
+libfreenect2::PacketPipeline *pipeline =
+    libfreenect2::createDefaultPacketPipeline(config);
+```
+
+The decoder choices are `Auto`, `TurboJPEG`, `VideoToolbox`, `VAAPI`, and
+`TegraJPEG`. A non-`Auto` choice in `PacketPipelineConfig` is authoritative:
+the environment cannot replace either that decoder or its VAAPI device path.
+With `Auto`, `LIBFREENECT2_RGB_PROCESSOR` selects a decoder when set, and
+`LIBFREENECT2_VAAPI_DEVICE` supplies the VAAPI device when the configuration
+does not already contain one. Invalid decoder names are ignored with a
+warning.
+
+Without an override, the compiled platform default is used: VideoToolbox on
+Apple platforms, VAAPI on supported Linux builds, TegraJPEG on Tegra builds,
+and TurboJPEG otherwise. Automatic VAAPI discovery probes DRM render nodes
+before legacy card nodes, in lexical order, and accepts only nodes that expose
+baseline JPEG VLD. NVIDIA nodes are skipped during automatic discovery because
+probing them has caused driver failures; an explicitly configured NVIDIA path
+is still attempted.
+
+`allow_fallback` defaults to `true`. If VAAPI cannot initialize, or if it fails
+while decoding a packet, that packet is retried once with TurboJPEG and all
+later packets stay on TurboJPEG. The failed VAAPI attempt never publishes an
+error or duplicate frame. With an explicit decoder and fallback disabled, an
+initialization or runtime failure leaves the pipeline unhealthy instead of
+claiming that a valid frame was produced.
+
+For diagnostics, enable `LIBFREENECT2_LOGGER_LEVEL=info`. VAAPI reports the
+chosen DRM node and driver. Selection failures, unsupported output formats,
+and the one-time switch to TurboJPEG are logged as warnings or errors. Call
+`pipeline->good()` before opening a device when strict selection is required.
 
 ## Color camera settings
 

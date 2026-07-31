@@ -29,9 +29,11 @@
 #include <libfreenect2/protocol/command_transaction.h>
 #include <libfreenect2/logging.h>
 
+#include <cstring>
 #include <stdint.h>
 
-#define WRITE_LIBUSB_ERROR(__RESULT) libusb_error_name(__RESULT) << " " << libusb_strerror((libusb_error)__RESULT)
+#define WRITE_LIBUSB_ERROR(__RESULT) \
+  libusb_error_name((__RESULT)) << " " << libusb_strerror(static_cast<libusb_error>((__RESULT)))
 
 namespace libfreenect2
 {
@@ -103,15 +105,24 @@ bool CommandTransaction::send(const CommandBase& command)
 bool CommandTransaction::receive(CommandTransaction::Result& result, uint32_t min_length)
 {
   int length = 0;
+  const size_t capacity = result.size();
+  unsigned char *buffer = result.empty() ? NULL : &result[0];
 
-  int r = libusb_bulk_transfer(handle_, inbound_endpoint_, &result[0], result.size(), &length, timeout_);
-  result.resize(length);
+  int r = libusb_bulk_transfer(handle_, inbound_endpoint_, buffer, static_cast<int>(capacity), &length, timeout_);
 
   if(r != LIBUSB_SUCCESS)
   {
     LOG_ERROR << "bulk transfer failed: " << WRITE_LIBUSB_ERROR(r);
     return false;
   }
+
+  if(length < 0 || static_cast<size_t>(length) > capacity)
+  {
+    LOG_ERROR << "bulk transfer returned invalid length: " << length;
+    return false;
+  }
+
+  result.resize(static_cast<size_t>(length));
 
   if ((uint32_t)length < min_length)
   {
@@ -126,7 +137,8 @@ bool CommandTransaction::isResponseCompleteResult(CommandTransaction::Result& re
 {
   if(result.size() == ResponseCompleteLength)
   {
-    uint32_t *data = reinterpret_cast<uint32_t *>(&result[0]);
+    uint32_t data[ResponseCompleteLength / sizeof(uint32_t)];
+    std::memcpy(data, &result[0], sizeof(data));
 
     if(data[0] == ResponseCompleteMagic)
     {

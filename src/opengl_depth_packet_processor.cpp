@@ -36,6 +36,8 @@
 #include <fstream>
 #include <string>
 #include <map>
+#include <cstddef>
+#include <cstring>
 #include <cstdlib>
 
 #include <stdint.h>
@@ -83,11 +85,11 @@ protected:
   WithOpenGLBindings() : bindings(0) {}
   virtual ~WithOpenGLBindings() {}
   
-  virtual void onOpenGLBindingsChanged(OpenGLBindings *b) { }
+  virtual void onOpenGLBindingsChanged(OpenGLBindings *) { }
 public:
-  void gl(OpenGLBindings *bindings)
+  void gl(OpenGLBindings *new_bindings)
   {
-    this->bindings = bindings;
+    bindings = new_bindings;
     onOpenGLBindingsChanged(this->bindings);
   }
   
@@ -130,13 +132,42 @@ struct ShaderProgram : public WithOpenGLBindings
   {
   }
 
+  void release()
+  {
+    if (gl() == 0)
+      return;
+
+    if (program != 0)
+    {
+      gl()->glDeleteProgram(program);
+      program = 0;
+    }
+    if (vertex_shader != 0)
+    {
+      gl()->glDeleteShader(vertex_shader);
+      vertex_shader = 0;
+    }
+    if (fragment_shader != 0)
+    {
+      gl()->glDeleteShader(fragment_shader);
+      fragment_shader = 0;
+    }
+  }
+
   void checkMesaBug()
   {
     if (is_mesa_checked)
       return;
     is_mesa_checked = true;
-    std::string ren((const char*)glGetString(GL_RENDERER));
-    std::string ver((const char*)glGetString(GL_VERSION));
+    const GLubyte* renderer = glGetString(GL_RENDERER);
+    const GLubyte* version = glGetString(GL_VERSION);
+    if (renderer == 0 || version == 0)
+    {
+      LOG_ERROR << "OpenGL context did not report renderer and version strings.";
+      return;
+    }
+    std::string ren(reinterpret_cast<const char*>(renderer));
+    std::string ver(reinterpret_cast<const char*>(version));
     if (ren.find("Mesa DRI Intel") == 0)
     {
       size_t mesa_pos = ver.rfind("Mesa ");
@@ -146,7 +177,8 @@ struct ShaderProgram : public WithOpenGLBindings
         if (mesa_ver < 10.3)
         {
           defines += "#define MESA_BUGGY_BOOL_CMP\n";
-          LOG_WARNING << "Working around buggy boolean instructions in your Mesa driver. Mesa DRI 10.3+ is recommended.";
+          LOG_WARNING << "Working around buggy boolean instructions in your Mesa driver. Mesa DRI "
+                         "10.3+ is recommended.";
         }
       }
     }
@@ -155,7 +187,7 @@ struct ShaderProgram : public WithOpenGLBindings
   void setVertexShader(const std::string& src)
   {
     checkMesaBug();
-    const GLchar *sources[] = {"#version 140\n", defines.c_str(), src.c_str()};
+    const GLchar* sources[] = {"#version 140\n", defines.c_str(), src.c_str()};
     vertex_shader = gl()->glCreateShader(GL_VERTEX_SHADER);
     gl()->glShaderSource(vertex_shader, 3, sources, NULL);
     CHECKGL();
@@ -164,46 +196,45 @@ struct ShaderProgram : public WithOpenGLBindings
   void setFragmentShader(const std::string& src)
   {
     checkMesaBug();
-    const GLchar *sources[] = {"#version 140\n", defines.c_str(), src.c_str()};
+    const GLchar* sources[] = {"#version 140\n", defines.c_str(), src.c_str()};
     fragment_shader = gl()->glCreateShader(GL_FRAGMENT_SHADER);
     gl()->glShaderSource(fragment_shader, 3, sources, NULL);
     CHECKGL();
   }
 
-  void bindFragDataLocation(const std::string &name, int output)
-  {
-    frag_data_map_[name] = output;
-  }
+  void bindFragDataLocation(const std::string& name, int output) { frag_data_map_[name] = output; }
 
-  void build()
+  bool build()
   {
     GLint status;
 
     gl()->glCompileShader(vertex_shader);
     gl()->glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &status);
 
-    if(status != GL_TRUE)
+    if (status != GL_TRUE)
     {
       gl()->glGetShaderInfoLog(vertex_shader, sizeof(error_buffer), NULL, error_buffer);
 
       LOG_ERROR << "failed to compile vertex shader!" << std::endl << error_buffer;
+      return false;
     }
 
     gl()->glCompileShader(fragment_shader);
 
     gl()->glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &status);
-    if(status != GL_TRUE)
+    if (status != GL_TRUE)
     {
       gl()->glGetShaderInfoLog(fragment_shader, sizeof(error_buffer), NULL, error_buffer);
 
       LOG_ERROR << "failed to compile fragment shader!" << std::endl << error_buffer;
+      return false;
     }
 
     program = gl()->glCreateProgram();
     gl()->glAttachShader(program, vertex_shader);
     gl()->glAttachShader(program, fragment_shader);
 
-    for(FragDataMap::iterator it = frag_data_map_.begin(); it != frag_data_map_.end(); ++it)
+    for (FragDataMap::iterator it = frag_data_map_.begin(); it != frag_data_map_.end(); ++it)
     {
       gl()->glBindFragDataLocation(program, it->second, it->first.c_str());
     }
@@ -212,12 +243,14 @@ struct ShaderProgram : public WithOpenGLBindings
 
     gl()->glGetProgramiv(program, GL_LINK_STATUS, &status);
 
-    if(status != GL_TRUE)
+    if (status != GL_TRUE)
     {
       gl()->glGetProgramInfoLog(program, sizeof(error_buffer), NULL, error_buffer);
       LOG_ERROR << "failed to link shader program!" << std::endl << error_buffer;
+      return false;
     }
     CHECKGL();
+    return true;
   }
 
   GLint getAttributeLocation(const std::string& name)
@@ -300,10 +333,20 @@ public:
   {
   }
 
-  ~Texture()
+  void release()
   {
+    if (texture != 0 && gl() != 0)
+      glDeleteTextures(1, &texture);
+    texture = 0;
+
     delete[] data;
+    data = 0;
+    size = 0;
+    width = 0;
+    height = 0;
   }
+
+  ~Texture() { delete[] data; }
 
   void bindToUnit(GLenum unit)
   {
@@ -353,9 +396,9 @@ public:
     downloadToBuffer(data);
   }
 
-  void downloadToBuffer(unsigned char *data)
+  void downloadToBuffer(unsigned char *output)
   {
-    glReadPixels(0, 0, width, height, FormatT::Format, FormatT::Type, data);
+    glReadPixels(0, 0, width, height, FormatT::Format, FormatT::Type, output);
     CHECKGL();
   }
 
@@ -364,13 +407,13 @@ public:
     flipYBuffer(data);
   }
 
-  void flipYBuffer(unsigned char *data)
+  void flipYBuffer(unsigned char *output)
   {
     typedef unsigned char type;
 
     size_t linestep = width * bytes_per_pixel / sizeof(type);
 
-    type *first_line = reinterpret_cast<type *>(data), *last_line = reinterpret_cast<type *>(data) + (height - 1) * linestep;
+    type *first_line = reinterpret_cast<type *>(output), *last_line = reinterpret_cast<type *>(output) + (height - 1) * linestep;
 
     for(size_t y = 0; y < height / 2; ++y)
     {
@@ -450,7 +493,8 @@ public:
 
   virtual ~OpenGLDepthPacketProcessorImpl()
   {
-    if(gl() != 0)
+    deinitialize();
+    if (gl() != 0)
     {
       delete gl();
       gl(0);
@@ -458,8 +502,8 @@ public:
     glfwDestroyWindow(opengl_context_ptr);
     opengl_context_ptr = 0;
   }
-  
-  virtual void onOpenGLBindingsChanged(OpenGLBindings *b) 
+
+  virtual void onOpenGLBindingsChanged(OpenGLBindings* b)
   {
     lut11to16.gl(b);
     p0table[0].gl(b);
@@ -488,7 +532,7 @@ public:
 
     filter2_debug.gl(b);
     filter2_depth.gl(b);
- 
+
     stage1.gl(b);
     filter1.gl(b);
     stage2.gl(b);
@@ -524,11 +568,12 @@ public:
     int major = glfwGetWindowAttrib(opengl_context_ptr, GLFW_CONTEXT_VERSION_MAJOR);
     int minor = glfwGetWindowAttrib(opengl_context_ptr, GLFW_CONTEXT_VERSION_MINOR);
 
-    if (major * 10 + minor < 31) {
-        LOG_ERROR << "OpenGL version 3.1 not supported.";
-        LOG_ERROR << "Your version is " << major << "." << minor;
-        LOG_ERROR << "Try updating your graphics driver.";
-        return false;
+    if (major * 10 + minor < 31)
+    {
+      LOG_ERROR << "OpenGL version 3.1 not supported.";
+      LOG_ERROR << "Your version is " << major << "." << minor;
+      LOG_ERROR << "Try updating your graphics driver.";
+      return false;
     }
 
     // Some headless/software GL stacks (e.g. Mesa llvmpipe, GPU-less VM guests)
@@ -539,34 +584,39 @@ public:
     // (424 * 9); every other allocation here is smaller.
     GLint max_rect_texture_size = 0;
     glGetIntegerv(GL_MAX_RECTANGLE_TEXTURE_SIZE, &max_rect_texture_size);
-    if (max_rect_texture_size < 424 * 9) {
-        LOG_ERROR << "GL_MAX_RECTANGLE_TEXTURE_SIZE is too small: " << max_rect_texture_size;
-        return false;
+    if (max_rect_texture_size < 424 * 9)
+    {
+      LOG_ERROR << "GL_MAX_RECTANGLE_TEXTURE_SIZE is too small: " << max_rect_texture_size;
+      return false;
     }
 
-    OpenGLBindings *b = new OpenGLBindings();
+    OpenGLBindings* b = new OpenGLBindings();
     flextInit(b);
     gl(b);
 
     input_data.allocate(352, 424 * 9);
 
-    for(int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3; ++i)
       stage1_data[i].allocate(512, 424);
 
-    if(do_debug) stage1_debug.allocate(512, 424);
+    if (do_debug)
+      stage1_debug.allocate(512, 424);
     stage1_infrared.allocate(512, 424);
 
-    for(int i = 0; i < 2; ++i)
+    for (int i = 0; i < 2; ++i)
       filter1_data[i].allocate(512, 424);
 
     filter1_max_edge_test.allocate(512, 424);
-    if(do_debug) filter1_debug.allocate(512, 424);
+    if (do_debug)
+      filter1_debug.allocate(512, 424);
 
-    if(do_debug) stage2_debug.allocate(512, 424);
+    if (do_debug)
+      stage2_debug.allocate(512, 424);
     stage2_depth.allocate(512, 424);
     stage2_depth_and_ir_sum.allocate(512, 424);
 
-    if(do_debug) filter2_debug.allocate(512, 424);
+    if (do_debug)
+      filter2_debug.allocate(512, 424);
     filter2_depth.allocate(512, 424);
 
     stage1.setVertexShader(loadShaderSource("default.vs"));
@@ -576,7 +626,7 @@ public:
     stage1.bindFragDataLocation("B", 2);
     stage1.bindFragDataLocation("Norm", 3);
     stage1.bindFragDataLocation("Infrared", 4);
-    stage1.build();
+    if(!stage1.build()) return false;
 
     filter1.setVertexShader(loadShaderSource("default.vs"));
     filter1.setFragmentShader(loadShaderSource("filter1.fs"));
@@ -584,27 +634,27 @@ public:
     filter1.bindFragDataLocation("FilterA", 1);
     filter1.bindFragDataLocation("FilterB", 2);
     filter1.bindFragDataLocation("MaxEdgeTest", 3);
-    filter1.build();
+    if(!filter1.build()) return false;
 
     stage2.setVertexShader(loadShaderSource("default.vs"));
     stage2.setFragmentShader(loadShaderSource("stage2.fs"));
     stage2.bindFragDataLocation("Debug", 0);
     stage2.bindFragDataLocation("Depth", 1);
     stage2.bindFragDataLocation("DepthAndIrSum", 2);
-    stage2.build();
+    if(!stage2.build()) return false;
 
     filter2.setVertexShader(loadShaderSource("default.vs"));
     filter2.setFragmentShader(loadShaderSource("filter2.fs"));
     filter2.bindFragDataLocation("Debug", 0);
     filter2.bindFragDataLocation("FilterDepth", 1);
-    filter2.build();
+    if(!filter2.build()) return false;
 
-    if(do_debug)
+    if (do_debug)
     {
       debug.setVertexShader(loadShaderSource("default.vs"));
       debug.setFragmentShader(loadShaderSource("debug.fs"));
       debug.bindFragDataLocation("Debug", 0);
-      debug.build();
+      if(!debug.build()) return false;
     }
 
     GLenum debug_attachment = do_debug ? GL_COLOR_ATTACHMENT0 : GL_NONE;
@@ -612,57 +662,80 @@ public:
     gl()->glGenFramebuffers(1, &stage1_framebuffer);
     gl()->glBindFramebuffer(GL_FRAMEBUFFER, stage1_framebuffer);
 
-    const GLenum stage1_buffers[] = { debug_attachment, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4 };
+    const GLenum stage1_buffers[] = {debug_attachment, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2,
+                                     GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4};
     gl()->glDrawBuffers(5, stage1_buffers);
     glReadBuffer(GL_COLOR_ATTACHMENT4);
 
-    if(do_debug) gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE, stage1_debug.texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE, stage1_data[0].texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE, stage1_data[1].texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_RECTANGLE, stage1_data[2].texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_RECTANGLE, stage1_infrared.texture, 0);
-    if (!checkFBO(GL_FRAMEBUFFER)) return false;
+    if (do_debug)
+      gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE,
+                                   stage1_debug.texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE,
+                                 stage1_data[0].texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE,
+                                 stage1_data[1].texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_RECTANGLE,
+                                 stage1_data[2].texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_RECTANGLE,
+                                 stage1_infrared.texture, 0);
+    if (!checkFBO(GL_FRAMEBUFFER))
+      return false;
 
     gl()->glGenFramebuffers(1, &filter1_framebuffer);
     gl()->glBindFramebuffer(GL_FRAMEBUFFER, filter1_framebuffer);
 
-    const GLenum filter1_buffers[] = { debug_attachment, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
+    const GLenum filter1_buffers[] = {debug_attachment, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2,
+                                      GL_COLOR_ATTACHMENT3};
     gl()->glDrawBuffers(4, filter1_buffers);
     glReadBuffer(GL_NONE);
 
-    if(do_debug) gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE, filter1_debug.texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE, filter1_data[0].texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE, filter1_data[1].texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_RECTANGLE, filter1_max_edge_test.texture, 0);
-    if (!checkFBO(GL_FRAMEBUFFER)) return false;
+    if (do_debug)
+      gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE,
+                                   filter1_debug.texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE,
+                                 filter1_data[0].texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE,
+                                 filter1_data[1].texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_RECTANGLE,
+                                 filter1_max_edge_test.texture, 0);
+    if (!checkFBO(GL_FRAMEBUFFER))
+      return false;
 
     gl()->glGenFramebuffers(1, &stage2_framebuffer);
     gl()->glBindFramebuffer(GL_FRAMEBUFFER, stage2_framebuffer);
 
-    const GLenum stage2_buffers[] = { debug_attachment, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+    const GLenum stage2_buffers[] = {debug_attachment, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
     gl()->glDrawBuffers(3, stage2_buffers);
     glReadBuffer(GL_COLOR_ATTACHMENT1);
 
-    if(do_debug) gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE, stage2_debug.texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE, stage2_depth.texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE, stage2_depth_and_ir_sum.texture, 0);
-    if (!checkFBO(GL_FRAMEBUFFER)) return false;
+    if (do_debug)
+      gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE,
+                                   stage2_debug.texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE,
+                                 stage2_depth.texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_RECTANGLE,
+                                 stage2_depth_and_ir_sum.texture, 0);
+    if (!checkFBO(GL_FRAMEBUFFER))
+      return false;
 
     gl()->glGenFramebuffers(1, &filter2_framebuffer);
     gl()->glBindFramebuffer(GL_FRAMEBUFFER, filter2_framebuffer);
 
-    const GLenum filter2_buffers[] = { debug_attachment, GL_COLOR_ATTACHMENT1 };
+    const GLenum filter2_buffers[] = {debug_attachment, GL_COLOR_ATTACHMENT1};
     gl()->glDrawBuffers(2, filter2_buffers);
     glReadBuffer(GL_COLOR_ATTACHMENT1);
 
-    if(do_debug) gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE, filter2_debug.texture, 0);
-    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE, filter2_depth.texture, 0);
-    if (!checkFBO(GL_FRAMEBUFFER)) return false;
+    if (do_debug)
+      gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_RECTANGLE,
+                                   filter2_debug.texture, 0);
+    gl()->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_RECTANGLE,
+                                 filter2_depth.texture, 0);
+    if (!checkFBO(GL_FRAMEBUFFER))
+      return false;
 
-    Vertex bl = {-1.0f, -1.0f, 0.0f, 0.0f }, br = { 1.0f, -1.0f, 512.0f, 0.0f }, tl = {-1.0f, 1.0f, 0.0f, 424.0f }, tr = { 1.0f, 1.0f, 512.0f, 424.0f };
-    Vertex vertices[] = {
-        bl, tl, tr, tr, br, bl
-    };
+    Vertex bl = {-1.0f, -1.0f, 0.0f, 0.0f}, br = {1.0f, -1.0f, 512.0f, 0.0f},
+           tl = {-1.0f, 1.0f, 0.0f, 424.0f}, tr = {1.0f, 1.0f, 512.0f, 424.0f};
+    Vertex vertices[] = {bl, tl, tr, tr, br, bl};
     gl()->glGenBuffers(1, &square_vbo);
     gl()->glGenVertexArrays(1, &square_vao);
 
@@ -675,7 +748,8 @@ public:
     gl()->glEnableVertexAttribArray(position_attr);
 
     GLint texcoord_attr = stage1.getAttributeLocation("InputTexCoord");
-    gl()->glVertexAttribPointer(texcoord_attr, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)(2 * sizeof(float)));
+    gl()->glVertexAttribPointer(texcoord_attr, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                                (GLvoid*)(2 * sizeof(float)));
     gl()->glEnableVertexAttribArray(texcoord_attr);
     CHECKGL();
     return true;
@@ -683,9 +757,63 @@ public:
 
   void deinitialize()
   {
+    if (opengl_context_ptr == 0 || gl() == 0)
+      return;
+
+    ChangeCurrentOpenGLContext ctx(opengl_context_ptr);
+    gl()->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    gl()->glBindBuffer(GL_ARRAY_BUFFER, 0);
+    gl()->glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+
+    const GLuint framebuffers[] = {stage1_framebuffer, filter1_framebuffer, stage2_framebuffer,
+                                   filter2_framebuffer};
+    gl()->glDeleteFramebuffers(4, framebuffers);
+    stage1_framebuffer = 0;
+    filter1_framebuffer = 0;
+    stage2_framebuffer = 0;
+    filter2_framebuffer = 0;
+
+    if (square_vbo != 0)
+    {
+      gl()->glDeleteBuffers(1, &square_vbo);
+      square_vbo = 0;
+    }
+    if (square_vao != 0)
+    {
+      gl()->glDeleteVertexArrays(1, &square_vao);
+      square_vao = 0;
+    }
+
+    stage1.release();
+    filter1.release();
+    stage2.release();
+    filter2.release();
+    debug.release();
+
+    lut11to16.release();
+    for (int i = 0; i < 3; ++i)
+      p0table[i].release();
+    x_table.release();
+    z_table.release();
+    input_data.release();
+    stage1_debug.release();
+    for (int i = 0; i < 3; ++i)
+      stage1_data[i].release();
+    stage1_infrared.release();
+    for (int i = 0; i < 2; ++i)
+      filter1_data[i].release();
+    filter1_max_edge_test.release();
+    filter1_debug.release();
+    stage2_debug.release();
+    stage2_depth.release();
+    stage2_depth_and_ir_sum.release();
+    filter2_debug.release();
+    filter2_depth.release();
+    CHECKGL();
   }
 
-  void updateShaderParametersForProgram(ShaderProgram &program)
+  void updateShaderParametersForProgram(ShaderProgram& program)
   {
     if(!params_need_update) return;
 
@@ -773,6 +901,15 @@ public:
 
       gl()->glBindVertexArray(square_vao);
       glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+    else if(config.EnableEdgeAwareFilter)
+    {
+      // The bilateral pass is normally the sole writer of this integer mask.
+      // Edge-only filtering must see an explicit pass-through value rather
+      // than texture contents left by allocation or an earlier frame.
+      gl()->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, filter1_framebuffer);
+      const GLuint all_valid[4] = {1, 1, 1, 1};
+      gl()->glClearBufferuiv(GL_COLOR, 3, all_valid);
     }
     // data processing 2
     gl()->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, stage2_framebuffer);
@@ -951,23 +1088,30 @@ void OpenGLDepthPacketProcessor::loadP0TablesFromCommandResponse(unsigned char* 
 {
   if (!impl_)
     return;
+  if(buffer == 0 || buffer_length < sizeof(libfreenect2::protocol::P0TablesResponse))
+  {
+    LOG_ERROR << "P0Table response too short!";
+    return;
+  }
   ChangeCurrentOpenGLContext ctx(impl_->opengl_context_ptr);
 
-  size_t n = 512 * 424;
-  libfreenect2::protocol::P0TablesResponse* p0table = (libfreenect2::protocol::P0TablesResponse*)buffer;
+  const size_t table_bytes = 512u * 424u * sizeof(uint16_t);
 
   impl_->p0table[0].allocate(512, 424);
-  std::copy(reinterpret_cast<unsigned char*>(p0table->p0table0), reinterpret_cast<unsigned char*>(p0table->p0table0 + n), impl_->p0table[0].data);
+  std::memcpy(impl_->p0table[0].data,
+              buffer + offsetof(libfreenect2::protocol::P0TablesResponse, p0table0), table_bytes);
   impl_->p0table[0].flipY();
   impl_->p0table[0].upload();
 
   impl_->p0table[1].allocate(512, 424);
-  std::copy(reinterpret_cast<unsigned char*>(p0table->p0table1), reinterpret_cast<unsigned char*>(p0table->p0table1 + n), impl_->p0table[1].data);
+  std::memcpy(impl_->p0table[1].data,
+              buffer + offsetof(libfreenect2::protocol::P0TablesResponse, p0table1), table_bytes);
   impl_->p0table[1].flipY();
   impl_->p0table[1].upload();
 
   impl_->p0table[2].allocate(512, 424);
-  std::copy(reinterpret_cast<unsigned char*>(p0table->p0table2), reinterpret_cast<unsigned char*>(p0table->p0table2 + n), impl_->p0table[2].data);
+  std::memcpy(impl_->p0table[2].data,
+              buffer + offsetof(libfreenect2::protocol::P0TablesResponse, p0table2), table_bytes);
   impl_->p0table[2].flipY();
   impl_->p0table[2].upload();
 
@@ -1019,6 +1163,8 @@ void OpenGLDepthPacketProcessor::process(const DepthPacket &packet)
 
   ir->timestamp = packet.timestamp;
   depth->timestamp = packet.timestamp;
+  ir->arrival_timestamp_us = packet.arrival_timestamp_us;
+  depth->arrival_timestamp_us = packet.arrival_timestamp_us;
   ir->sequence = packet.sequence;
   depth->sequence = packet.sequence;
 

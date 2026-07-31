@@ -27,7 +27,10 @@
 /** @file Protonect.cpp Main application file. */
 
 #include <iostream>
+#include <cerrno>
+#include <climits>
 #include <cstdlib>
+#include <limits>
 #include <signal.h>
 
 /// [headers]
@@ -44,7 +47,7 @@
 
 bool protonect_shutdown = false; ///< Whether the running application should shut down.
 
-void sigint_handler(int s)
+void sigint_handler(int)
 {
   protonect_shutdown = true;
 }
@@ -57,7 +60,7 @@ libfreenect2::Freenect2Device *devtopause;
 //Though libusb operations are generally thread safe, I cannot guarantee
 //everything above is thread safe when calling start()/stop() while
 //waitForNewFrame().
-void sigusr1_handler(int s)
+void sigusr1_handler(int)
 {
   if (devtopause == 0)
     return;
@@ -173,7 +176,16 @@ int main(int argc, char *argv[])
         std::cerr << "-gpu must be specified before pipeline argument" << std::endl;
         return -1;
       }
-      deviceId = atoi(argv[argI] + 5);
+      errno = 0;
+      char *end = NULL;
+      const long parsed_device_id = std::strtol(argv[argI] + 5, &end, 10);
+      if(errno == ERANGE || end == argv[argI] + 5 || *end != '\0' ||
+         parsed_device_id < 0 || parsed_device_id > INT_MAX)
+      {
+        std::cerr << "-gpu requires a non-negative integer device index" << std::endl;
+        return -1;
+      }
+      deviceId = static_cast<int>(parsed_device_id);
     }
     else if(arg == "cpu")
     {
@@ -254,18 +266,33 @@ int main(int argc, char *argv[])
     }
     else if(arg == "-frames")
     {
-      ++argI;
-      framemax = strtol(argv[argI], NULL, 0);
-      if (framemax == 0) {
-        std::cerr << "invalid frame count '" << argv[argI] << "'" << std::endl;
+      if(argI + 1 >= argc)
+      {
+        std::cerr << "-frames requires a positive integer" << std::endl;
         return -1;
       }
+
+      const char *frame_count = argv[++argI];
+      errno = 0;
+      char *end = NULL;
+      const unsigned long long parsed_frame_count = std::strtoull(frame_count, &end, 10);
+      if (frame_count[0] == '-' || errno == ERANGE || end == frame_count || *end != '\0' ||
+          parsed_frame_count == 0 ||
+          parsed_frame_count > static_cast<unsigned long long>(std::numeric_limits<size_t>::max()))
+      {
+        std::cerr << "invalid frame count '" << frame_count << "'" << std::endl;
+        return -1;
+      }
+      framemax = static_cast<size_t>(parsed_frame_count);
     }
     else
     {
       std::cout << "Unknown argument: " << arg << std::endl;
     }
   }
+
+  // Some builds compile without any GPU backend that consumes this option.
+  (void)deviceId;
 
   if (!enable_rgb && !enable_depth)
   {
@@ -341,7 +368,7 @@ int main(int argc, char *argv[])
 /// [start]
 
 /// [registration setup]
-  libfreenect2::Registration* registration = new libfreenect2::Registration(dev->getIrCameraParams(), dev->getColorCameraParams());
+  libfreenect2::Registration registration(dev->getIrCameraParams(), dev->getColorCameraParams());
   libfreenect2::Frame undistorted(512, 424, 4), registered(512, 424, 4);
 /// [registration setup]
 
@@ -370,12 +397,13 @@ int main(int argc, char *argv[])
     libfreenect2::Frame *rgb = frames[libfreenect2::Frame::Color];
     libfreenect2::Frame *ir = frames[libfreenect2::Frame::Ir];
     libfreenect2::Frame *depth = frames[libfreenect2::Frame::Depth];
+    (void)ir;
 /// [loop start]
 
     if (enable_rgb && enable_depth)
     {
 /// [registration]
-      registration->apply(rgb, depth, &undistorted, &registered);
+      registration.apply(rgb, depth, &undistorted, &registered);
 /// [registration]
     }
 
@@ -418,8 +446,6 @@ int main(int argc, char *argv[])
   dev->stop();
   dev->close();
 /// [stop]
-
-  delete registration;
 
   return 0;
 }

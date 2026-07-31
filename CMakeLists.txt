@@ -1,10 +1,24 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.5)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.16)
 
-SET(PROJECT_VER_MAJOR 0)
-SET(PROJECT_VER_MINOR 2)
-SET(PROJECT_VER_PATCH 0)
-SET(PROJECT_VER "${PROJECT_VER_MAJOR}.${PROJECT_VER_MINOR}.${PROJECT_VER_PATCH}")
+PROJECT(libfreenect2 VERSION 0.3.0 LANGUAGES C CXX)
+
+SET(PROJECT_VER_MAJOR "${PROJECT_VERSION_MAJOR}")
+SET(PROJECT_VER_MINOR "${PROJECT_VERSION_MINOR}")
+SET(PROJECT_VER_PATCH "${PROJECT_VERSION_PATCH}")
+SET(PROJECT_VER "${PROJECT_VERSION}")
 SET(PROJECT_APIVER "${PROJECT_VER_MAJOR}.${PROJECT_VER_MINOR}")
+
+EXECUTE_PROCESS(
+  COMMAND git rev-parse --short=12 HEAD
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  RESULT_VARIABLE LIBFREENECT2_GIT_RESULT
+  OUTPUT_VARIABLE LIBFREENECT2_BUILD_REVISION
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
+)
+IF(NOT LIBFREENECT2_GIT_RESULT EQUAL 0 OR LIBFREENECT2_BUILD_REVISION STREQUAL "")
+  SET(LIBFREENECT2_BUILD_REVISION "unknown")
+ENDIF()
 
 if(WIN32 AND NOT MINGW)
   if(NOT DEFINED CMAKE_DEBUG_POSTFIX)
@@ -22,7 +36,12 @@ IF(NOT DEFINED CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Choose: RelWithDebInfo Release Debug MinSizeRel None")
 ENDIF()
 
-PROJECT(libfreenect2)
+# libfreenect2 0.3 requires the C++11 language and threading library. Keep the
+# requirement target-independent so every library, example, test, and tool is
+# compiled with the same public ABI assumptions.
+SET(CMAKE_CXX_STANDARD 11)
+SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+SET(CMAKE_CXX_EXTENSIONS OFF)
 
 IF(POLICY CMP0042)
   cmake_policy(SET CMP0042 NEW)
@@ -34,7 +53,6 @@ SET(DEPENDS_DIR "${MY_DIR}/depends" CACHE STRING "dependency directory must be s
 OPTION(BUILD_SHARED_LIBS "Build shared (ON) or static (OFF) libraries" ON)
 OPTION(BUILD_EXAMPLES "Build examples" ON)
 OPTION(BUILD_OPENNI2_DRIVER "Build OpenNI2 driver" ON)
-OPTION(ENABLE_CXX11 "Enable C++11 support" OFF)
 OPTION(ENABLE_OPENCL "Enable OpenCL support" ON)
 OPTION(ENABLE_CUDA "Enable CUDA support" ON)
 OPTION(ENABLE_OPENGL "Enable OpenGL support" ON)
@@ -42,12 +60,14 @@ OPTION(ENABLE_VAAPI "Enable VA-API support" ON)
 OPTION(ENABLE_TEGRAJPEG "Enable Tegra HW JPEG support" ON)
 OPTION(ENABLE_PROFILING "Collect profiling stats (memory consuming)" OFF)
 OPTION(BUILD_TESTING "Build the unit test suite" OFF)
-OPTION(ENABLE_SANITIZERS "Build the tests with AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
+OPTION(ENABLE_SANITIZERS "Build project targets with AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
 IF(APPLE)
   OPTION(ENABLE_METAL "Enable Metal GPU depth processing (Apple platforms)" ON)
 ELSE()
   OPTION(ENABLE_METAL "Enable Metal GPU depth processing (Apple platforms)" OFF)
 ENDIF()
+
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules/QualityChecks.cmake)
 
 IF(ENABLE_PROFILING)
   SET(LIBFREENECT2_WITH_PROFILING 1)
@@ -59,33 +79,18 @@ IF(MSVC)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4267 /wd4244 /wd4200 /wd4305 /wd4146")
   ADD_DEFINITIONS(-D_CRT_SECURE_NO_WARNINGS) # no warning for getenv()
 ELSE()
-  # Heed warnings from non-MSVC compilers
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+  # Target-scoped warnings are configured in QualityChecks.cmake.
 ENDIF()
 
-SET(HAVE_CXX11 disabled)
-IF(ENABLE_CXX11)
-  INCLUDE(CheckCXXCompilerFlag)
-  CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
-  CHECK_CXX_COMPILER_FLAG("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
-  IF(COMPILER_SUPPORTS_CXX11)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-    SET(LIBFREENECT2_WITH_CXX11_SUPPORT 1)
-    SET(HAVE_CXX11 yes)
-  ELSEIF(COMPILER_SUPPORTS_CXX0X)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
-    SET(HAVE_CXX11 c++0x)
-  ELSE()
-    SET(HAVE_CXX11 no)
-    MESSAGE(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
-  ENDIF()
-ENDIF(ENABLE_CXX11)
+SET(HAVE_CXX11 yes)
+SET(LIBFREENECT2_WITH_CXX11_SUPPORT 1)
+SET(LIBFREENECT2_THREADING_STDLIB 1)
 
 # additional cmake modules
 LIST(APPEND CMAKE_MODULE_PATH ${MY_DIR}/cmake_modules)
 
-# setup threading
-INCLUDE(SetupLibfreenect2Threading)
+# CMake supplies any platform-specific linker flags needed by std::thread.
+FIND_PACKAGE(Threads REQUIRED)
 
 INCLUDE(GenerateResources)
 
@@ -154,9 +159,8 @@ INCLUDE_DIRECTORIES(
   "${MY_DIR}/include"
   "${MY_DIR}/include/internal"
   ${PROJECT_BINARY_DIR} # for generated headers
-  ${LIBFREENECT2_THREADING_INCLUDE_DIR}
-  ${LibUSB_INCLUDE_DIRS}
 )
+INCLUDE_DIRECTORIES(SYSTEM ${LibUSB_INCLUDE_DIRS})
 
 SET(RESOURCES_INC_FILE "${PROJECT_BINARY_DIR}/resources.inc.h")
 
@@ -180,12 +184,17 @@ SET(SOURCES
   include/libfreenect2/frame_listener_impl.h
   include/libfreenect2/libfreenect2.hpp
   include/libfreenect2/color_settings.h
+  include/libfreenect2/depth_calibration.h
   include/libfreenect2/led_settings.h
   include/libfreenect2/packet_pipeline.h
   include/internal/libfreenect2/packet_processor.h
   include/libfreenect2/registration.h
+  include/libfreenect2/recording.h
   include/internal/libfreenect2/resource.h
+  include/internal/libfreenect2/recording_utils.h
+  include/internal/libfreenect2/recording_loader.h
   include/internal/libfreenect2/rgb_packet_processor.h
+  include/internal/libfreenect2/rgb_decoder_fallback.h
   include/internal/libfreenect2/rgb_packet_stream_parser.h
   include/internal/libfreenect2/threading.h
 
@@ -197,16 +206,23 @@ SET(SOURCES
   src/packet_pipeline.cpp
   src/rgb_packet_stream_parser.cpp
   src/rgb_packet_processor.cpp
+  src/rgb_decoder_fallback.cpp
   src/depth_packet_stream_parser.cpp
   src/depth_packet_processor.cpp
+  src/depth_calibration.cpp
   src/cpu_depth_packet_processor.cpp
   src/resource.cpp
+  src/recording_utils.cpp
+  src/recording_manifest.cpp
+  src/recording_journal.cpp
+  src/recording_loader.cpp
+  src/recording_writer.cpp
   src/command_transaction.cpp
   src/registration.cpp
   src/logging.cpp
+  src/timing.cpp
   src/libfreenect2.cpp
 
-  ${LIBFREENECT2_THREADING_SOURCE}
   ${RESOURCES_INC_FILE}
   "${PROJECT_BINARY_DIR}/libfreenect2/config.h"
   "${PROJECT_BINARY_DIR}/libfreenect2/export.h"
@@ -214,7 +230,7 @@ SET(SOURCES
 
 SET(LIBRARIES
   ${LibUSB_LIBRARIES}
-  ${LIBFREENECT2_THREADING_LIBRARIES}
+  Threads::Threads
 )
 
 SET(LIBFREENECT2_DLLS
@@ -275,7 +291,7 @@ IF(ENABLE_VAAPI)
     SET(LIBFREENECT2_WITH_VAAPI_SUPPORT 1)
     SET(HAVE_VAAPI yes)
 
-    INCLUDE_DIRECTORIES(${VAAPI_INCLUDE_DIRS})
+    INCLUDE_DIRECTORIES(SYSTEM ${VAAPI_INCLUDE_DIRS})
 
     LIST(APPEND SOURCES
       src/vaapi_rgb_packet_processor.cpp
@@ -296,7 +312,7 @@ IF(ENABLE_TEGRAJPEG)
     SET(LIBFREENECT2_WITH_TEGRAJPEG_SUPPORT 1)
     SET(HAVE_TegraJPEG yes)
 
-    INCLUDE_DIRECTORIES(${TegraJPEG_INCLUDE_DIRS})
+    INCLUDE_DIRECTORIES(SYSTEM ${TegraJPEG_INCLUDE_DIRS})
 
     LIST(APPEND SOURCES
       src/tegra_jpeg_rgb_packet_processor.cpp
@@ -323,7 +339,7 @@ IF(TurboJPEG_FOUND)
   SET(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT 1)
   SET(HAVE_TurboJPEG yes)
 
-  INCLUDE_DIRECTORIES(${TurboJPEG_INCLUDE_DIRS})
+  INCLUDE_DIRECTORIES(SYSTEM ${TurboJPEG_INCLUDE_DIRS})
 
   LIST(APPEND SOURCES
     src/turbo_jpeg_rgb_packet_processor.cpp
@@ -365,7 +381,7 @@ IF(ENABLE_OPENGL)
     SET(LIBFREENECT2_WITH_OPENGL_SUPPORT 1)
     SET(HAVE_OpenGL yes)
 
-    INCLUDE_DIRECTORIES(${GLFW3_INCLUDE_DIRS})
+    INCLUDE_DIRECTORIES(SYSTEM ${GLFW3_INCLUDE_DIRS})
 
     LIST(APPEND LIBFREENECT2_DLLS ${GLFW3_DLL})
     LIST(APPEND LIBRARIES
@@ -412,7 +428,7 @@ IF(ENABLE_OPENCL)
         MESSAGE(WARNING "Your libOpenCL.so is incompatible with CL/cl.h. Install ocl-icd-opencl-dev to update libOpenCL.so?")
       ENDIF()
     ENDIF()
-    INCLUDE_DIRECTORIES(${OpenCL_INCLUDE_DIRS})
+    INCLUDE_DIRECTORIES(SYSTEM ${OpenCL_INCLUDE_DIRS})
 
     LIST(APPEND SOURCES
       src/opencl_depth_packet_processor.cpp
@@ -507,13 +523,6 @@ SET(HAVE_CUDA disabled)
 IF(ENABLE_CUDA)
   SET(HAVE_CUDA no)
 
-  # NOTE: The CUDA depth processors #include <helper_math.h>, which used to ship
-  # with the CUDA Toolkit under samples/common/inc but is NOT bundled by modern
-  # toolkits (CUDA >= 11). If detection succeeds but the build fails on a missing
-  # helper_math.h, vendor the CUDA samples' Common dir into
-  # depends/cuda-samples/Common (from https://github.com/NVIDIA/cuda-samples) —
-  # both detection paths below add it to the include search.
-
   # Modern path: first-class CMake CUDA language support (CMake >= 3.18).
   # Avoids the deprecated FindCUDA module / CUDA_COMPILE machinery and works with
   # current CUDA toolkits and host compilers. Falls back to legacy FindCUDA below.
@@ -543,8 +552,6 @@ IF(ENABLE_CUDA)
         INCLUDE_DIRECTORIES(
           "${MY_DIR}/include/"
           "${CUDAToolkit_INCLUDE_DIRS}"
-          "${CUDAToolkit_TARGET_DIR}/samples/common/inc"
-          "${DEPENDS_DIR}/cuda-samples/Common"
         )
 
         SET_SOURCE_FILES_PROPERTIES(
@@ -574,20 +581,14 @@ IF(ENABLE_CUDA)
       SET(LIBFREENECT2_WITH_CUDA_SUPPORT 1)
       SET(HAVE_CUDA yes)
 
-      STRING(REPLACE "\\" "/" NVCUDASAMPLES_ROOT "$ENV{NVCUDASAMPLES_ROOT}")
-      STRING(REPLACE "\\" "/" NVCUDASAMPLES8_0_ROOT "$ENV{NVCUDASAMPLES8_0_ROOT}")
       CUDA_INCLUDE_DIRECTORIES(
         "${MY_DIR}/include/"
-        "${CUDA_TOOLKIT_ROOT_DIR}/samples/common/inc"
-        "${NVCUDASAMPLES_ROOT}/common/inc"
-        "${NVCUDASAMPLES8_0_ROOT}/common/inc"
-        "${DEPENDS_DIR}/cuda-samples/Common"
       )
       SET(CUDA_FLAGS -use_fast_math)
       IF(NOT MSVC)
         SET(CUDA_FLAGS "${CUDA_FLAGS} -Xcompiler -fPIC")
       ENDIF()
-      IF(HAVE_CXX11 STREQUAL yes AND CUDA_VERSION VERSION_GREATER 7.0)
+      IF(CUDA_VERSION VERSION_GREATER 7.0)
         SET(CUDA_FLAGS "${CUDA_FLAGS} -std=c++11")
       ENDIF()
 
@@ -646,6 +647,8 @@ GENERATE_RESOURCES(${RESOURCES_INC_FILE} ${MY_DIR} ${RESOURCES})
 
 ADD_DEFINITIONS(-DRESOURCES_INC)
 ADD_LIBRARY(freenect2 ${SOURCES})
+libfreenect2_apply_quality(freenect2 PRIVATE)
+TARGET_INCLUDE_DIRECTORIES(freenect2 SYSTEM PRIVATE "${MY_DIR}/third_party")
 
 IF(LIBFREENECT2_WITH_METAL_SUPPORT)
   ADD_DEPENDENCIES(freenect2 MetalShaders)
@@ -673,7 +676,7 @@ IF(MSVC AND NOT BUILD_SHARED_LIBS)
 ENDIF()
 STRING(REPLACE ";" "\n " LIBRARIES_STRING "${LIBRARIES}")
 MESSAGE(STATUS "Linking with these libraries: \n ${LIBRARIES_STRING}")
-TARGET_LINK_LIBRARIES(freenect2 ${LIBRARIES})
+TARGET_LINK_LIBRARIES(freenect2 PRIVATE ${LIBRARIES})
 
 CONFIGURE_FILE(freenect2.cmake.in "${PROJECT_BINARY_DIR}/freenect2Config.cmake" @ONLY)
 CONFIGURE_FILE(freenect2Version.cmake.in "${PROJECT_BINARY_DIR}/freenect2ConfigVersion.cmake" @ONLY)
@@ -685,12 +688,20 @@ INSTALL(DIRECTORY "${PROJECT_BINARY_DIR}/${PROJECT_NAME}" DESTINATION include)
 INSTALL(FILES "${PROJECT_BINARY_DIR}/freenect2Config.cmake" DESTINATION lib/cmake/freenect2/)
 INSTALL(FILES "${PROJECT_BINARY_DIR}/freenect2ConfigVersion.cmake" DESTINATION lib/cmake/freenect2/)
 INSTALL(FILES "${PROJECT_BINARY_DIR}/freenect2.pc" DESTINATION lib/pkgconfig/)
+INSTALL(FILES "${MY_DIR}/third_party/nlohmann/LICENSE.MIT"
+  DESTINATION share/doc/${PROJECT_NAME}
+  RENAME nlohmann-json-LICENSE.MIT)
 INSTALL(FILES
   "${MY_DIR}/README.md"
+  "${MY_DIR}/doc/v0.3_migration.md"
+  "${MY_DIR}/doc/v0.3_upstream_coverage.md"
   "${MY_DIR}/doc/configuration.md"
   "${MY_DIR}/doc/depth_accuracy.md"
+  "${MY_DIR}/doc/depth_calibration.md"
   "${MY_DIR}/doc/faq.md"
+  "${MY_DIR}/doc/frame_timing.md"
   "${MY_DIR}/doc/python.md"
+  "${MY_DIR}/doc/quality.md"
   "${MY_DIR}/doc/recording_replay.md"
   "${MY_DIR}/doc/registration.md"
   "${MY_DIR}/doc/webcam.md"
@@ -712,9 +723,10 @@ IF(BUILD_OPENNI2_DRIVER)
   IF(OpenNI2_FOUND)
     SET(HAVE_OpenNI2 yes)
     FILE(GLOB OPENNI2_DRIVER_SOURCES src/openni2/*.cpp)
-    ADD_LIBRARY(freenect2-openni2 ${OPENNI2_DRIVER_SOURCES} ${LIBFREENECT2_THREADING_SOURCE})
-    TARGET_INCLUDE_DIRECTORIES(freenect2-openni2 PRIVATE ${OpenNI2_INCLUDE_DIRS})
-    TARGET_LINK_LIBRARIES(freenect2-openni2 freenect2 ${LIBFREENECT2_THREADING_LIBRARIES})
+    ADD_LIBRARY(freenect2-openni2 ${OPENNI2_DRIVER_SOURCES})
+    TARGET_INCLUDE_DIRECTORIES(freenect2-openni2 SYSTEM PRIVATE ${OpenNI2_INCLUDE_DIRS})
+    libfreenect2_apply_quality(freenect2-openni2 PRIVATE)
+    TARGET_LINK_LIBRARIES(freenect2-openni2 PRIVATE freenect2 Threads::Threads)
     SET_TARGET_PROPERTIES(freenect2-openni2 PROPERTIES SOVERSION 0)
     IF(NOT ${CMAKE_INSTALL_PREFIX} MATCHES "^/usr")
       SET_TARGET_PROPERTIES(freenect2-openni2 PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
@@ -736,6 +748,15 @@ IF(BUILD_STREAMER_RECORDER)
   ADD_SUBDIRECTORY(${MY_DIR}/tools/streamer_recorder)
 ENDIF()
 
+OPTION(BUILD_MEDIAPIPE_DEMO "Build the native bridge for the MediaPipe pose demo" OFF)
+SET(HAVE_mediapipe_demo disabled)
+IF(BUILD_MEDIAPIPE_DEMO)
+  SET(HAVE_mediapipe_demo yes)
+  MESSAGE(STATUS "Configuring MediaPipe Kinect pose demo bridge")
+  ADD_SUBDIRECTORY(${MY_DIR}/tools/mediapipe_pose)
+  libfreenect2_apply_quality(mediapipe_kinect_bridge PRIVATE)
+ENDIF()
+
 SET(HAVE_Tests disabled)
 IF(BUILD_TESTING)
   SET(HAVE_Tests yes)
@@ -747,21 +768,15 @@ IF(BUILD_TESTING)
   # sources with default visibility that the tests link against instead. The
   # shipping library is left untouched.
   ADD_LIBRARY(freenect2_testlib STATIC ${SOURCES})
-  TARGET_LINK_LIBRARIES(freenect2_testlib ${LIBRARIES})
+  libfreenect2_apply_quality(freenect2_testlib PUBLIC)
+  TARGET_INCLUDE_DIRECTORIES(freenect2_testlib SYSTEM PRIVATE "${MY_DIR}/third_party")
+  TARGET_LINK_LIBRARIES(freenect2_testlib PUBLIC ${LIBRARIES})
   # Inherits the global INCLUDE_DIRECTORIES (include/internal + the binary dir
   # with generated config.h / resources.inc.h) and the global -DRESOURCES_INC,
   # so loadResource() and the embedded Metal .metallib resolve exactly as in
   # the real library.
   IF(LIBFREENECT2_WITH_METAL_SUPPORT)
     ADD_DEPENDENCIES(freenect2_testlib MetalShaders)
-  ENDIF()
-
-  IF(ENABLE_SANITIZERS)
-    MESSAGE(STATUS "  Building tests with ASan + UBSan")
-    TARGET_COMPILE_OPTIONS(freenect2_testlib PUBLIC
-      -fsanitize=address,undefined -fno-omit-frame-pointer)
-    TARGET_LINK_OPTIONS(freenect2_testlib PUBLIC
-      -fsanitize=address,undefined)
   ENDIF()
 
   ENABLE_TESTING()

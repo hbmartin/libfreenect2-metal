@@ -40,9 +40,27 @@
 namespace libfreenect2
 {
 
+/** Runtime identity of the loaded library. */
+LIBFREENECT2_API std::string getVersion();
+LIBFREENECT2_API uint32_t getApiVersion();
+LIBFREENECT2_API std::string getBuildRevision();
+
 /** @defgroup device Initialization and Device Control
  * Find, open, and control Kinect v2 devices. */
 ///@{
+
+/** Observable device lifecycle state. */
+enum DeviceState
+{
+  DeviceCreated,
+  DeviceOpen,
+  DeviceStreaming,
+  DeviceDisconnected,
+  DeviceError,
+  DeviceClosed
+};
+
+struct CalibrationData;
 
 /** Device control. */
 class LIBFREENECT2_API Freenect2Device
@@ -66,8 +84,9 @@ public:
     ///@}
 
     /** @name Extrinsic parameters
-     * These parameters are used in [a formula](https://github.com/OpenKinect/libfreenect2/issues/41#issuecomment-72022111) to map coordinates in the
-     * depth camera to the color camera.
+     * These parameters are used in [a
+     * formula](https://github.com/OpenKinect/libfreenect2/issues/41#issuecomment-72022111) to map
+     * coordinates in the depth camera to the color camera.
      *
      * They cannot be used for matrix transformation.
      */
@@ -99,7 +118,8 @@ public:
   };
 
   /** IR camera intrinsic calibration parameters.
-   * Kinect v2 includes factory preset values for these parameters. They are used in depth image decoding, and Registration.
+   * Kinect v2 includes factory preset values for these parameters. They are used in depth image
+   * decoding, and Registration.
    */
   struct IrCameraParams
   {
@@ -117,8 +137,8 @@ public:
   /** Configuration of depth processing. */
   struct Config
   {
-    float MinDepth;             ///< Clip at this minimum distance (meter).
-    float MaxDepth;             ///< Clip at this maximum distance (meter).
+    float MinDepth; ///< Clip at this minimum distance (meter).
+    float MaxDepth; ///< Clip at this maximum distance (meter).
 
     bool EnableBilateralFilter; ///< Remove some "flying pixels".
     bool EnableEdgeAwareFilter; ///< Remove pixels on edges because ToF cameras produce noisy edges.
@@ -131,6 +151,18 @@ public:
 
   virtual std::string getSerialNumber() = 0;
   virtual std::string getFirmwareVersion() = 0;
+  virtual std::string getPacketPipelineName() = 0;
+
+  /** Return a thread-safe snapshot of the current lifecycle state. */
+  virtual DeviceState getState() const = 0;
+
+  /** Return a thread-safe snapshot of the most recent lifecycle error. */
+  virtual std::string getLastError() const = 0;
+
+  /** Copy the immutable calibration captured during successful initialization.
+   * Returns false until calibration is available.
+   */
+  virtual bool getCalibrationData(CalibrationData& calibration) const;
 
   /** Get current color parameters.
    * @copydetails ColorCameraParams
@@ -146,15 +178,15 @@ public:
    * We do not have a clear understanding of the meaning of the parameters right now.
    * You probably want to leave it as it is.
    */
-  virtual void setColorCameraParams(const ColorCameraParams &params) = 0;
+  virtual void setColorCameraParams(const ColorCameraParams& params) = 0;
 
   /** Replace factory preset depth camera parameters.
    * This decides accuracy in depth images. You are recommended to provide calibrated values.
    */
-  virtual void setIrCameraParams(const IrCameraParams &params) = 0;
+  virtual void setIrCameraParams(const IrCameraParams& params) = 0;
 
   /** Configure depth processing. */
-  virtual void setConfiguration(const Config &config) = 0;
+  virtual void setConfiguration(const Config& config) = 0;
 
   /** Provide your listener to receive color frames. */
   virtual void setColorFrameListener(FrameListener* rgb_frame_listener) = 0;
@@ -165,17 +197,17 @@ public:
   /** Sets the RGB camera to fully automatic exposure setting.
    * Exposure compensation: negative value gives an underexposed image,
    * positive gives an overexposed image.
-   * 
+   *
    * @param exposure_compensation Exposure compensation, range [-2.0, 2.0]
    */
   virtual void setColorAutoExposure(float exposure_compensation = 0) = 0;
 
-  /** Sets a flicker-free exposure time of the RGB camera in pseudo-ms, value in range [0.0, 640] ms.
-   * The actual frame integration time is set to a multiple of fluorescent light period
-   * that is shorter than the requested time e.g. requesting 16 ms will set 10 ms
-   * in Australia (100Hz light flicker), 8.33 ms in USA (120Hz light flicker).
-   * The gain is automatically set to compensate for the reduced integration time,
-   * as if the gain was set to 1.0 and the integration time was the requested value.
+  /** Sets a flicker-free exposure time of the RGB camera in pseudo-ms, value in range [0.0, 640]
+   * ms. The actual frame integration time is set to a multiple of fluorescent light period that is
+   * shorter than the requested time e.g. requesting 16 ms will set 10 ms in Australia (100Hz light
+   * flicker), 8.33 ms in USA (120Hz light flicker). The gain is automatically set to compensate for
+   * the reduced integration time, as if the gain was set to 1.0 and the integration time was the
+   * requested value.
    *
    * Requesting less than a single fluorescent light period will set the integration time
    * to the requested value, so the image brightness will flicker.
@@ -184,7 +216,7 @@ public:
    * a pseudo-exposure time of between (10.0, 16.667) ms, which will automatically drop
    * the integration time to 10 or 8.3 ms depending on country, while setting the analog
    * gain control to a brighter value.
-   * 
+   *
    * @param pseudo_exposure_time_ms Pseudo-exposure time in milliseconds, range (0.0, 66.0+]
    */
   virtual void setColorSemiAutoExposure(float pseudo_exposure_time_ms) = 0;
@@ -237,6 +269,14 @@ public:
   virtual bool close() = 0;
 };
 
+/** Self-contained factory calibration snapshot for recording and replay. */
+struct LIBFREENECT2_API CalibrationData
+{
+  Freenect2Device::ColorCameraParams color;
+  Freenect2Device::IrCameraParams ir;
+  std::vector<unsigned char> p0_tables;
+};
+
 class Freenect2Impl;
 
 /**
@@ -258,7 +298,7 @@ public:
    * @param usb_context If the libusb context is provided,
    * Freenect2 will use it instead of creating one.
    */
-  Freenect2(void *usb_context = 0);
+  Freenect2(void* usb_context = 0);
   virtual ~Freenect2();
 
   /** Must be called before doing anything else.
@@ -277,44 +317,55 @@ public:
    */
   std::string getDefaultDeviceSerialNumber();
 
+  /** Wait until a device with @p serial appears in enumeration.
+   *
+   * This does not revive a closed or disconnected device object. After it
+   * returns true, call openDevice(serial) to obtain a fresh object.
+   * @param serial Device serial number to find.
+   * @param timeout_ms Maximum monotonic wait in milliseconds.
+   * @param poll_ms Delay between enumeration attempts.
+   */
+  bool waitForDevice(const std::string& serial, uint32_t timeout_ms, uint32_t poll_ms = 250);
+
   /** Open device by index with default pipeline.
    * @param idx Index number. Index numbers are not determinstic during enumeration.
    * @return New device object, or NULL on failure
    */
-  Freenect2Device *openDevice(int idx);
+  Freenect2Device* openDevice(int idx);
 
   /** Open device by index.
    * @param idx Index number. Index numbers are not determinstic during enumeration.
    * @param factory New PacketPipeline instance. This is always automatically freed.
    * @return New device object, or NULL on failure
    */
-  Freenect2Device *openDevice(int idx, const PacketPipeline *factory);
+  Freenect2Device* openDevice(int idx, const PacketPipeline* factory);
 
   /** Open device by serial number with default pipeline.
    * @param serial Serial number
    * @return New device object, or NULL on failure
    */
-  Freenect2Device *openDevice(const std::string &serial);
+  Freenect2Device* openDevice(const std::string& serial);
 
   /** Open device by serial number.
    * @param serial Serial number
    * @param factory New PacketPipeline instance. This is always automatically freed.
    * @return New device object, or NULL on failure
    */
-  Freenect2Device *openDevice(const std::string &serial, const PacketPipeline *factory);
+  Freenect2Device* openDevice(const std::string& serial, const PacketPipeline* factory);
 
   /** Open the first device with default pipeline.
    * @return New device object, or NULL on failure
    */
-  Freenect2Device *openDefaultDevice();
+  Freenect2Device* openDefaultDevice();
 
   /** Open the first device.
    * @param factory New PacketPipeline instance. This is always automatically freed.
    * @return New device object, or NULL on failure
    */
-  Freenect2Device *openDefaultDevice(const PacketPipeline *factory);
+  Freenect2Device* openDefaultDevice(const PacketPipeline* factory);
+
 private:
-  Freenect2Impl *impl_;
+  Freenect2Impl* impl_;
 
   /* Disable copy and assignment constructors */
   Freenect2(const Freenect2&);
@@ -322,6 +373,15 @@ private:
 };
 
 class Freenect2ReplayImpl;
+
+/** Options for manifest-directory replay. */
+struct LIBFREENECT2_API ReplayOptions
+{
+  ReplayOptions();
+
+  bool salvage_incomplete; ///< Accept a missing completion marker and a truncated final entry.
+  bool reproduce_timing;   ///< Wait according to recorded arrival offsets instead of fast replay.
+};
 
 /**
  * Library context to create and open replay devices.
@@ -331,6 +391,17 @@ class Freenect2ReplayImpl;
 class LIBFREENECT2_API Freenect2Replay
 {
 public:
+  /** Calibration required to decode raw depth recordings without hardware. */
+  struct Calibration
+  {
+    Freenect2Device::ColorCameraParams color;
+    Freenect2Device::IrCameraParams ir;
+    std::vector<unsigned char> p0_tables;
+    std::vector<float> x_table;
+    std::vector<float> z_table;
+    std::vector<short> lookup_table;
+  };
+
   /**
    * Creates the context.
    */
@@ -339,10 +410,11 @@ public:
 
   /** Open a device by a collection of stored frame filenames with default pipeline.
    * See filename format below.
+   * This legacy API remains independent of manifest-directory ReplayOptions.
    * @param frame_filenames A list of filenames for stored frames.
    * @return New device object, or NULL on failure
    */
-  Freenect2Device *openDevice(const std::vector<std::string>& frame_filenames);
+  Freenect2Device* openDevice(const std::vector<std::string>& frame_filenames);
 
   /** Open device by a collection of stored frame filenames with the specified pipeline.
    * File names non-compliant with the filename format will be skipped.
@@ -355,10 +427,25 @@ public:
    * @param factory New PacketPipeline instance. This is always automatically freed.
    * @return New device object, or NULL on failure
    */
-  Freenect2Device *openDevice(const std::vector<std::string>& frame_filenames, const PacketPipeline *factory);
+  Freenect2Device* openDevice(const std::vector<std::string>& frame_filenames,
+                              const PacketPipeline* factory);
+
+  /** Open replay data with the calibration needed for depth decoding. */
+  Freenect2Device* openDevice(const std::vector<std::string>& frame_filenames,
+                              const Calibration& calibration);
+  Freenect2Device* openDevice(const std::vector<std::string>& frame_filenames,
+                              const Calibration& calibration, const PacketPipeline* factory);
+
+  /** Open a versioned recording directory with the default pipeline. */
+  Freenect2Device* openRecording(const std::string& directory,
+                                 const ReplayOptions& options = ReplayOptions());
+
+  /** Open a versioned recording directory with the specified pipeline. */
+  Freenect2Device* openRecording(const std::string& directory, const PacketPipeline* factory,
+                                 const ReplayOptions& options = ReplayOptions());
 
 private:
-  Freenect2ReplayImpl *impl_;
+  Freenect2ReplayImpl* impl_;
 
   /* Disable copy and assignment constructors */
   Freenect2Replay(const Freenect2Replay&);

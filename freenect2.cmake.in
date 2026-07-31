@@ -1,10 +1,37 @@
-FIND_LIBRARY(freenect2_LIBRARY freenect2
-    PATHS @CMAKE_INSTALL_PREFIX@/lib
+INCLUDE(CMakeFindDependencyMacro)
+FIND_DEPENDENCY(Threads)
+IF(@LIBFREENECT2_WITH_CUDA_SUPPORT@)
+  FIND_DEPENDENCY(CUDAToolkit)
+ENDIF()
+
+GET_FILENAME_COMPONENT(_freenect2_prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+FIND_LIBRARY(freenect2_LIBRARY NAMES freenect2 freenect2static
+    PATHS "${_freenect2_prefix}/lib"
     NO_DEFAULT_PATH
 )
-SET(freenect2_LIBRARIES ${freenect2_LIBRARY} @LIBFREENECT2_THREADING_LIBRARIES@)
+IF(NOT freenect2_LIBRARY)
+  SET(freenect2_FOUND FALSE)
+  SET(freenect2_NOT_FOUND_MESSAGE "The installed freenect2 library was not found under ${_freenect2_prefix}")
+  RETURN()
+ENDIF()
 FIND_PATH(freenect2_INCLUDE_DIR @PROJECT_NAME@/libfreenect2.hpp
-    PATHS @CMAKE_INSTALL_PREFIX@/include
+    PATHS "${_freenect2_prefix}/include"
     NO_DEFAULT_PATH
 )
+IF(NOT freenect2_INCLUDE_DIR)
+  SET(freenect2_FOUND FALSE)
+  SET(freenect2_NOT_FOUND_MESSAGE "The installed freenect2 headers were not found under ${_freenect2_prefix}")
+  RETURN()
+ENDIF()
+
+IF(NOT TARGET freenect2::freenect2)
+  ADD_LIBRARY(freenect2::freenect2 UNKNOWN IMPORTED)
+  SET_TARGET_PROPERTIES(freenect2::freenect2 PROPERTIES
+    IMPORTED_LOCATION "${freenect2_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${freenect2_INCLUDE_DIR}"
+    INTERFACE_LINK_LIBRARIES "@LIBRARIES@"
+  )
+ENDIF()
+
+SET(freenect2_LIBRARIES freenect2::freenect2)
 SET(freenect2_INCLUDE_DIRS ${freenect2_INCLUDE_DIR})

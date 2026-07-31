@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.5)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.16)
 
 if(WIN32 AND NOT MINGW)
   if(NOT DEFINED CMAKE_DEBUG_POSTFIX)
@@ -32,6 +32,9 @@ IF(TARGET freenect2)
   SET(freenect2_DLLS ${LIBFREENECT2_DLLS})
 ELSE()
   FIND_PACKAGE(freenect2 REQUIRED)
+  IF(TARGET freenect2::freenect2)
+    SET(freenect2_LIBRARIES freenect2::freenect2)
+  ENDIF()
   # Out-of-tree build will have to have DLLs manually copied.
 ENDIF()
 
@@ -55,10 +58,8 @@ IF(ENABLE_OPENGL)
   FIND_PACKAGE(GLFW3)
   FIND_PACKAGE(OpenGL)
   IF(GLFW3_FOUND AND OPENGL_FOUND)
-    INCLUDE_DIRECTORIES(
-      ${GLFW3_INCLUDE_DIRS}
-      ${flextGL_INCLUDE_DIRS}
-    )
+    INCLUDE_DIRECTORIES(${flextGL_INCLUDE_DIRS})
+    INCLUDE_DIRECTORIES(SYSTEM ${GLFW3_INCLUDE_DIRS})
 
     LIST(APPEND Protonect_DLLS ${GLFW3_DLL})
     LIST(APPEND Protonect_src
@@ -81,19 +82,51 @@ ENDIF(ENABLE_OPENGL)
 ADD_EXECUTABLE(Protonect
   ${Protonect_src}
 )
+IF(COMMAND libfreenect2_apply_quality)
+  libfreenect2_apply_quality(Protonect PRIVATE)
+ENDIF()
 
 TARGET_LINK_LIBRARIES(Protonect
-  ${Protonect_LIBRARIES}
+  PRIVATE ${Protonect_LIBRARIES}
 )
 
 ADD_EXECUTABLE(KinectCapture
   KinectCapture.cpp
 )
+IF(COMMAND libfreenect2_apply_quality)
+  libfreenect2_apply_quality(KinectCapture PRIVATE)
+ENDIF()
 
 TARGET_COMPILE_FEATURES(KinectCapture PRIVATE cxx_std_11)
 
 TARGET_LINK_LIBRARIES(KinectCapture
-  ${freenect2_LIBRARIES}
+  PRIVATE ${freenect2_LIBRARIES}
+)
+
+ADD_EXECUTABLE(KinectReconnect
+  KinectReconnect.cpp
+)
+IF(COMMAND libfreenect2_apply_quality)
+  libfreenect2_apply_quality(KinectReconnect PRIVATE)
+ENDIF()
+
+TARGET_COMPILE_FEATURES(KinectReconnect PRIVATE cxx_std_11)
+
+TARGET_LINK_LIBRARIES(KinectReconnect
+  PRIVATE ${freenect2_LIBRARIES}
+)
+
+ADD_EXECUTABLE(KinectDepthCalibration
+  KinectDepthCalibration.cpp
+)
+IF(COMMAND libfreenect2_apply_quality)
+  libfreenect2_apply_quality(KinectDepthCalibration PRIVATE)
+ENDIF()
+
+TARGET_COMPILE_FEATURES(KinectDepthCalibration PRIVATE cxx_std_11)
+
+TARGET_LINK_LIBRARIES(KinectDepthCalibration
+  PRIVATE ${freenect2_LIBRARIES}
 )
 
 IF(WIN32)

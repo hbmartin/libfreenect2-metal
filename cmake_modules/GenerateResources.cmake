@@ -3,6 +3,9 @@ FUNCTION(GENERATE_RESOURCES OUTPUT BASE_FOLDER)
 ADD_EXECUTABLE(generate_resources_tool
   tools/generate_resources.cpp
 )
+IF(COMMAND libfreenect2_apply_quality)
+  libfreenect2_apply_quality(generate_resources_tool PRIVATE)
+ENDIF()
 
 # The tool expects paths relative to BASE_FOLDER. Resources generated into the
 # build tree (e.g. the compiled Metal shader library) arrive as absolute

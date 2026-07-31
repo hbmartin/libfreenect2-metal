@@ -39,6 +39,19 @@ namespace libfreenect2
 namespace usb
 {
 
+class TransferPoolEventListener
+{
+public:
+  enum Event
+  {
+    UsbDeviceDisconnected,
+    AllTransfersStalled
+  };
+
+  virtual ~TransferPoolEventListener() {}
+  virtual void onTransferPoolEvent(Event event, unsigned char endpoint) = 0;
+};
+
 class TransferPool
 {
 public:
@@ -58,6 +71,8 @@ public:
   void cancel();
 
   void setCallback(DataCallback *callback);
+
+  void setEventListener(TransferPoolEventListener *listener);
 protected:
   libfreenect2::mutex stopped_mutex;
   struct Transfer
@@ -65,8 +80,8 @@ protected:
     libusb_transfer *transfer;
     TransferPool *pool;
     bool stopped;
-    Transfer(libusb_transfer *transfer, TransferPool *pool):
-      transfer(transfer), pool(pool), stopped(true) {}
+    Transfer(libusb_transfer *transfer_arg, TransferPool *pool_arg):
+      transfer(transfer_arg), pool(pool_arg), stopped(true) {}
     void setStopped(bool value)
     {
       libfreenect2::lock_guard guard(pool->stopped_mutex);
@@ -84,7 +99,7 @@ protected:
   virtual libusb_transfer *allocateTransfer() = 0;
   virtual void fillTransfer(libusb_transfer *transfer) = 0;
 
-  virtual void processTransfer(libusb_transfer *transfer) = 0;
+  virtual void processTransfer(libusb_transfer *transfer, uint64_t arrival_timestamp_us) = 0;
 
   DataCallback *callback_;
 private:
@@ -101,6 +116,7 @@ private:
   size_t stalled_transfers_;
   bool stall_logged_;
   bool disconnect_logged_;
+  TransferPoolEventListener *event_listener_;
 
   static void onTransferCompleteStatic(libusb_transfer *transfer);
 
@@ -119,7 +135,7 @@ public:
 protected:
   virtual libusb_transfer *allocateTransfer();
   virtual void fillTransfer(libusb_transfer *transfer);
-  virtual void processTransfer(libusb_transfer *transfer);
+  virtual void processTransfer(libusb_transfer *transfer, uint64_t arrival_timestamp_us);
 };
 
 class IsoTransferPool : public TransferPool
@@ -133,7 +149,7 @@ public:
 protected:
   virtual libusb_transfer *allocateTransfer();
   virtual void fillTransfer(libusb_transfer *transfer);
-  virtual void processTransfer(libusb_transfer *transfer);
+  virtual void processTransfer(libusb_transfer *transfer, uint64_t arrival_timestamp_us);
 
 private:
   size_t num_packets_;

@@ -28,8 +28,10 @@
 
 #include <libfreenect2/usb/transfer_pool.h>
 #include <libfreenect2/logging.h>
+#include <libfreenect2/timing.h>
 
-#define WRITE_LIBUSB_ERROR(__RESULT) libusb_error_name(__RESULT) << " " << libusb_strerror((libusb_error)__RESULT)
+#define WRITE_LIBUSB_ERROR(__RESULT) \
+  libusb_error_name((__RESULT)) << " " << libusb_strerror(static_cast<libusb_error>((__RESULT)))
 
 namespace libfreenect2
 {
@@ -45,7 +47,8 @@ TransferPool::TransferPool(libusb_device_handle* device_handle, unsigned char de
     enable_submit_(false),
     stalled_transfers_(0),
     stall_logged_(false),
-    disconnect_logged_(false)
+    disconnect_logged_(false),
+    event_listener_(0)
 {
 }
 
@@ -155,6 +158,11 @@ void TransferPool::setCallback(DataCallback *callback)
   callback_ = callback;
 }
 
+void TransferPool::setEventListener(TransferPoolEventListener *listener)
+{
+  event_listener_ = listener;
+}
+
 void TransferPool::allocateTransfers(size_t num_transfers, size_t transfer_size)
 {
   buffer_size_ = num_transfers * transfer_size;
@@ -190,6 +198,8 @@ void TransferPool::onTransferCompleteStatic(libusb_transfer* transfer)
 
 void TransferPool::onTransferComplete(TransferPool::Transfer* t)
 {
+  const uint64_t arrival_timestamp_us = monotonicTimeMicroseconds();
+
   if(t->transfer->status == LIBUSB_TRANSFER_CANCELLED)
   {
     t->setStopped(true);
@@ -208,6 +218,9 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
     {
       disconnect_logged_ = true;
       LOG_ERROR << "usb transfer failed: device disconnected";
+      if(event_listener_ != 0)
+        event_listener_->onTransferPoolEvent(TransferPoolEventListener::UsbDeviceDisconnected,
+                                             device_endpoint_);
     }
     t->setStopped(true);
     stalled_transfers_++;
@@ -223,7 +236,7 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
   }
 
   // process data
-  processTransfer(t->transfer);
+  processTransfer(t->transfer, arrival_timestamp_us);
 
   if(!enable_submit_)
   {
@@ -247,7 +260,8 @@ void TransferPool::onTransferComplete(TransferPool::Transfer* t)
 
 void TransferPool::logStallIfComplete()
 {
-  if(!stall_logged_ && enable_submit_ && stalled_transfers_ >= transfers_.size())
+  if(!stall_logged_ && !disconnect_logged_ && enable_submit_ &&
+     stalled_transfers_ >= transfers_.size())
   {
     stall_logged_ = true;
     LOG_ERROR << "all usb transfers on endpoint 0x" << std::hex
@@ -257,6 +271,9 @@ void TransferPool::logStallIfComplete()
                  "reopening fails). Common causes: USB3 bandwidth "
                  "or power limits, flaky cables/adapters, or VM USB "
                  "passthrough.";
+    if(event_listener_ != 0)
+      event_listener_->onTransferPoolEvent(TransferPoolEventListener::AllTransfersStalled,
+                                           device_endpoint_);
   }
 }
 
@@ -284,12 +301,13 @@ void BulkTransferPool::fillTransfer(libusb_transfer* transfer)
   transfer->type = LIBUSB_TRANSFER_TYPE_BULK;
 }
 
-void BulkTransferPool::processTransfer(libusb_transfer* transfer)
+void BulkTransferPool::processTransfer(libusb_transfer* transfer, uint64_t arrival_timestamp_us)
 {
   if(transfer->status != LIBUSB_TRANSFER_COMPLETED) return;
 
   if(callback_)
-    callback_->onDataReceived(transfer->buffer, transfer->actual_length);
+    callback_->onDataReceived(transfer->buffer, transfer->actual_length,
+                              arrival_timestamp_us);
 }
 
 IsoTransferPool::IsoTransferPool(libusb_device_handle* device_handle, unsigned char device_endpoint) :
@@ -324,7 +342,7 @@ void IsoTransferPool::fillTransfer(libusb_transfer* transfer)
   libusb_set_iso_packet_lengths(transfer, packet_size_);
 }
 
-void IsoTransferPool::processTransfer(libusb_transfer* transfer)
+void IsoTransferPool::processTransfer(libusb_transfer* transfer, uint64_t arrival_timestamp_us)
 {
   unsigned char *ptr = transfer->buffer;
 
@@ -333,7 +351,8 @@ void IsoTransferPool::processTransfer(libusb_transfer* transfer)
     if(transfer->iso_packet_desc[i].status != LIBUSB_TRANSFER_COMPLETED) continue;
 
     if(callback_)
-      callback_->onDataReceived(ptr, transfer->iso_packet_desc[i].actual_length);
+      callback_->onDataReceived(ptr, transfer->iso_packet_desc[i].actual_length,
+                                arrival_timestamp_us);
 
     ptr += transfer->iso_packet_desc[i].length;
   }
@@ -341,4 +360,3 @@ void IsoTransferPool::processTransfer(libusb_transfer* transfer)
 
 } /* namespace usb */
 } /* namespace libfreenect2 */
-
