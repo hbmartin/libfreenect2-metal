@@ -5,7 +5,7 @@ IF(@LIBFREENECT2_WITH_CUDA_SUPPORT@)
 ENDIF()
 
 GET_FILENAME_COMPONENT(_freenect2_prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
-FIND_LIBRARY(freenect2_LIBRARY freenect2
+FIND_LIBRARY(freenect2_LIBRARY NAMES freenect2 freenect2static
     PATHS "${_freenect2_prefix}/lib"
     NO_DEFAULT_PATH
 )
