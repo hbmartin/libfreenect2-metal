@@ -24,7 +24,7 @@ inline std::string formatLibusbError(int result, bool include_debug_hint = false
   message << libusb_error_name(result) << " "
           << libusb_strerror(static_cast<libusb_error>(result));
   if (include_debug_hint)
-    message << ". Try debugging with environment variable: export LIBUSB_DEBUG=3 .";
+    message << ". Set LIBUSB_DEBUG=3 in the process environment for more debug output.";
   return message.str();
 }
 

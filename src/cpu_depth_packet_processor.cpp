@@ -61,47 +61,29 @@ template <typename ScalarT, int Size> struct Vec
 template <typename ScalarT> struct Mat
 {
 private:
-  bool owns_buffer;       ///< Whether the matrix owns the data buffer (and should dispose it when
-                          ///< deleted).
-  unsigned char* buffer_; ///< Data buffer of the matrix (row major).
-  unsigned char* buffer_end_; ///< End of the buffer (just after the last element).
-  int width_;                 ///< Number of elements in the matrix.
-  int height_;                ///< Number of rows in the matrix.
-  int x_step;                 ///< Number of bytes in one element.
-  int y_step;                 ///< Number of bytes in one row.
+  ScalarT* buffer_;     ///< Data buffer of the matrix (row major).
+  ScalarT* buffer_end_; ///< End of the buffer (just after the last element).
+  int width_;           ///< Number of elements in the matrix.
+  int height_;          ///< Number of rows in the matrix.
 
   /**
    * Allocate a buffer.
    * @param width Width of the matrix.
    * @param height Height of the matrix.
-   * @param external_buffer If not \c null, use the provided buffer, else make a new one.
    */
-  void allocate(int width, int height, unsigned char* external_buffer = 0)
+  void allocate(int width, int height)
   {
     this->width_ = width;
     this->height_ = height;
-    x_step = sizeof(ScalarT);
-    y_step = width * x_step;
-
-    owns_buffer = external_buffer == 0;
-
-    if (owns_buffer)
-    {
-      buffer_ = new unsigned char[y_step * height];
-    }
-    else
-    {
-      buffer_ = external_buffer;
-    }
-    buffer_end_ = buffer_ + (y_step * height);
+    buffer_ = new ScalarT[width * height];
+    buffer_end_ = buffer_ + width * height;
   }
 
   void deallocate()
   {
-    if (owns_buffer && buffer_ != 0)
+    if (buffer_ != 0)
     {
       delete[] buffer_;
-      owns_buffer = false;
       buffer_ = 0;
       buffer_end_ = 0;
     }
@@ -109,25 +91,16 @@ private:
 
 public:
   /** Default constructor. */
-  Mat() : owns_buffer(false), buffer_(0), buffer_end_(0) {}
+  Mat() : buffer_(0), buffer_end_(0), width_(0), height_(0) {}
 
   /**
    * Constructor with locally allocated buffer.
    * @param height Height of the image.
    * @param width Width of the image.
    */
-  Mat(int height, int width) : owns_buffer(false), buffer_(0) { create(height, width); }
-
-  /**
-   * Constructor with external buffer.
-   * @tparam DataT Type of data of the buffer.
-   * @param height Height of the image.
-   * @param width Width of the image.
-   * @param external_buffer Provided buffer.
-   */
-  template <typename DataT> Mat(int height, int width, DataT* external_buffer)
+  Mat(int height, int width) : buffer_(0), buffer_end_(0), width_(0), height_(0)
   {
-    allocate(width, height, reinterpret_cast<unsigned char*>(external_buffer));
+    create(height, width);
   }
 
   /** Destructor. */
@@ -182,27 +155,21 @@ public:
    */
   ScalarT& at(int y, int x) { return *ptr(y, x); }
 
-  const ScalarT* ptr(int y, int x) const
-  {
-    return reinterpret_cast<const ScalarT*>(buffer_ + y_step * y + x_step * x);
-  }
+  const ScalarT* ptr(int y, int x) const { return buffer_ + width_ * y + x; }
 
-  ScalarT* ptr(int y, int x)
-  {
-    return reinterpret_cast<ScalarT*>(buffer_ + y_step * y + x_step * x);
-  }
+  ScalarT* ptr(int y, int x) { return buffer_ + width_ * y + x; }
 
   /**
    * Get the buffer.
    * @return The buffer.
    */
-  unsigned char* buffer() { return buffer_; }
+  unsigned char* buffer() { return reinterpret_cast<unsigned char*>(buffer_); }
 
   /**
    * Get the size of the buffer.
    * @return Number of bytes in the buffer.
    */
-  int sizeInBytes() const { return buffer_end_ - buffer_; }
+  int sizeInBytes() const { return static_cast<int>((buffer_end_ - buffer_) * sizeof(ScalarT)); }
 };
 
 /**
@@ -916,7 +883,7 @@ void CpuDepthPacketProcessor::process(const DepthPacket& packet)
     processed_measurements = &m_filtered;
   }
 
-  Mat<float> out_ir(424, 512, impl_->ir_frame->data), out_depth(424, 512, impl_->depth_frame->data);
+  Mat<float> out_ir(424, 512), out_depth(424, 512);
 
   if (impl_->enable_edge_filter)
   {
@@ -953,6 +920,9 @@ void CpuDepthPacketProcessor::process(const DepthPacket& packet)
                                   out_ir.ptr(423 - y, x), out_depth.ptr(423 - y, x), 0);
       }
   }
+
+  std::memcpy(impl_->ir_frame->data, out_ir.buffer(), out_ir.sizeInBytes());
+  std::memcpy(impl_->depth_frame->data, out_depth.buffer(), out_depth.sizeInBytes());
 
   impl_->stopTiming(LOG_INFO);
 
