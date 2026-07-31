@@ -442,10 +442,14 @@ int main(int argc, char** argv)
 
     const bool device_stopped = device->stop();
     const bool device_closed = device->close();
-    const bool device_ok = device_stopped && device_closed;
     const bool recording_ok = writer.close();
     const libfreenect2::RecordingWriter::Stats stats = writer.getStats();
-    if (!device_ok || !recording_ok ||
+    if (!device_stopped || !device_closed)
+    {
+      std::cerr << "Warning: recording was finalized, but Kinect shutdown reported: "
+                << device->getLastError() << "\n";
+    }
+    if (!recording_ok ||
         (recording_depth_frames != 0 && stats.written_depth_frames < recording_depth_frames))
     {
       std::cerr << "Recording did not complete cleanly: " << writer.getLastError() << "\n";
