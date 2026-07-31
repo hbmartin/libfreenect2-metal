@@ -32,6 +32,9 @@ IF(TARGET freenect2)
   SET(freenect2_DLLS ${LIBFREENECT2_DLLS})
 ELSE()
   FIND_PACKAGE(freenect2 REQUIRED)
+  IF(TARGET freenect2::freenect2)
+    SET(freenect2_LIBRARIES freenect2::freenect2)
+  ENDIF()
   # Out-of-tree build will have to have DLLs manually copied.
 ENDIF()
 
@@ -84,7 +87,7 @@ IF(COMMAND libfreenect2_apply_quality)
 ENDIF()
 
 TARGET_LINK_LIBRARIES(Protonect
-  ${Protonect_LIBRARIES}
+  PRIVATE ${Protonect_LIBRARIES}
 )
 
 ADD_EXECUTABLE(KinectCapture
@@ -97,7 +100,7 @@ ENDIF()
 TARGET_COMPILE_FEATURES(KinectCapture PRIVATE cxx_std_11)
 
 TARGET_LINK_LIBRARIES(KinectCapture
-  ${freenect2_LIBRARIES}
+  PRIVATE ${freenect2_LIBRARIES}
 )
 
 ADD_EXECUTABLE(KinectReconnect
@@ -110,7 +113,7 @@ ENDIF()
 TARGET_COMPILE_FEATURES(KinectReconnect PRIVATE cxx_std_11)
 
 TARGET_LINK_LIBRARIES(KinectReconnect
-  ${freenect2_LIBRARIES}
+  PRIVATE ${freenect2_LIBRARIES}
 )
 
 ADD_EXECUTABLE(KinectDepthCalibration
@@ -123,7 +126,7 @@ ENDIF()
 TARGET_COMPILE_FEATURES(KinectDepthCalibration PRIVATE cxx_std_11)
 
 TARGET_LINK_LIBRARIES(KinectDepthCalibration
-  ${freenect2_LIBRARIES}
+  PRIVATE ${freenect2_LIBRARIES}
 )
 
 IF(WIN32)

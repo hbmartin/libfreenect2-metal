@@ -102,6 +102,14 @@ jobs:
       - name: Test
         run: ctest --test-dir build -LE gpu --timeout 120
 
+      - name: Test installed package with out-of-tree examples
+        run: |
+          cmake --install build --prefix "$PWD/build/install"
+          cmake -S examples -B build-installed-examples -G Ninja \
+            -DENABLE_OPENGL=OFF \
+            -Dfreenect2_DIR="$PWD/build/install/lib/cmake/freenect2"
+          cmake --build build-installed-examples -j 2
+
   linux-filter-backends:
     name: Clang, PoCL and llvmpipe filter parity
     runs-on: ubuntu-24.04

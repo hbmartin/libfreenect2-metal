@@ -128,11 +128,10 @@ FUNCTION(libfreenect2_apply_quality TARGET_NAME VISIBILITY)
   IF(NOT TARGET ${TARGET_NAME})
     MESSAGE(FATAL_ERROR "Cannot apply quality checks to missing target '${TARGET_NAME}'")
   ENDIF()
-  # Most long-standing project targets still use target_link_libraries' plain
-  # signature. CMake forbids mixing that with the keyword signature, so keep
-  # this helper compatible with those targets. Plain links are transitive by
-  # default, which preserves the PUBLIC behavior needed by freenect2_testlib.
-  TARGET_LINK_LIBRARIES(${TARGET_NAME} libfreenect2_quality_options)
+  IF(NOT VISIBILITY MATCHES "^(PRIVATE|PUBLIC|INTERFACE)$")
+    MESSAGE(FATAL_ERROR "Invalid quality-check visibility '${VISIBILITY}'")
+  ENDIF()
+  TARGET_LINK_LIBRARIES(${TARGET_NAME} ${VISIBILITY} libfreenect2_quality_options)
 ENDFUNCTION()
 
 FUNCTION(libfreenect2_add_fuzzer TARGET_NAME SOURCE_FILE)

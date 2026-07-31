@@ -9,7 +9,7 @@ TARGET_COMPILE_FEATURES(mediapipe_kinect_bridge PRIVATE cxx_std_11)
 TARGET_INCLUDE_DIRECTORIES(mediapipe_kinect_bridge PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
-TARGET_LINK_LIBRARIES(mediapipe_kinect_bridge freenect2)
+TARGET_LINK_LIBRARIES(mediapipe_kinect_bridge PRIVATE freenect2)
 
 SET_TARGET_PROPERTIES(mediapipe_kinect_bridge PROPERTIES
   CXX_VISIBILITY_PRESET hidden
