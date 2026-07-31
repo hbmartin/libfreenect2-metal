@@ -133,15 +133,23 @@ TEST(Registration, FullFrameApplyRunsBothFilterModes)
   Frame* depth = makeConstantDepthFrame(1500.0f);
   Frame undistorted(kW, kH, 4);
   Frame registered(kW, kH, 4);
+  Frame bigdepth(1920, 1082, 4);
 
   // Should run without crashing/overrunning under both filter settings
   // (ASan/UBSan guard the memory access in the sanitizer CI job).
   for (int filter = 0; filter <= 1; ++filter)
   {
-    reg.apply(&rgb, depth, &undistorted, &registered, filter != 0);
+    reg.apply(&rgb, depth, &undistorted, &registered, filter != 0, &bigdepth);
     EXPECT_EQ(registered.width, static_cast<size_t>(kW));
     EXPECT_EQ(registered.height, static_cast<size_t>(kH));
+    EXPECT_EQ(undistorted.format, Frame::Float);
+    EXPECT_EQ(registered.format, Frame::BGRX);
+    EXPECT_EQ(bigdepth.format, Frame::Float);
   }
+
+  rgb.format = Frame::RGBX;
+  reg.apply(&rgb, depth, &undistorted, &registered, true, &bigdepth);
+  EXPECT_EQ(registered.format, Frame::RGBX);
 
   delete depth;
 }

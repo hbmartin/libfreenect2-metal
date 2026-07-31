@@ -25,9 +25,8 @@ FetchContent_MakeAvailable(googletest)
 
 ADD_EXECUTABLE(unit_tests
   support/synthetic.cpp
-  ../tools/mediapipe_pose/bridge_helpers.cpp
   test_registration.cpp
-  test_mediapipe_pose_bridge.cpp
+  test_vision.cpp
   test_depth_stream_parser.cpp
   test_depth_calibration.cpp
   test_rgb_stream_parser.cpp
@@ -44,7 +43,6 @@ ADD_EXECUTABLE(unit_tests
 
 TARGET_INCLUDE_DIRECTORIES(unit_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_CURRENT_SOURCE_DIR}/../tools/mediapipe_pose
 )
 TARGET_COMPILE_FEATURES(unit_tests PRIVATE cxx_std_14)
 TARGET_LINK_LIBRARIES(unit_tests PRIVATE freenect2_testlib gtest gtest_main)

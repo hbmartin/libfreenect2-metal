@@ -18,7 +18,7 @@ rules:
     paths:
       include:
         - /src/vaapi_rgb_packet_processor.cpp
-    pattern-regex: '\bbool\s+(?:initialized|healthy)\s*;'
+    pattern-regex: '\bbool\s+(?:initialized|healthy)\b\s*(?:=\s*[^;]+|\{[^;]*\})?\s*;'
   - id: libfreenect2-initialize-libusb-config-descriptors
     languages: [cpp]
     severity: ERROR

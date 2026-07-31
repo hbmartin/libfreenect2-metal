@@ -189,6 +189,7 @@ SET(SOURCES
   include/libfreenect2/packet_pipeline.h
   include/internal/libfreenect2/packet_processor.h
   include/libfreenect2/registration.h
+  include/libfreenect2/vision.h
   include/libfreenect2/recording.h
   include/internal/libfreenect2/resource.h
   include/internal/libfreenect2/recording_utils.h
@@ -219,6 +220,7 @@ SET(SOURCES
   src/recording_writer.cpp
   src/command_transaction.cpp
   src/registration.cpp
+  src/vision.cpp
   src/logging.cpp
   src/timing.cpp
   src/libfreenect2.cpp
@@ -750,15 +752,6 @@ IF(BUILD_STREAMER_RECORDER)
   SET(HAVE_streamer_recorder yes)
   MESSAGE(STATUS "Configurating streamer_recorder")
   ADD_SUBDIRECTORY(${MY_DIR}/tools/streamer_recorder)
-ENDIF()
-
-OPTION(BUILD_MEDIAPIPE_DEMO "Build the native bridge for the MediaPipe pose demo" OFF)
-SET(HAVE_mediapipe_demo disabled)
-IF(BUILD_MEDIAPIPE_DEMO)
-  SET(HAVE_mediapipe_demo yes)
-  MESSAGE(STATUS "Configuring MediaPipe Kinect pose demo bridge")
-  ADD_SUBDIRECTORY(${MY_DIR}/tools/mediapipe_pose)
-  libfreenect2_apply_quality(mediapipe_kinect_bridge PRIVATE)
 ENDIF()
 
 SET(HAVE_Tests disabled)

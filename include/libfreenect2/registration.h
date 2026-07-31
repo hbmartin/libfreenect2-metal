@@ -71,10 +71,10 @@ public:
   void apply(int dx, int dy, float dz, float& cx, float &cy) const;
 
   /** Map color images onto depth images
-   * @param rgb Color image (1920x1080 BGRX)
+   * @param rgb Color image (1920x1080 BGRX or RGBX)
    * @param depth Depth image (512x424 float)
-   * @param[out] undistorted Undistorted depth image
-   * @param[out] registered Color image for the depth image (512x424)
+   * @param[out] undistorted Undistorted depth image (512x424 float)
+   * @param[out] registered Color image for the depth image (512x424); its format inherits `rgb`.
    * @param enable_filter Filter out pixels not visible to both cameras.
    * @param[out] bigdepth If not `NULL`, return mapping of depth onto colors (1920x1082 float). **1082** not 1080, with a blank top and bottom row.
    * @param[out] color_depth_map Index of mapped color pixel for each depth pixel (512x424).
@@ -95,7 +95,8 @@ public:
    * @param[out] x X coordinate of the 3-D point (meter).
    * @param[out] y Y coordinate of the 3-D point (meter).
    * @param[out] z Z coordinate of the 3-D point (meter).
-   * @param[out] rgb Color of the 3-D point (BGRX). To unpack the data, use
+   * @param[out] rgb Packed color of the 3-D point in the registered frame's
+   * BGRX or RGBX channel order. To unpack BGRX data, use
    *
    *     const uint8_t *p = reinterpret_cast<uint8_t*>(&rgb);
    *     uint8_t b = p[0];

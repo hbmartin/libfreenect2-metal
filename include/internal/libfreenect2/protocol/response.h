@@ -64,6 +64,12 @@ public:
 class FirmwareVersionResponse
 {
 private:
+  static uint32_t readLittleEndian32(const unsigned char* data)
+  {
+    return static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8) |
+           (static_cast<uint32_t>(data[2]) << 16) | (static_cast<uint32_t>(data[3]) << 24);
+  }
+
   struct FWSubsystemVersion
   {
     uint32_t maj_min;
@@ -85,11 +91,16 @@ private:
 public:
   FirmwareVersionResponse(const std::vector<unsigned char>& data)
   {
-    const size_t count = std::min<size_t>(7, data.size() / sizeof(FWSubsystemVersion));
+    const size_t version_size = 4 * sizeof(uint32_t);
+    const size_t count = std::min<size_t>(7, data.size() / version_size);
     for (size_t i = 0; i < count; ++i)
     {
+      const size_t offset = i * version_size;
       FWSubsystemVersion version;
-      std::memcpy(&version, &data[i * sizeof(FWSubsystemVersion)], sizeof(version));
+      version.maj_min = readLittleEndian32(&data[offset]);
+      version.revision = readLittleEndian32(&data[offset + sizeof(uint32_t)]);
+      version.build = readLittleEndian32(&data[offset + 2 * sizeof(uint32_t)]);
+      version.reserved0 = readLittleEndian32(&data[offset + 3 * sizeof(uint32_t)]);
       versions_.push_back(version);
     }
   }

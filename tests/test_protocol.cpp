@@ -36,7 +36,8 @@ TEST(ProtocolResponse, ParsesLittleEndianStatusReply)
 TEST(ProtocolResponse, FormatsTheMainFirmwareVersion)
 {
   std::vector<unsigned char> reply(4 * 4 * sizeof(uint32_t), 0);
-  const uint32_t version[4] = {0x00010002u, 3u, 4u, 0u};
+  const unsigned char version[] = {0x02, 0x00, 0x01, 0x00, 0x03, 0x00, 0x00, 0x00,
+                                   0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   std::memcpy(&reply[3 * 4 * sizeof(uint32_t)], version, sizeof(version));
   EXPECT_EQ(FirmwareVersionResponse(reply).toString(), "1.2.3.4");
 }
