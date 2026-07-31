@@ -1,9 +1,11 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.16)
 
-SET(PROJECT_VER_MAJOR 0)
-SET(PROJECT_VER_MINOR 3)
-SET(PROJECT_VER_PATCH 0)
-SET(PROJECT_VER "${PROJECT_VER_MAJOR}.${PROJECT_VER_MINOR}.${PROJECT_VER_PATCH}")
+PROJECT(libfreenect2 VERSION 0.3.0 LANGUAGES C CXX)
+
+SET(PROJECT_VER_MAJOR "${PROJECT_VERSION_MAJOR}")
+SET(PROJECT_VER_MINOR "${PROJECT_VERSION_MINOR}")
+SET(PROJECT_VER_PATCH "${PROJECT_VERSION_PATCH}")
+SET(PROJECT_VER "${PROJECT_VERSION}")
 SET(PROJECT_APIVER "${PROJECT_VER_MAJOR}.${PROJECT_VER_MINOR}")
 
 EXECUTE_PROCESS(
@@ -33,8 +35,6 @@ IF(NOT DEFINED CMAKE_BUILD_TYPE)
   # No effect for multi-configuration generators (e.g. for Visual Studio)
   SET(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Choose: RelWithDebInfo Release Debug MinSizeRel None")
 ENDIF()
-
-PROJECT(libfreenect2)
 
 # libfreenect2 0.3 requires the C++11 language and threading library. Keep the
 # requirement target-independent so every library, example, test, and tool is
