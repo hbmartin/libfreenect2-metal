@@ -168,7 +168,11 @@ private:
 class CloseBlockingRgbProcessor : public RgbPacketProcessor
 {
 public:
-  CloseBlockingRgbProcessor() : clearing_listener_(false), allow_clear_(false), processed_(false) {}
+  CloseBlockingRgbProcessor()
+      : clearing_listener_(false), allow_clear_(false), listener_clear_timed_out_(false),
+        processed_(false)
+  {
+  }
 
   virtual void setFrameListener(FrameListener* listener)
   {
@@ -177,7 +181,8 @@ public:
       std::unique_lock<std::mutex> lock(mutex_);
       clearing_listener_ = true;
       condition_.notify_all();
-      condition_.wait(lock, [this] { return allow_clear_; });
+      if (!condition_.wait_for(lock, std::chrono::seconds(5), [this] { return allow_clear_; }))
+        listener_clear_timed_out_ = true;
     }
     RgbPacketProcessor::setFrameListener(listener);
   }
@@ -211,11 +216,18 @@ public:
     return processed_;
   }
 
+  bool listenerClearTimedOut() const
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    return listener_clear_timed_out_;
+  }
+
 private:
   mutable std::mutex mutex_;
   std::condition_variable condition_;
   bool clearing_listener_;
   bool allow_clear_;
+  bool listener_clear_timed_out_;
   bool processed_;
 };
 
@@ -831,6 +843,7 @@ TEST(RecordingReplay, CloseSerializesAConcurrentStart)
   EXPECT_FALSE(completed_while_close_was_blocked);
   EXPECT_TRUE(close_result);
   EXPECT_FALSE(start_result);
+  EXPECT_FALSE(processor->listenerClearTimedOut());
   EXPECT_FALSE(processor->processed());
   EXPECT_EQ(DeviceClosed, device->getState());
 }

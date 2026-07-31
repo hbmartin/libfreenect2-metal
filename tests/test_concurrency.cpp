@@ -4,7 +4,6 @@
 #include <chrono>
 #include <future>
 #include <limits>
-#include <memory>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -78,41 +77,44 @@ Frame* makeTimestampedFrame(uint32_t timestamp)
 
 TEST(PoolAllocator, BlocksUntilABufferIsReleased)
 {
-  const std::shared_ptr<PoolAllocator> allocator(new PoolAllocator());
-  const std::shared_ptr<std::atomic<bool>> entered(new std::atomic<bool>(false));
-  const std::shared_ptr<std::promise<Buffer*>> first_promise(new std::promise<Buffer*>());
-  const std::shared_ptr<std::promise<Buffer*>> second_promise(new std::promise<Buffer*>());
-  const std::shared_ptr<std::promise<Buffer*>> result_promise(new std::promise<Buffer*>());
-  std::future<Buffer*> first_result = first_promise->get_future();
-  std::future<Buffer*> second_result = second_promise->get_future();
-  std::future<Buffer*> result = result_promise->get_future();
+  PoolAllocator allocator;
+  std::atomic<bool> entered(false);
+  std::promise<Buffer*> first_promise;
+  std::promise<Buffer*> second_promise;
+  std::promise<Buffer*> result_promise;
+  std::future<Buffer*> first_result = first_promise.get_future();
+  std::future<Buffer*> second_result = second_promise.get_future();
+  std::future<Buffer*> result = result_promise.get_future();
   std::thread waiter(
-      [=]()
+      [&]()
       {
-        first_promise->set_value(allocator->allocate(64));
-        second_promise->set_value(allocator->allocate(64));
-        entered->store(true);
-        result_promise->set_value(allocator->allocate(64));
+        first_promise.set_value(allocator.allocate(64));
+        second_promise.set_value(allocator.allocate(64));
+        entered.store(true);
+        result_promise.set_value(allocator.allocate(64));
       });
 
-  if (first_result.wait_for(std::chrono::seconds(2)) != std::future_status::ready ||
-      second_result.wait_for(std::chrono::seconds(2)) != std::future_status::ready)
-  {
-    waiter.detach();
-    ADD_FAILURE() << "initial pool allocations did not complete before the deadline";
-    return;
-  }
   Buffer* first = first_result.get();
   Buffer* second = second_result.get();
-  while (!entered->load())
+  const std::chrono::steady_clock::time_point entered_deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!entered.load() && std::chrono::steady_clock::now() < entered_deadline)
     std::this_thread::yield();
+  if (!entered.load())
+  {
+    allocator.free(first);
+    allocator.free(second);
+    waiter.join();
+    ADD_FAILURE() << "waiter did not start the blocking allocation before the deadline";
+    return;
+  }
   EXPECT_EQ(result.wait_for(std::chrono::milliseconds(25)), std::future_status::timeout);
 
-  allocator->free(first);
+  allocator.free(first);
   std::future_status status = result.wait_for(std::chrono::seconds(2));
   if (status != std::future_status::ready)
   {
-    allocator->free(second);
+    allocator.free(second);
     waiter.join();
     ASSERT_EQ(status, std::future_status::ready);
     return;
@@ -123,8 +125,8 @@ TEST(PoolAllocator, BlocksUntilABufferIsReleased)
 
   EXPECT_EQ(reused, first);
   EXPECT_EQ(reused->length, 0u);
-  allocator->free(reused);
-  allocator->free(second);
+  allocator.free(reused);
+  allocator.free(second);
 }
 
 TEST(AsyncPacketProcessor, ProcessesAndReleasesPacketsUnderLoad)

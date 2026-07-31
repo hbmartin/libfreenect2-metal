@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <chrono>
 #include <thread>
 
 #include <libfreenect2/rgb_decoder_fallback.h>
@@ -185,8 +186,17 @@ TEST(RgbDecoderFallback, PublishesHealthWithoutReadingPrimaryAcrossThreads)
   RgbPacket packet = samplePacket(50);
 
   std::thread worker([&decoder, &packet]() { decoder.process(packet); });
-  while (!primary->processing())
+  const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!primary->processing() && std::chrono::steady_clock::now() < deadline)
     std::this_thread::yield();
+  if (!primary->processing())
+  {
+    primary->finish();
+    worker.join();
+    ADD_FAILURE() << "primary decoder did not start processing before the deadline";
+    return;
+  }
 
   bool remained_good = true;
   for (int i = 0; i < 1000; ++i)

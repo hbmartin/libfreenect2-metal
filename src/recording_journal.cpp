@@ -11,6 +11,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cmath>
+#include <cstdint>
 #include <exception>
 #include <limits>
 #include <stdexcept>
@@ -140,8 +141,10 @@ bool parseJournalEntry(const std::string& line, JournalEntry& entry, std::string
     parsed.stream = value.at("stream").get<std::string>();
     parsed.path = value.at("path").get<std::string>();
     const uint64_t byte_count = requireUnsignedField(value, "byte_count");
-    if (byte_count > std::numeric_limits<size_t>::max())
+#if SIZE_MAX < UINT64_MAX
+    if (byte_count > static_cast<uint64_t>(SIZE_MAX))
       throw std::range_error("byte count is not representable");
+#endif
     parsed.byte_count = static_cast<size_t>(byte_count);
     parsed.device_timestamp = requireUnsigned32Field(value, "device_timestamp");
     parsed.sequence = requireUnsigned32Field(value, "sequence");
