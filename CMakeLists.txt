@@ -388,7 +388,7 @@ IF(ENABLE_OPENGL)
     LIST(APPEND LIBFREENECT2_DLLS ${GLFW3_DLL})
     LIST(APPEND LIBRARIES
       ${GLFW3_LIBRARIES}
-      ${OPENGL_gl_LIBRARY}
+      OpenGL::GL
     )
     LIST(APPEND SOURCES
       src/flextGL.cpp
@@ -454,6 +454,17 @@ IF(ENABLE_OPENCL)
         src/opencl_depth_packet_processor.cpp
         src/opencl_kde_depth_packet_processor.cpp
         APPEND PROPERTY COMPILE_OPTIONS -fno-exceptions
+      )
+    ENDIF()
+
+    # The bundled Khronos C++ bindings use aggregate initialization that
+    # newer Clang versions diagnose with -Wmissing-braces. Suppress that
+    # third-party-only warning without weakening warnings for project code.
+    IF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      SET_PROPERTY(SOURCE
+        src/opencl_depth_packet_processor.cpp
+        src/opencl_kde_depth_packet_processor.cpp
+        APPEND PROPERTY COMPILE_OPTIONS -Wno-missing-braces
       )
     ENDIF()
   ENDIF(OpenCL_FOUND)
@@ -765,6 +776,7 @@ IF(BUILD_TESTING)
   # sources with default visibility that the tests link against instead. The
   # shipping library is left untouched.
   ADD_LIBRARY(freenect2_testlib STATIC ${SOURCES})
+  TARGET_COMPILE_DEFINITIONS(freenect2_testlib PUBLIC LIBFREENECT2_STATIC_DEFINE)
   libfreenect2_apply_quality(freenect2_testlib PUBLIC)
   TARGET_INCLUDE_DIRECTORIES(freenect2_testlib SYSTEM PRIVATE "${MY_DIR}/third_party")
   TARGET_LINK_LIBRARIES(freenect2_testlib PUBLIC ${LIBRARIES})

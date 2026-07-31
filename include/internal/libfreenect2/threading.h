@@ -73,6 +73,8 @@ namespace this_thread
     prctl(PR_SET_NAME, name);
 #elif defined(__APPLE__)
     pthread_setname_np(name);
+#else
+    (void)name;
 #endif
   }
 }

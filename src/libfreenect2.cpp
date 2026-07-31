@@ -58,7 +58,6 @@
 
 namespace libfreenect2
 {
-using namespace libfreenect2;
 using namespace libfreenect2::usb;
 using namespace libfreenect2::protocol;
 

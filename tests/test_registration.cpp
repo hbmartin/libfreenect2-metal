@@ -22,6 +22,7 @@
 #include <libfreenect2/registration.h>
 #include <libfreenect2/frame_listener.hpp>
 #include <libfreenect2/libfreenect2.hpp>
+#include <libfreenect2/logger.h>
 
 #include "support/synthetic.h"
 
@@ -35,6 +36,35 @@ namespace
 
 const int kW = 512;
 const int kH = 424;
+
+class CapturingLogger : public libfreenect2::Logger
+{
+public:
+  CapturingLogger(std::vector<Level>* levels, std::vector<std::string>* messages)
+      : levels_(levels), messages_(messages)
+  {
+    level_ = Debug;
+  }
+
+  virtual void log(Level level, const std::string& message)
+  {
+    levels_->push_back(level);
+    messages_->push_back(message);
+  }
+
+private:
+  std::vector<Level>* levels_;
+  std::vector<std::string>* messages_;
+};
+
+class RestoreDefaultLogger
+{
+public:
+  ~RestoreDefaultLogger()
+  {
+    libfreenect2::setGlobalLogger(libfreenect2::createConsoleLoggerWithDefaultLevel());
+  }
+};
 
 // Fill a 512x424 float depth frame with a constant depth (mm).
 Frame* makeConstantDepthFrame(float depth_mm)
@@ -159,6 +189,11 @@ TEST(Registration, ApplyRejectsUnsetOrWrongFormatsWithoutTouchingOutputs)
 {
   Registration reg(makeIrParams(), makeColorParams());
 
+  std::vector<libfreenect2::Logger::Level> log_levels;
+  std::vector<std::string> log_messages;
+  libfreenect2::setGlobalLogger(new CapturingLogger(&log_levels, &log_messages));
+  RestoreDefaultLogger restore_default_logger;
+
   Frame rgb(1920, 1080, 4); // format intentionally left at the Invalid default
   std::memset(rgb.data, 0x7f, 1920 * 1080 * 4);
   Frame* depth = makeConstantDepthFrame(1500.0f);
@@ -184,6 +219,14 @@ TEST(Registration, ApplyRejectsUnsetOrWrongFormatsWithoutTouchingOutputs)
   reg.undistortDepth(depth, &undistorted);
   EXPECT_EQ(undistorted.format, Frame::Invalid);
   EXPECT_EQ(std::memcmp(undistorted.data, untouched.data(), untouched.size()), 0);
+
+  ASSERT_EQ(log_levels.size(), 3u);
+  ASSERT_EQ(log_messages.size(), 3u);
+  for (size_t i = 0; i < log_levels.size(); ++i)
+    EXPECT_EQ(log_levels[i], libfreenect2::Logger::Error);
+  EXPECT_NE(log_messages[0].find("rgb must be 1920x1080 4Bpp BGRX or RGBX"), std::string::npos);
+  EXPECT_NE(log_messages[1].find("depth must be 512x424 Float"), std::string::npos);
+  EXPECT_NE(log_messages[2].find("depth must be 512x424 Float"), std::string::npos);
 
   delete depth;
 }

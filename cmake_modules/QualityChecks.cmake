@@ -51,13 +51,22 @@ ADD_LIBRARY(libfreenect2_quality_options INTERFACE)
 IF(ENABLE_STRICT_WARNINGS)
   IF(MSVC)
     TARGET_COMPILE_OPTIONS(libfreenect2_quality_options INTERFACE
-      "$<$<COMPILE_LANGUAGE:CXX>:/W4>"
+      "$<$<COMPILE_LANGUAGE:CXX>:/W4;/wd4251>"
     )
   ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     TARGET_COMPILE_OPTIONS(libfreenect2_quality_options INTERFACE
       "$<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wall;-Wextra;-Wformat=2;-Wshadow;-Wundef>"
     )
   ENDIF()
+ENDIF()
+
+IF(MSVC)
+  # Keep Windows SDK headers from defining min/max macros over the C++
+  # standard-library functions, and avoid pulling unnecessary legacy APIs.
+  TARGET_COMPILE_DEFINITIONS(libfreenect2_quality_options INTERFACE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
+  )
 ENDIF()
 
 IF(ENABLE_WARNINGS_AS_ERRORS)
