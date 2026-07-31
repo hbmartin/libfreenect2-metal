@@ -453,13 +453,20 @@ jobs:
           if ! git cat-file -e "$base" 2>/dev/null; then
             base="HEAD~1"
           fi
-          # git clang-format --diff exits 1 when formatting differs; keep the
-          # output and let the content check below decide pass/fail.
-          format_diff=$(git clang-format --diff "$base" HEAD || true)
+          # git clang-format --diff may exit 1 when formatting differs. Capture
+          # that status without allowing unrelated execution failures to pass.
+          set +e
+          format_diff=$(git clang-format --diff "$base" HEAD)
+          format_status=$?
+          set -e
           if [[ "$format_diff" == *"diff --git"* ]]; then
             echo "$format_diff"
             echo "Changed C++ lines are not clang-formatted." >&2
             exit 1
+          fi
+          if (( format_status != 0 )); then
+            echo "git clang-format failed with status $format_status." >&2
+            exit "$format_status"
           fi
 
   static-analysis:

@@ -388,6 +388,7 @@ private:
   void run();
   void runRecording();
   bool waitForRecordedOffset(uint64_t replay_start_us, uint64_t offset_us);
+  void stopWorkerLocked();
   static void static_execute(void* arg);
 
   Freenect2ReplayImpl* context_;
@@ -397,8 +398,9 @@ private:
 
   std::vector<std::string> frame_filenames_;
   libfreenect2::thread* t_;
-  // Serializes startStreams()/stop() so concurrent callers cannot join or
-  // delete t_ twice. Never taken by the worker thread itself.
+  // Serializes startStreams()/stop()/close() so concurrent callers cannot
+  // create, join, or delete t_ during another lifecycle transition. Never
+  // taken by the worker thread itself.
   libfreenect2::mutex thread_mutex_;
   std::atomic<bool> running_;
   libfreenect2::mutex timing_mutex_;
@@ -1927,15 +1929,19 @@ bool Freenect2ReplayDevice::open()
 
 bool Freenect2ReplayDevice::close()
 {
+  libfreenect2::lock_guard thread_guard(thread_mutex_);
   LOG_INFO << "closing...";
 
-  if (getState() == DeviceClosed)
   {
-    LOG_INFO << "already closed, doing nothing";
-    return true;
+    libfreenect2::lock_guard guard(state_mutex_);
+    if (state_ == DeviceClosed)
+    {
+      LOG_INFO << "already closed, doing nothing";
+      return true;
+    }
   }
 
-  stop();
+  stopWorkerLocked();
 
   if (pipeline_ != NULL && pipeline_->getRgbPacketProcessor() != 0)
     pipeline_->getRgbPacketProcessor()->setFrameListener(0);
@@ -2017,8 +2023,8 @@ bool Freenect2ReplayDevice::start()
 
 bool Freenect2ReplayDevice::startStreams(bool enable_rgb, bool enable_depth)
 {
-  LOG_INFO << "Freenect2ReplayDevice: starting: rgb: " << enable_rgb << ", depth: " << enable_depth;
   libfreenect2::lock_guard thread_guard(thread_mutex_);
+  LOG_INFO << "Freenect2ReplayDevice: starting: rgb: " << enable_rgb << ", depth: " << enable_depth;
   {
     libfreenect2::lock_guard guard(state_mutex_);
     if (state_ != DeviceOpen || running_.load() || (!enable_rgb && !enable_depth))
@@ -2047,6 +2053,12 @@ bool Freenect2ReplayDevice::startStreams(bool enable_rgb, bool enable_depth)
 bool Freenect2ReplayDevice::stop()
 {
   libfreenect2::lock_guard thread_guard(thread_mutex_);
+  stopWorkerLocked();
+  return true;
+}
+
+void Freenect2ReplayDevice::stopWorkerLocked()
+{
   {
     libfreenect2::lock_guard guard(timing_mutex_);
     running_.store(false);
@@ -2067,7 +2079,6 @@ bool Freenect2ReplayDevice::stop()
     }
   }
   LOG_INFO << "replay stopped";
-  return true;
 }
 
 bool hasSuffix(const std::string& str, const std::string& suffix)

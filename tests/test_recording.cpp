@@ -29,6 +29,7 @@
 #include <libfreenect2/recording_loader.h>
 #include <libfreenect2/recording_manifest.h>
 #include <libfreenect2/recording_utils.h>
+#include <libfreenect2/rgb_packet_processor.h>
 #include <libfreenect2/timing.h>
 
 #include "support/synthetic.h"
@@ -96,6 +97,20 @@ void removeTestRecording(const std::string& directory)
 #endif
 }
 
+class ScopedRecordingDirectory
+{
+public:
+  ScopedRecordingDirectory() : path_(uniqueRecordingDirectory()) {}
+  ~ScopedRecordingDirectory() { removeTestRecording(path_); }
+
+  const std::string& path() const { return path_; }
+
+private:
+  ScopedRecordingDirectory(const ScopedRecordingDirectory&);
+  ScopedRecordingDirectory& operator=(const ScopedRecordingDirectory&);
+  std::string path_;
+};
+
 CalibrationData sampleCalibrationData()
 {
   CalibrationData calibration = {};
@@ -149,6 +164,70 @@ private:
   std::condition_variable condition_;
   std::vector<Frame::Type> types_;
   std::vector<uint64_t> delivery_times_;
+};
+
+class CloseBlockingRgbProcessor : public RgbPacketProcessor
+{
+public:
+  CloseBlockingRgbProcessor() : clearing_listener_(false), allow_clear_(false), processed_(false) {}
+
+  virtual void setFrameListener(FrameListener* listener)
+  {
+    if (listener == 0)
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      clearing_listener_ = true;
+      condition_.notify_all();
+      condition_.wait(lock, [this] { return allow_clear_; });
+    }
+    RgbPacketProcessor::setFrameListener(listener);
+  }
+
+  virtual void process(const RgbPacket&)
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    processed_ = true;
+    condition_.notify_all();
+  }
+
+  bool waitForListenerClear()
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return condition_.wait_for(lock, std::chrono::seconds(1),
+                               [this] { return clearing_listener_; });
+  }
+
+  void allowListenerClear()
+  {
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      allow_clear_ = true;
+    }
+    condition_.notify_all();
+  }
+
+  bool processed() const
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    return processed_;
+  }
+
+private:
+  mutable std::mutex mutex_;
+  std::condition_variable condition_;
+  bool clearing_listener_;
+  bool allow_clear_;
+  bool processed_;
+};
+
+class CloseBlockingPacketPipeline : public DumpPacketPipeline
+{
+public:
+  virtual RgbPacketProcessor* getRgbPacketProcessor() const { return &rgb_processor_; }
+  CloseBlockingRgbProcessor* rgbProcessor() { return &rgb_processor_; }
+
+private:
+  mutable CloseBlockingRgbProcessor rgb_processor_;
 };
 
 } // namespace
@@ -637,7 +716,8 @@ TEST(RecordingReplay, HonorsRequestedStreamCombinations)
 
 TEST(RecordingReplay, SurvivesConcurrentStopCalls)
 {
-  const std::string directory = uniqueRecordingDirectory();
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
@@ -671,7 +751,84 @@ TEST(RecordingReplay, SurvivesConcurrentStopCalls)
     EXPECT_TRUE(device->stop());
   }
   EXPECT_TRUE(device->close());
-  removeTestRecording(directory);
+}
+
+TEST(RecordingReplay, CloseSerializesAConcurrentStart)
+{
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
+  RecordingWriter writer(directory, 2);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
+      << writer.getLastError();
+
+  Frame source(1, 1, 4);
+  source.format = Frame::Raw;
+  source.timestamp = 345;
+  source.sequence = 6;
+  source.arrival_timestamp_us = monotonicTimeMicroseconds();
+  std::memset(source.data, 0x44, 4);
+  EXPECT_FALSE(writer.onNewFrame(Frame::Color, &source));
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  Freenect2Replay replay;
+  CloseBlockingPacketPipeline* pipeline = new CloseBlockingPacketPipeline();
+  CloseBlockingRgbProcessor* processor = pipeline->rgbProcessor();
+  Freenect2Device* device = replay.openRecording(directory, pipeline, ReplayOptions());
+  ASSERT_NE(static_cast<Freenect2Device*>(0), device);
+
+  bool close_result = false;
+  std::thread closer([&]() { close_result = device->close(); });
+  const bool close_reached_listener_clear = processor->waitForListenerClear();
+  if (!close_reached_listener_clear)
+  {
+    processor->allowListenerClear();
+    closer.join();
+    ADD_FAILURE() << "close() did not reach listener teardown";
+    return;
+  }
+
+  std::mutex start_mutex;
+  std::condition_variable start_condition;
+  bool start_entered = false;
+  bool start_complete = false;
+  bool start_result = true;
+  std::thread starter(
+      [&]()
+      {
+        {
+          std::lock_guard<std::mutex> guard(start_mutex);
+          start_entered = true;
+        }
+        start_condition.notify_all();
+        const bool result = device->startStreams(true, false);
+        {
+          std::lock_guard<std::mutex> guard(start_mutex);
+          start_result = result;
+          start_complete = true;
+        }
+        start_condition.notify_all();
+      });
+
+  bool completed_while_close_was_blocked = false;
+  {
+    std::unique_lock<std::mutex> lock(start_mutex);
+    EXPECT_TRUE(
+        start_condition.wait_for(lock, std::chrono::seconds(1), [&]() { return start_entered; }));
+    completed_while_close_was_blocked = start_condition.wait_for(
+        lock, std::chrono::milliseconds(200), [&]() { return start_complete; });
+  }
+
+  processor->allowListenerClear();
+  closer.join();
+  starter.join();
+  EXPECT_TRUE(device->stop());
+
+  EXPECT_FALSE(completed_while_close_was_blocked);
+  EXPECT_TRUE(close_result);
+  EXPECT_FALSE(start_result);
+  EXPECT_FALSE(processor->processed());
+  EXPECT_EQ(DeviceClosed, device->getState());
 }
 
 TEST(RecordingReplay, PreservesGlobalJournalOrderInFastMode)

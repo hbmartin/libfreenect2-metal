@@ -15,8 +15,11 @@ namespace libfreenect2
 {
 
 RgbDecoderFallback::RgbDecoderFallback(RgbPacketProcessor* primary, RgbPacketProcessor* fallback)
-    : primary_(primary), fallback_(fallback), using_fallback_(primary == 0 || !primary->good())
+    : primary_(primary), fallback_(fallback), using_fallback_(primary == 0 || !primary->good()),
+      good_(false)
 {
+  RgbPacketProcessor* active = using_fallback_.load() ? fallback_ : primary_;
+  good_.store(active != 0 && active->good());
 }
 
 RgbDecoderFallback::~RgbDecoderFallback()
@@ -27,7 +30,7 @@ RgbDecoderFallback::~RgbDecoderFallback()
 
 bool RgbDecoderFallback::good()
 {
-  return using_fallback_ ? fallback_ != 0 && fallback_->good() : primary_ != 0 && primary_->good();
+  return good_.load();
 }
 
 const char* RgbDecoderFallback::name()
@@ -50,7 +53,14 @@ void RgbDecoderFallback::process(const RgbPacket& packet)
   if (using_fallback_)
   {
     if (fallback_ != 0)
+    {
       fallback_->process(packet);
+      good_.store(fallback_->good());
+    }
+    else
+    {
+      good_.store(false);
+    }
     return;
   }
 
@@ -64,6 +74,7 @@ void RgbDecoderFallback::process(const RgbPacket& packet)
   primary_->process(packet);
   if (!primary_->good())
   {
+    good_.store(fallback_ != 0 && fallback_->good());
     using_fallback_ = true;
     LOG_WARNING << "primary RGB decoding failed; using the fallback for this and subsequent frames";
     if (fallback_ != 0)
@@ -73,7 +84,12 @@ void RgbDecoderFallback::process(const RgbPacket& packet)
         retry.jpeg_buffer = &jpeg_copy[0];
       retry.memory = 0;
       fallback_->process(retry);
+      good_.store(fallback_->good());
     }
+  }
+  else
+  {
+    good_.store(true);
   }
 }
 
