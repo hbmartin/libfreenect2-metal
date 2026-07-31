@@ -45,6 +45,11 @@ RgbPacketProcessor::~RgbPacketProcessor()
 {
 }
 
+bool RgbPacketProcessor::good()
+{
+  return true;
+}
+
 void RgbPacketProcessor::setFrameListener(libfreenect2::FrameListener *listener)
 {
   listener_ = listener;

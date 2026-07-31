@@ -12,6 +12,7 @@
 #include <libfreenect2/libfreenect2.hpp>
 #include <libfreenect2/packet_pipeline.h>
 #include <libfreenect2/protocol/response.h>
+#include <libfreenect2/rgb_packet_processor.h>
 
 namespace libfreenect2
 {
@@ -80,6 +81,24 @@ TEST(PublicApi, ExposesCanonicalPipelineFactories)
             libfreenect2::createPacketPipeline("gl"));
   EXPECT_EQ(static_cast<libfreenect2::PacketPipeline*>(NULL),
             libfreenect2::createPacketPipeline("cl"));
+}
+
+TEST(PublicApi, ConfiguresTheRgbDecoderPerPipeline)
+{
+  lf::PacketPipelineConfig config;
+  config.rgb_decoder = lf::PacketPipelineConfig::TurboJPEG;
+  config.allow_fallback = false;
+
+  lf::CpuPacketPipeline direct(config);
+  ASSERT_NE(static_cast<lf::RgbPacketProcessor*>(NULL), direct.getRgbPacketProcessor());
+  EXPECT_STREQ("TurboJPEG", direct.getRgbPacketProcessor()->name());
+  EXPECT_TRUE(direct.good());
+
+  lf::PacketPipeline* factory = lf::createPacketPipeline("cpu", config);
+  ASSERT_NE(static_cast<lf::PacketPipeline*>(NULL), factory);
+  EXPECT_STREQ("TurboJPEG", factory->getRgbPacketProcessor()->name());
+  EXPECT_TRUE(factory->good());
+  delete factory;
 }
 
 TEST(PublicApi, ParsesReplayFilenameFromTheFinalTwoUnderscores)

@@ -64,6 +64,7 @@ public:
   RgbPacketProcessor();
   virtual ~RgbPacketProcessor();
 
+  virtual bool good();
   virtual void setFrameListener(libfreenect2::FrameListener *listener);
 protected:
   libfreenect2::FrameListener *listener_;

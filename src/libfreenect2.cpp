@@ -1395,29 +1395,35 @@ bool Freenect2DeviceImpl::close()
 
 PacketPipeline* createPacketPipeline(const std::string& name, int device_id)
 {
+  return createPacketPipeline(name, PacketPipelineConfig(), device_id);
+}
+
+PacketPipeline* createPacketPipeline(const std::string& name,
+                                     const PacketPipelineConfig& config, int device_id)
+{
   (void)device_id;
 #if defined(LIBFREENECT2_WITH_OPENGL_SUPPORT)
   if (name == "opengl")
-    return new OpenGLPacketPipeline();
+    return new OpenGLPacketPipeline(config);
 #endif
 #if defined(LIBFREENECT2_WITH_CUDA_SUPPORT)
   if (name == "cuda")
-    return new CudaPacketPipeline(device_id);
+    return new CudaPacketPipeline(config, device_id);
   if (name == "cuda_kde")
-    return new CudaKdePacketPipeline(device_id);
+    return new CudaKdePacketPipeline(config, device_id);
 #endif
 #if defined(LIBFREENECT2_WITH_OPENCL_SUPPORT)
   if (name == "opencl")
-    return new OpenCLPacketPipeline(device_id);
+    return new OpenCLPacketPipeline(config, device_id);
   if (name == "opencl_kde")
-    return new OpenCLKdePacketPipeline(device_id);
+    return new OpenCLKdePacketPipeline(config, device_id);
 #endif
 #if defined(LIBFREENECT2_WITH_METAL_SUPPORT)
   if (name == "metal")
-    return new MetalPacketPipeline(device_id);
+    return new MetalPacketPipeline(config, device_id);
 #endif
   if (name == "cpu")
-    return new CpuPacketPipeline();
+    return new CpuPacketPipeline(config);
   if (name == "dump")
     return new DumpPacketPipeline();
   return NULL;
@@ -1480,6 +1486,11 @@ static PacketPipeline* acceptIfDepthProcessorGood(PacketPipeline* pipeline, cons
 
 PacketPipeline* createDefaultPacketPipeline()
 {
+  return createDefaultPacketPipeline(PacketPipelineConfig());
+}
+
+PacketPipeline* createDefaultPacketPipeline(const PacketPipelineConfig& config)
+{
   const char* pipeline_env = std::getenv("LIBFREENECT2_PIPELINE");
   if (pipeline_env)
   {
@@ -1488,7 +1499,7 @@ PacketPipeline* createDefaultPacketPipeline()
       requested = "opengl";
     else if (requested == "cl")
       requested = "opencl";
-    PacketPipeline* pipeline = createPacketPipeline(requested);
+    PacketPipeline* pipeline = createPacketPipeline(requested, config);
     if (pipeline != NULL && pipeline->good())
       return pipeline;
     delete pipeline;
@@ -1506,22 +1517,22 @@ PacketPipeline* createDefaultPacketPipeline()
 #endif
 #if defined(LIBFREENECT2_WITH_METAL_SUPPORT)
   // Metal is the native GPU API on Apple platforms, where OpenGL is deprecated.
-  if ((pipeline = acceptIfDepthProcessorGood(new MetalPacketPipeline(), "Metal")))
+  if ((pipeline = acceptIfDepthProcessorGood(new MetalPacketPipeline(config), "Metal")))
     return pipeline;
 #endif
 #if defined(LIBFREENECT2_WITH_OPENGL_SUPPORT)
-  if ((pipeline = acceptIfDepthProcessorGood(new OpenGLPacketPipeline(), "OpenGL")))
+  if ((pipeline = acceptIfDepthProcessorGood(new OpenGLPacketPipeline(config), "OpenGL")))
     return pipeline;
 #endif
 #if defined(LIBFREENECT2_WITH_CUDA_SUPPORT)
-  if ((pipeline = acceptIfDepthProcessorGood(new CudaPacketPipeline(), "CUDA")))
+  if ((pipeline = acceptIfDepthProcessorGood(new CudaPacketPipeline(config), "CUDA")))
     return pipeline;
 #endif
 #if defined(LIBFREENECT2_WITH_OPENCL_SUPPORT)
-  if ((pipeline = acceptIfDepthProcessorGood(new OpenCLPacketPipeline(), "OpenCL")))
+  if ((pipeline = acceptIfDepthProcessorGood(new OpenCLPacketPipeline(config), "OpenCL")))
     return pipeline;
 #endif
-  return new CpuPacketPipeline();
+  return new CpuPacketPipeline(config);
 }
 
 Freenect2::Freenect2(void* usb_context) : impl_(new Freenect2Impl(usb_context)) {}

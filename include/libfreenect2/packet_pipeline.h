@@ -43,6 +43,25 @@ class RgbPacketProcessor;
 class DepthPacketProcessor;
 class PacketPipelineComponents;
 
+/** Per-pipeline color decoder policy. */
+struct LIBFREENECT2_API PacketPipelineConfig
+{
+  enum RgbDecoder
+  {
+    Auto,
+    TurboJPEG,
+    VideoToolbox,
+    VAAPI,
+    TegraJPEG
+  };
+
+  PacketPipelineConfig();
+
+  RgbDecoder rgb_decoder;
+  std::string vaapi_device;
+  bool allow_fallback;
+};
+
 /** @defgroup pipeline Packet Pipelines
  * Implement various methods to decode color and depth images with different performance and platform support
  *
@@ -80,9 +99,13 @@ protected:
 /** Construct a compiled pipeline by canonical name, or return NULL. The caller
  * owns the returned object until it is passed to Freenect2::openDevice(). */
 LIBFREENECT2_API PacketPipeline *createPacketPipeline(const std::string &name, int device_id = -1);
+LIBFREENECT2_API PacketPipeline *createPacketPipeline(const std::string &name,
+                                                       const PacketPipelineConfig &config,
+                                                       int device_id = -1);
 
 /** Construct the environment-selected/default pipeline. */
 LIBFREENECT2_API PacketPipeline *createDefaultPacketPipeline();
+LIBFREENECT2_API PacketPipeline *createDefaultPacketPipeline(const PacketPipelineConfig &config);
 
 /** Canonical names of pipelines compiled into this library. */
 LIBFREENECT2_API std::vector<std::string> getCompiledPacketPipelines();
@@ -109,6 +132,7 @@ class LIBFREENECT2_API CpuPacketPipeline : public PacketPipeline
 {
 public:
   CpuPacketPipeline();
+  explicit CpuPacketPipeline(const PacketPipelineConfig &config);
   virtual ~CpuPacketPipeline();
 };
 
@@ -121,6 +145,8 @@ protected:
   bool debug_;
 public:
   OpenGLPacketPipeline(void *parent_opengl_context = 0, bool debug = false);
+  OpenGLPacketPipeline(const PacketPipelineConfig &config,
+                       void *parent_opengl_context = 0, bool debug = false);
   virtual ~OpenGLPacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_OPENGL_SUPPORT
@@ -133,6 +159,7 @@ protected:
   const int deviceId;
 public:
   OpenCLPacketPipeline(const int deviceId = -1);
+  OpenCLPacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
   virtual ~OpenCLPacketPipeline();
 };
 
@@ -148,6 +175,7 @@ protected:
   const int deviceId;
 public:
   OpenCLKdePacketPipeline(const int deviceId = -1);
+  OpenCLKdePacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
   virtual ~OpenCLKdePacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_OPENCL_SUPPORT
@@ -159,6 +187,7 @@ protected:
   const int deviceId;
 public:
   CudaPacketPipeline(const int deviceId = -1);
+  CudaPacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
   virtual ~CudaPacketPipeline();
 };
 
@@ -174,6 +203,7 @@ protected:
   const int deviceId;
 public:
   CudaKdePacketPipeline(const int deviceId = -1);
+  CudaKdePacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
   virtual ~CudaKdePacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_CUDA_SUPPORT
@@ -186,6 +216,7 @@ protected:
   const int deviceId;
 public:
   MetalPacketPipeline(const int deviceId = -1);
+  MetalPacketPipeline(const PacketPipelineConfig &config, const int deviceId = -1);
   virtual ~MetalPacketPipeline();
 };
 #endif // LIBFREENECT2_WITH_METAL_SUPPORT
