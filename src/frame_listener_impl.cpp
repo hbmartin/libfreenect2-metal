@@ -28,6 +28,13 @@
 
 #include <libfreenect2/frame_listener_impl.h>
 #include <libfreenect2/threading.h>
+#include <libfreenect2/timing.h>
+
+#include <algorithm>
+#include <chrono>
+#include <deque>
+#include <limits>
+#include <vector>
 
 namespace libfreenect2
 {
@@ -193,6 +200,222 @@ bool SyncMultiFrameListener::onNewFrame(Frame::Type type, Frame *frame)
 
   impl_->condition_.notify_one();
 
+  return true;
+}
+
+TimestampAlignedFrameListener::Statistics::Statistics()
+    : delivered(0), dropped(0), last_delta_ticks(0), maximum_delta_ticks(0)
+{
+}
+
+/** Implementation class for timestamp-aligning bounded frame queues. */
+class TimestampAlignedFrameListenerImpl
+{
+public:
+  typedef std::deque<Frame*> FrameQueue;
+  typedef std::map<Frame::Type, FrameQueue> FrameQueues;
+
+  libfreenect2::mutex mutex_;
+  libfreenect2::condition_variable condition_;
+  FrameQueues queues_;
+  std::vector<Frame::Type> subscribed_types_;
+  FrameMap ready_frame_;
+  TimestampAlignedFrameListener::Statistics statistics_;
+  const unsigned int subscribed_frame_types_;
+  const uint32_t max_delta_ticks_;
+  const size_t queue_capacity_;
+  uint32_t ready_delta_ticks_;
+
+  TimestampAlignedFrameListenerImpl(unsigned int frame_types, uint32_t max_delta_ticks,
+                                    size_t queue_capacity)
+      : subscribed_frame_types_(frame_types), max_delta_ticks_(max_delta_ticks),
+        queue_capacity_(std::max<size_t>(queue_capacity, 1)), ready_delta_ticks_(0)
+  {
+    const Frame::Type supported_types[] = {Frame::Color, Frame::Ir, Frame::Depth};
+    for (size_t i = 0; i < sizeof(supported_types) / sizeof(supported_types[0]); ++i)
+    {
+      if ((frame_types & supported_types[i]) != 0)
+      {
+        subscribed_types_.push_back(supported_types[i]);
+        queues_[supported_types[i]] = FrameQueue();
+      }
+    }
+  }
+
+  bool hasNewFrame() const { return !ready_frame_.empty(); }
+
+  void searchCombinations(size_t type_index, std::vector<size_t>& candidate,
+                          std::vector<size_t>& best, uint32_t& best_span) const
+  {
+    if (type_index == subscribed_types_.size())
+    {
+      std::vector<uint32_t> timestamps(subscribed_types_.size());
+      for (size_t i = 0; i < subscribed_types_.size(); ++i)
+      {
+        const FrameQueue& queue = queues_.find(subscribed_types_[i])->second;
+        timestamps[i] = queue[candidate[i]]->timestamp;
+      }
+
+      const uint32_t span = deviceTimestampSpan(timestamps.data(), timestamps.size());
+      if (best.empty() || span < best_span)
+      {
+        best = candidate;
+        best_span = span;
+      }
+      return;
+    }
+
+    const FrameQueue& queue = queues_.find(subscribed_types_[type_index])->second;
+    for (size_t i = 0; i < queue.size(); ++i)
+    {
+      candidate[type_index] = i;
+      searchCombinations(type_index + 1, candidate, best, best_span);
+    }
+  }
+
+  bool prepareNextFrame()
+  {
+    if (hasNewFrame() || subscribed_types_.empty())
+      return false;
+
+    for (size_t i = 0; i < subscribed_types_.size(); ++i)
+    {
+      if (queues_[subscribed_types_[i]].empty())
+        return false;
+    }
+
+    std::vector<size_t> candidate(subscribed_types_.size(), 0);
+    std::vector<size_t> best;
+    uint32_t best_span = std::numeric_limits<uint32_t>::max();
+    searchCombinations(0, candidate, best, best_span);
+    if (best.empty() || best_span > max_delta_ticks_)
+      return false;
+
+    for (size_t i = 0; i < subscribed_types_.size(); ++i)
+    {
+      const Frame::Type type = subscribed_types_[i];
+      FrameQueue& queue = queues_[type];
+      for (size_t skipped = 0; skipped < best[i]; ++skipped)
+      {
+        delete queue.front();
+        queue.pop_front();
+        ++statistics_.dropped;
+      }
+      ready_frame_[type] = queue.front();
+      queue.pop_front();
+    }
+
+    ready_delta_ticks_ = best_span;
+    return true;
+  }
+
+  bool takeReadyFrame(FrameMap& frame)
+  {
+    if (!hasNewFrame())
+      return false;
+
+    frame = ready_frame_;
+    ready_frame_.clear();
+    ++statistics_.delivered;
+    statistics_.last_delta_ticks = ready_delta_ticks_;
+    statistics_.maximum_delta_ticks = std::max(statistics_.maximum_delta_ticks, ready_delta_ticks_);
+    return true;
+  }
+};
+
+TimestampAlignedFrameListener::TimestampAlignedFrameListener(unsigned int frame_types,
+                                                             uint32_t max_delta_ticks,
+                                                             size_t queue_capacity)
+    : impl_(new TimestampAlignedFrameListenerImpl(frame_types, max_delta_ticks, queue_capacity))
+{
+}
+
+TimestampAlignedFrameListener::~TimestampAlignedFrameListener()
+{
+  release(impl_->ready_frame_);
+  for (TimestampAlignedFrameListenerImpl::FrameQueues::iterator queue = impl_->queues_.begin();
+       queue != impl_->queues_.end(); ++queue)
+  {
+    while (!queue->second.empty())
+    {
+      delete queue->second.front();
+      queue->second.pop_front();
+    }
+  }
+  delete impl_;
+}
+
+bool TimestampAlignedFrameListener::hasNewFrame() const
+{
+  libfreenect2::unique_lock l(impl_->mutex_);
+  return impl_->hasNewFrame();
+}
+
+bool TimestampAlignedFrameListener::waitForNewFrame(FrameMap& frame, int milliseconds)
+{
+  libfreenect2::unique_lock l(impl_->mutex_);
+  const bool received = impl_->condition_.wait_for(l, std::chrono::milliseconds(milliseconds),
+                                                   [this] { return impl_->hasNewFrame(); });
+  if (!received)
+    return false;
+
+  impl_->takeReadyFrame(frame);
+  const bool another_frame_ready = impl_->prepareNextFrame();
+  l.unlock();
+  if (another_frame_ready)
+    impl_->condition_.notify_one();
+  return true;
+}
+
+void TimestampAlignedFrameListener::waitForNewFrame(FrameMap& frame)
+{
+  libfreenect2::unique_lock l(impl_->mutex_);
+  impl_->condition_.wait(l, [this] { return impl_->hasNewFrame(); });
+  impl_->takeReadyFrame(frame);
+  const bool another_frame_ready = impl_->prepareNextFrame();
+  l.unlock();
+  if (another_frame_ready)
+    impl_->condition_.notify_one();
+}
+
+void TimestampAlignedFrameListener::release(FrameMap& frame)
+{
+  for (FrameMap::iterator it = frame.begin(); it != frame.end(); ++it)
+  {
+    delete it->second;
+    it->second = 0;
+  }
+  frame.clear();
+}
+
+TimestampAlignedFrameListener::Statistics TimestampAlignedFrameListener::getStatistics() const
+{
+  libfreenect2::unique_lock l(impl_->mutex_);
+  return impl_->statistics_;
+}
+
+bool TimestampAlignedFrameListener::onNewFrame(Frame::Type type, Frame* frame)
+{
+  if ((type != Frame::Color && type != Frame::Ir && type != Frame::Depth) ||
+      (impl_->subscribed_frame_types_ & type) == 0)
+    return false;
+
+  bool frame_ready = false;
+  {
+    libfreenect2::lock_guard l(impl_->mutex_);
+    TimestampAlignedFrameListenerImpl::FrameQueue& queue = impl_->queues_[type];
+    queue.push_back(frame);
+    while (queue.size() > impl_->queue_capacity_)
+    {
+      delete queue.front();
+      queue.pop_front();
+      ++impl_->statistics_.dropped;
+    }
+    frame_ready = impl_->prepareNextFrame();
+  }
+
+  if (frame_ready)
+    impl_->condition_.notify_one();
   return true;
 }
 

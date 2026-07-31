@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <future>
+#include <limits>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -20,6 +21,7 @@ using libfreenect2::FrameMap;
 using libfreenect2::PacketProcessor;
 using libfreenect2::PoolAllocator;
 using libfreenect2::SyncMultiFrameListener;
+using libfreenect2::TimestampAlignedFrameListener;
 
 namespace
 {
@@ -63,6 +65,13 @@ public:
   std::atomic<int> released;
   std::atomic<int> last_value;
 };
+
+Frame* makeTimestampedFrame(uint32_t timestamp)
+{
+  Frame* frame = new Frame(1, 1, 4);
+  frame->timestamp = timestamp;
+  return frame;
+}
 
 } // namespace
 
@@ -164,3 +173,69 @@ TEST(SyncMultiFrameListener, TimedWaitExpiresWithoutFrames)
   EXPECT_TRUE(frames.empty());
 }
 #endif
+
+TEST(TimestampAlignedFrameListener, SelectsTheSmallestQueuedTimestampSpan)
+{
+  TimestampAlignedFrameListener listener(Frame::Color | Frame::Depth, 5);
+  EXPECT_TRUE(listener.onNewFrame(Frame::Color, makeTimestampedFrame(100)));
+  EXPECT_TRUE(listener.onNewFrame(Frame::Color, makeTimestampedFrame(200)));
+  EXPECT_TRUE(listener.onNewFrame(Frame::Depth, makeTimestampedFrame(203)));
+
+  FrameMap frames;
+  ASSERT_TRUE(listener.waitForNewFrame(frames, 20));
+  ASSERT_EQ(frames.size(), 2u);
+  EXPECT_EQ(frames[Frame::Color]->timestamp, 200u);
+  EXPECT_EQ(frames[Frame::Depth]->timestamp, 203u);
+
+  const TimestampAlignedFrameListener::Statistics statistics = listener.getStatistics();
+  EXPECT_EQ(statistics.delivered, 1u);
+  EXPECT_EQ(statistics.dropped, 1u);
+  EXPECT_EQ(statistics.last_delta_ticks, 3u);
+  EXPECT_EQ(statistics.maximum_delta_ticks, 3u);
+  listener.release(frames);
+}
+
+TEST(TimestampAlignedFrameListener, WaitsForACombinationWithinTheThreshold)
+{
+  TimestampAlignedFrameListener listener(Frame::Color | Frame::Depth, 5);
+  EXPECT_TRUE(listener.onNewFrame(Frame::Color, makeTimestampedFrame(100)));
+  EXPECT_TRUE(listener.onNewFrame(Frame::Depth, makeTimestampedFrame(120)));
+
+  FrameMap frames;
+  EXPECT_FALSE(listener.waitForNewFrame(frames, 10));
+  EXPECT_TRUE(listener.onNewFrame(Frame::Color, makeTimestampedFrame(122)));
+  ASSERT_TRUE(listener.waitForNewFrame(frames, 20));
+  EXPECT_EQ(frames[Frame::Color]->timestamp, 122u);
+  EXPECT_EQ(frames[Frame::Depth]->timestamp, 120u);
+  EXPECT_EQ(listener.getStatistics().dropped, 1u);
+  listener.release(frames);
+}
+
+TEST(TimestampAlignedFrameListener, AlignsAcrossDeviceTimestampWraparound)
+{
+  TimestampAlignedFrameListener listener(Frame::Color | Frame::Depth, 4);
+  EXPECT_TRUE(listener.onNewFrame(Frame::Color,
+                                  makeTimestampedFrame(std::numeric_limits<uint32_t>::max() - 1)));
+  EXPECT_TRUE(listener.onNewFrame(Frame::Depth, makeTimestampedFrame(2)));
+
+  FrameMap frames;
+  ASSERT_TRUE(listener.waitForNewFrame(frames, 20));
+  EXPECT_EQ(listener.getStatistics().last_delta_ticks, 4u);
+  listener.release(frames);
+}
+
+TEST(TimestampAlignedFrameListener, DropsTheOldestFrameOnQueueOverflow)
+{
+  TimestampAlignedFrameListener listener(Frame::Color | Frame::Depth, 2, 2);
+  EXPECT_TRUE(listener.onNewFrame(Frame::Color, makeTimestampedFrame(10)));
+  EXPECT_TRUE(listener.onNewFrame(Frame::Color, makeTimestampedFrame(20)));
+  EXPECT_TRUE(listener.onNewFrame(Frame::Color, makeTimestampedFrame(30)));
+  EXPECT_EQ(listener.getStatistics().dropped, 1u);
+
+  EXPECT_TRUE(listener.onNewFrame(Frame::Depth, makeTimestampedFrame(31)));
+  FrameMap frames;
+  ASSERT_TRUE(listener.waitForNewFrame(frames, 20));
+  EXPECT_EQ(frames[Frame::Color]->timestamp, 30u);
+  EXPECT_EQ(listener.getStatistics().dropped, 2u);
+  listener.release(frames);
+}
