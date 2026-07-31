@@ -83,7 +83,6 @@ void RgbPacketStreamParser::setPacketProcessor(BaseRgbPacketProcessor *processor
 void RgbPacketStreamParser::onDataReceived(unsigned char* buffer, size_t length,
                                            uint64_t arrival_timestamp_us)
 {
-  (void)arrival_timestamp_us;
   if (packet_.memory == NULL || packet_.memory->data == NULL)
   {
     LOG_ERROR << "Packet buffer is NULL";
@@ -94,6 +93,9 @@ void RgbPacketStreamParser::onDataReceived(unsigned char* buffer, size_t length,
   // package containing data
   if(length > 0)
   {
+    if(fb.length == 0)
+      packet_.arrival_timestamp_us = arrival_timestamp_us;
+
     if(fb.length + length <= fb.capacity)
     {
       memcpy(fb.data + fb.length, buffer, length);
@@ -103,6 +105,7 @@ void RgbPacketStreamParser::onDataReceived(unsigned char* buffer, size_t length,
     {
       LOG_INFO << "buffer overflow!";
       fb.length = 0;
+      packet_.arrival_timestamp_us = 0;
       return;
     }
 
@@ -120,6 +123,7 @@ void RgbPacketStreamParser::onDataReceived(unsigned char* buffer, size_t length,
       {
         LOG_INFO << "packetsize or sequence doesn't match!";
         fb.length = 0;
+        packet_.arrival_timestamp_us = 0;
         return;
       }
 
@@ -127,6 +131,7 @@ void RgbPacketStreamParser::onDataReceived(unsigned char* buffer, size_t length,
       {
         LOG_INFO << "not enough space for packet filler!";
         fb.length = 0;
+        packet_.arrival_timestamp_us = 0;
         return;
       }
 
@@ -147,6 +152,7 @@ void RgbPacketStreamParser::onDataReceived(unsigned char* buffer, size_t length,
       {
         LOG_INFO << "no JPEG detected!";
         fb.length = 0;
+        packet_.arrival_timestamp_us = 0;
         return;
       }
 
@@ -174,6 +180,7 @@ void RgbPacketStreamParser::onDataReceived(unsigned char* buffer, size_t length,
 
       // reset front buffer
       packet_.memory->length = 0;
+      packet_.arrival_timestamp_us = 0;
     }
   }
 }

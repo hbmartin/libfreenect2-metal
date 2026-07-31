@@ -57,12 +57,14 @@ public:
   int count = 0;
   size_t last_jpeg_length = 0;
   uint32_t last_sequence = 0xffffffff;
+  uint64_t last_arrival_timestamp_us = 0;
 
   void process(const RgbPacket& packet) override
   {
     ++count;
     last_jpeg_length = packet.jpeg_buffer_length;
     last_sequence = packet.sequence;
+    last_arrival_timestamp_us = packet.arrival_timestamp_us;
   }
 };
 
@@ -142,6 +144,24 @@ TEST(RgbStreamParser, RejectsPacketWithoutEoiMarker)
   parser.onDataReceived(pkt.data(), pkt.size());
 
   EXPECT_EQ(proc.count, 0);
+}
+
+TEST(RgbStreamParser, RetainsFirstArrivalAcrossFragments)
+{
+  CapturingRgbProcessor proc;
+  RgbPacketStreamParser parser;
+  parser.setPacketProcessor(&proc);
+
+  std::vector<unsigned char> packet = makePacket(12, 512);
+  const size_t first_length = 100;
+  const size_t second_length = 200;
+  parser.onDataReceived(packet.data(), first_length, 1000);
+  parser.onDataReceived(packet.data() + first_length, second_length, 2000);
+  parser.onDataReceived(packet.data() + first_length + second_length,
+                        packet.size() - first_length - second_length, 3000);
+
+  ASSERT_EQ(proc.count, 1);
+  EXPECT_EQ(proc.last_arrival_timestamp_us, 1000u);
 }
 
 TEST(RgbStreamParser, RejectsPacketWithMismatchedSize)
