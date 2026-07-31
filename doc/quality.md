@@ -25,7 +25,7 @@ Each profile needs a separate build directory. ASan and TSan cannot be combined.
 ```sh
 # Address, leak, and undefined-behavior checks
 cmake -S . -B build-asan -G Ninja -DBUILD_TESTING=ON \
-  -DENABLE_ASAN=ON -DENABLE_UBSAN=ON -DENABLE_CXX11=ON
+  -DENABLE_ASAN=ON -DENABLE_UBSAN=ON
 cmake --build build-asan
 ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 \
 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
@@ -33,7 +33,7 @@ UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 
 # Data-race checks
 cmake -S . -B build-tsan -G Ninja -DBUILD_TESTING=ON \
-  -DENABLE_TSAN=ON -DENABLE_CXX11=ON
+  -DENABLE_TSAN=ON
 cmake --build build-tsan
 TSAN_OPTIONS=halt_on_error=1 \
   ctest --test-dir build-tsan -L unit --output-on-failure
@@ -54,7 +54,7 @@ in a corpus directory:
 
 ```sh
 CC=clang CXX=clang++ cmake -S . -B build-fuzz -G Ninja \
-  -DENABLE_FUZZING=ON -DBUILD_EXAMPLES=OFF -DENABLE_CXX11=ON
+  -DENABLE_FUZZING=ON -DBUILD_EXAMPLES=OFF
 cmake --build build-fuzz --target \
   fuzz_rgb_stream_parser fuzz_depth_stream_parser fuzz_protocol_response
 
@@ -75,7 +75,7 @@ do not lower them to accommodate a change.
 
 ```sh
 CC=clang CXX=clang++ cmake -S . -B build-coverage -G Ninja \
-  -DBUILD_TESTING=ON -DENABLE_COVERAGE=ON -DENABLE_CXX11=ON
+  -DBUILD_TESTING=ON -DENABLE_COVERAGE=ON
 cmake --build build-coverage
 LLVM_PROFILE_FILE="$PWD/build-coverage/unit-%p.profraw" \
   ctest --test-dir build-coverage -L unit --output-on-failure

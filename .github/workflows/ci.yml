@@ -18,7 +18,7 @@ env:
 
 jobs:
   build-test-metal:
-    name: AppleClang, Metal, std::thread
+    name: AppleClang, Metal, C++11
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +31,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Debug
           -DBUILD_TESTING=ON
           -DBUILD_EXAMPLES=ON
-          -DENABLE_CXX11=ON
+          -DCMAKE_CXX_STANDARD=11
           -DENABLE_METAL=ON
           -DENABLE_WARNINGS_AS_ERRORS=ON
           -DENABLE_STDLIB_HARDENING=ON
@@ -49,26 +49,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: GCC, shared, std::thread
+          - name: GCC, shared, C++11
             cc: gcc
             cxx: g++
             shared: ON
-            cxx11: ON
-          - name: GCC, static, tinythread
+          - name: GCC, static, C++11
             cc: gcc
             cxx: g++
             shared: OFF
-            cxx11: OFF
-          - name: Clang, shared, std::thread
+          - name: Clang, shared, C++11
             cc: clang
             cxx: clang++
             shared: ON
-            cxx11: ON
-          - name: Clang, static, tinythread
+          - name: Clang, static, C++11
             cc: clang
             cxx: clang++
             shared: OFF
-            cxx11: OFF
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
@@ -88,7 +84,7 @@ jobs:
           -DBUILD_TESTING=ON
           -DBUILD_EXAMPLES=ON
           -DBUILD_OPENNI2_DRIVER=OFF
-          -DENABLE_CXX11=${{ matrix.cxx11 }}
+          -DCMAKE_CXX_STANDARD=11
           -DENABLE_OPENCL=OFF
           -DENABLE_CUDA=OFF
           -DENABLE_OPENGL=OFF
@@ -104,7 +100,7 @@ jobs:
         run: ctest --test-dir build -LE gpu --timeout 120
 
   windows-msvc:
-    name: MSVC, static, std::thread
+    name: MSVC, static, C++11
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
@@ -125,7 +121,7 @@ jobs:
           -DBUILD_TESTING=ON
           -DBUILD_EXAMPLES=ON
           -DBUILD_OPENNI2_DRIVER=OFF
-          -DENABLE_CXX11=ON
+          -DCMAKE_CXX_STANDARD=11
           -DENABLE_OPENCL=OFF
           -DENABLE_CUDA=OFF
           -DENABLE_OPENGL=OFF
@@ -150,13 +146,8 @@ jobs:
       matrix:
         include:
           - name: ASan + UBSan + LeakSanitizer
-            cxx11: ON
             flags: -DENABLE_ASAN=ON -DENABLE_UBSAN=ON
-          - name: TSan, std::thread
-            cxx11: ON
-            flags: -DENABLE_TSAN=ON
-          - name: TSan, tinythread
-            cxx11: OFF
+          - name: TSan, C++11
             flags: -DENABLE_TSAN=ON
     env:
       CC: clang
@@ -179,7 +170,7 @@ jobs:
           -DBUILD_TESTING=ON
           -DBUILD_EXAMPLES=OFF
           -DBUILD_OPENNI2_DRIVER=OFF
-          -DENABLE_CXX11=${{ matrix.cxx11 }}
+          -DCMAKE_CXX_STANDARD=11
           -DENABLE_OPENCL=OFF
           -DENABLE_CUDA=OFF
           -DENABLE_OPENGL=OFF
@@ -216,7 +207,7 @@ jobs:
           -DENABLE_FUZZING=ON
           -DBUILD_EXAMPLES=OFF
           -DBUILD_OPENNI2_DRIVER=OFF
-          -DENABLE_CXX11=ON
+          -DCMAKE_CXX_STANDARD=11
           -DENABLE_OPENCL=OFF
           -DENABLE_CUDA=OFF
           -DENABLE_OPENGL=OFF
@@ -253,7 +244,7 @@ jobs:
           -DBUILD_TESTING=ON
           -DBUILD_EXAMPLES=OFF
           -DBUILD_OPENNI2_DRIVER=OFF
-          -DENABLE_CXX11=ON
+          -DCMAKE_CXX_STANDARD=11
           -DENABLE_COVERAGE=ON
           -DENABLE_OPENCL=OFF
           -DENABLE_CUDA=OFF
@@ -272,14 +263,14 @@ jobs:
           llvm-profdata merge -sparse build-coverage/*.profraw -o build-coverage/unit.profdata
           llvm-cov report build-coverage/bin/unit_tests \
             -instr-profile=build-coverage/unit.profdata \
-            -ignore-filename-regex='(_deps/|tests/|src/tinythread/|include/internal/CL/|tools/generate_resources)' \
+            -ignore-filename-regex='(_deps/|tests/|include/internal/CL/|tools/generate_resources)' \
             "$PWD/src" "$PWD/include/libfreenect2" "$PWD/include/internal/libfreenect2" \
             | tee build-coverage/coverage.txt
           python3 tools/quality/check_coverage.py build-coverage/coverage.txt \
             --min-lines 30 --min-branches 25
           llvm-cov export build-coverage/bin/unit_tests \
             -instr-profile=build-coverage/unit.profdata \
-            -ignore-filename-regex='(_deps/|tests/|src/tinythread/|include/internal/CL/|tools/generate_resources)' \
+            -ignore-filename-regex='(_deps/|tests/|include/internal/CL/|tools/generate_resources)' \
             -format=lcov > build-coverage/coverage.lcov
 
       - uses: actions/upload-artifact@v4
@@ -343,7 +334,7 @@ jobs:
           -DBUILD_TESTING=ON
           -DBUILD_EXAMPLES=ON
           -DBUILD_OPENNI2_DRIVER=OFF
-          -DENABLE_CXX11=ON
+          -DCMAKE_CXX_STANDARD=11
           -DENABLE_OPENCL=OFF
           -DENABLE_CUDA=OFF
           -DENABLE_OPENGL=OFF

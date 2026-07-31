@@ -35,7 +35,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Debug
           -DBUILD_EXAMPLES=ON
           -DBUILD_OPENNI2_DRIVER=OFF
-          -DENABLE_CXX11=ON
+          -DCMAKE_CXX_STANDARD=11
           -DENABLE_ASAN=ON
           -DENABLE_UBSAN=ON
           -DENABLE_METAL=ON
