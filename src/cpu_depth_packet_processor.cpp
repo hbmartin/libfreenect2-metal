@@ -31,6 +31,7 @@
 #include <libfreenect2/protocol/response.h>
 #include <libfreenect2/logging.h>
 
+#include <algorithm>
 #include <fstream>
 
 #include <limits>
@@ -604,6 +605,7 @@ public:
     transformMeasurements(m1);
     transformMeasurements(m2);
 
+
     float ir_sum = m0[1] + m1[1] + m2[1];
 
     float phase;
@@ -719,6 +721,7 @@ public:
 
     depth_fit = depth_fit < 0 ? 0 : depth_fit;
     float depth = cond1 ? depth_fit : depth_linear; // r1.y -> later r2.z
+
 
     // depth
     *depth_out = depth;
@@ -897,6 +900,7 @@ void CpuDepthPacketProcessor::process(const DepthPacket &packet)
       m_filtered(424, 512)
   ;
   Mat<unsigned char> m_max_edge_test(424, 512);
+  std::fill(m_max_edge_test.ptr(0, 0), m_max_edge_test.ptr(0, 0) + 424 * 512, 1);
 
   for(int y = 0; y < 424; ++y)
     for(int x = 0; x < 512; ++x)

@@ -14,6 +14,7 @@
  * frames and is deterministic — it is also the correctness oracle for the Metal
  * port (see test_metal_cpu_parity.cpp). */
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -30,10 +31,14 @@ using libfreenect2::DepthPacket;
 using libfreenect2::Frame;
 using libfreenect2::Freenect2Device;
 using libfreenect2::testing::CollectingFrameListener;
+using libfreenect2::testing::DepthFilterConfiguration;
+using libfreenect2::testing::countValidDepthPixels;
+using libfreenect2::testing::depthFilterConfigurations;
 using libfreenect2::testing::loadSyntheticTables;
 using libfreenect2::testing::makeIrParams;
 using libfreenect2::testing::makeSyntheticDepthBuffer;
 using libfreenect2::testing::makeSyntheticP0Tables;
+using libfreenect2::testing::runSyntheticDepthProcessor;
 
 namespace
 {
@@ -108,6 +113,42 @@ TEST(CpuDepthProcessor, IsDeterministic)
   EXPECT_EQ(0, std::memcmp(a.depth()->data, b.depth()->data, bytes))
       << "depth frame is not deterministic";
   EXPECT_EQ(0, std::memcmp(a.ir()->data, b.ir()->data, bytes)) << "ir frame is not deterministic";
+}
+
+TEST(CpuDepthProcessor, SupportsEveryFilterCombination)
+{
+  const std::array<DepthFilterConfiguration, 4>& configurations =
+      depthFilterConfigurations();
+  for(size_t i = 0; i < configurations.size(); ++i)
+  {
+    const DepthFilterConfiguration& filter = configurations[i];
+    SCOPED_TRACE(filter.name);
+
+    CpuDepthPacketProcessor first_processor;
+    CpuDepthPacketProcessor second_processor;
+    CollectingFrameListener first;
+    CollectingFrameListener second;
+    runSyntheticDepthProcessor(first_processor, filter.config(), 11, first);
+    runSyntheticDepthProcessor(second_processor, filter.config(), 11, second);
+
+    ASSERT_NE(first.depth(), nullptr);
+    ASSERT_NE(second.depth(), nullptr);
+    const float* depth_values = reinterpret_cast<const float*>(first.depth()->data);
+    const float* ir_values = reinterpret_cast<const float*>(first.ir()->data);
+    float max_depth = 0.0f;
+    float max_ir = 0.0f;
+    for(size_t pixel = 0; pixel < 512u * 424u; ++pixel)
+    {
+      max_depth = std::max(max_depth, depth_values[pixel]);
+      max_ir = std::max(max_ir, ir_values[pixel]);
+    }
+    EXPECT_GT(countValidDepthPixels(first.depth()), 0u)
+        << "max depth=" << max_depth << ", max IR=" << max_ir;
+
+    const size_t bytes = 512u * 424u * sizeof(float);
+    EXPECT_EQ(0, std::memcmp(first.depth()->data, second.depth()->data, bytes));
+    EXPECT_EQ(0, std::memcmp(first.ir()->data, second.ir()->data, bytes));
+  }
 }
 
 TEST(CpuDepthProcessor, AcceptsUnalignedP0CommandResponse)
