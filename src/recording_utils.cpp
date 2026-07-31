@@ -20,8 +20,10 @@
 #include <sys/stat.h>
 #include <windows.h>
 #else
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 #endif
 
 namespace libfreenect2
@@ -108,7 +110,9 @@ bool createDirectories(const std::string& path, std::string* error)
 #else
   const int result = mkdir(path.c_str(), 0777);
 #endif
-  if (result == 0 || (errno == EEXIST && directoryExists(path)))
+  if (result == 0)
+    return syncDirectory(parent.empty() ? "." : parent, error);
+  if (errno == EEXIST && directoryExists(path))
     return true;
   setErrnoError("failed to create directory", path, error);
   return false;
@@ -118,7 +122,7 @@ bool isSafeRelativePath(const std::string& path)
 {
   if (path.empty() || isSeparator(path[0]) || path.find('\0') != std::string::npos)
     return false;
-  if (path.size() >= 2 && path[1] == ':')
+  if (path.find(':') != std::string::npos)
     return false;
 
   std::string component;
@@ -138,6 +142,90 @@ bool isSafeRelativePath(const std::string& path)
   return true;
 }
 
+bool syncFile(const std::string& path, std::string* error)
+{
+#if defined(_WIN32)
+  HANDLE handle = CreateFileA(path.c_str(), GENERIC_READ | GENERIC_WRITE,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (handle == INVALID_HANDLE_VALUE)
+  {
+    if (error != 0)
+    {
+      std::ostringstream message;
+      message << "failed to open file for synchronization '" << path << "': Windows error "
+              << GetLastError();
+      *error = message.str();
+    }
+    return false;
+  }
+  const bool success = FlushFileBuffers(handle) != 0;
+  const DWORD flush_error = success ? ERROR_SUCCESS : GetLastError();
+  CloseHandle(handle);
+  if (!success && error != 0)
+  {
+    std::ostringstream message;
+    message << "failed to synchronize file '" << path << "': Windows error " << flush_error;
+    *error = message.str();
+  }
+  return success;
+#else
+  const int descriptor = open(path.c_str(), O_RDONLY);
+  if (descriptor < 0)
+  {
+    setErrnoError("failed to open file for synchronization", path, error);
+    return false;
+  }
+  int result = 0;
+  do
+  {
+    result = fsync(descriptor);
+  } while (result != 0 && errno == EINTR);
+  const int saved_errno = errno;
+  close(descriptor);
+  if (result == 0)
+    return true;
+  errno = saved_errno;
+  setErrnoError("failed to synchronize file", path, error);
+  return false;
+#endif
+}
+
+bool syncDirectory(const std::string& path, std::string* error)
+{
+#if defined(_WIN32)
+  // MoveFileEx with MOVEFILE_WRITE_THROUGH provides the publication barrier
+  // used by atomicRename on Windows. Directory handles cannot be flushed on
+  // every supported Windows filesystem.
+  (void)path;
+  (void)error;
+  return true;
+#else
+#if defined(O_DIRECTORY)
+  const int descriptor = open(path.c_str(), O_RDONLY | O_DIRECTORY);
+#else
+  const int descriptor = open(path.c_str(), O_RDONLY);
+#endif
+  if (descriptor < 0)
+  {
+    setErrnoError("failed to open directory for synchronization", path, error);
+    return false;
+  }
+  int result = 0;
+  do
+  {
+    result = fsync(descriptor);
+  } while (result != 0 && errno == EINTR);
+  const int saved_errno = errno;
+  close(descriptor);
+  if (result == 0)
+    return true;
+  errno = saved_errno;
+  setErrnoError("failed to synchronize directory", path, error);
+  return false;
+#endif
+}
+
 bool atomicRename(const std::string& source, const std::string& destination, std::string* error)
 {
 #if defined(_WIN32)
@@ -152,10 +240,12 @@ bool atomicRename(const std::string& source, const std::string& destination, std
   }
   return false;
 #else
-  if (std::rename(source.c_str(), destination.c_str()) == 0)
-    return true;
-  setErrnoError("failed to publish", destination, error);
-  return false;
+  if (std::rename(source.c_str(), destination.c_str()) != 0)
+  {
+    setErrnoError("failed to publish", destination, error);
+    return false;
+  }
+  return syncDirectory(parentPath(destination).empty() ? "." : parentPath(destination), error);
 #endif
 }
 
@@ -179,12 +269,18 @@ bool writeFileAtomically(const std::string& path, const unsigned char* data, siz
   if (size != 0)
     output.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
   output.flush();
-  const bool written = output.good();
+  bool written = output.good();
   output.close();
+  written = written && !output.fail();
   if (!written)
   {
     if (error != 0)
       *error = "failed to write temporary file '" + part_path + "'";
+    std::remove(part_path.c_str());
+    return false;
+  }
+  if (!syncFile(part_path, error))
+  {
     std::remove(part_path.c_str());
     return false;
   }

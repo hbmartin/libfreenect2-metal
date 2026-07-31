@@ -37,7 +37,12 @@ public:
   explicit RecordingWriter(const std::string& directory, size_t queue_capacity = 32);
   virtual ~RecordingWriter();
 
-  /** Copy a raw frame into the bounded writer queue. The caller retains ownership. */
+  /**
+   * Copy a raw frame into the bounded writer queue.
+   *
+   * Always returns false because the writer copies the bytes and never assumes
+   * ownership of the caller's frame, including when the copy is accepted.
+   */
   virtual bool onNewFrame(Frame::Type type, Frame* frame);
 
   /** Publish the calibration required to decode raw depth frames. */

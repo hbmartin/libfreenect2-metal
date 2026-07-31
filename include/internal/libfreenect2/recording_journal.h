@@ -56,6 +56,7 @@ private:
 
   mutable libfreenect2::mutex mutex_;
   std::ofstream stream_;
+  std::string path_;
   uint64_t next_index_;
   std::string last_error_;
 };

@@ -85,8 +85,17 @@ bool serializeJournalEntry(const JournalEntry& entry, std::string& line, std::st
     value["gain"] = entry.gain;
     value["gamma"] = entry.gamma;
   }
-  line = value.dump() + "\n";
-  return true;
+  try
+  {
+    line = value.dump() + "\n";
+    return true;
+  }
+  catch (const std::exception& exception)
+  {
+    if (error != 0)
+      *error = std::string("failed to serialize frame journal entry: ") + exception.what();
+    return false;
+  }
 }
 
 bool parseJournalEntry(const std::string& line, JournalEntry& entry, std::string* error)
@@ -149,6 +158,7 @@ bool FrameJournal::open(const std::string& path, std::string* error)
   if (!stream_)
     return failLocked("failed to open frame journal '" + path + "'", error);
   next_index_ = 0;
+  path_ = path;
   last_error_.clear();
   return true;
 }
@@ -177,12 +187,19 @@ bool FrameJournal::close(std::string* error)
 {
   libfreenect2::lock_guard guard(mutex_);
   if (!stream_.is_open())
-    return last_error_.empty() || failLocked(last_error_, error);
+  {
+    if (last_error_.empty())
+      return true;
+    return failLocked(last_error_, error);
+  }
   stream_.flush();
   const bool success = stream_.good();
   stream_.close();
   if (!success)
     return failLocked("failed to close the frame journal cleanly", error);
+  std::string sync_error;
+  if (!syncFile(path_, &sync_error))
+    return failLocked(sync_error, error);
   return true;
 }
 

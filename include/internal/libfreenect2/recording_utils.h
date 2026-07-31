@@ -21,6 +21,8 @@ std::string joinPath(const std::string& directory, const std::string& child);
 bool directoryExists(const std::string& path);
 bool createDirectories(const std::string& path, std::string* error = 0);
 bool isSafeRelativePath(const std::string& path);
+bool syncFile(const std::string& path, std::string* error = 0);
+bool syncDirectory(const std::string& path, std::string* error = 0);
 
 bool atomicRename(const std::string& source, const std::string& destination,
                   std::string* error = 0);

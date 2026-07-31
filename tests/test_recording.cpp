@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <condition_variable>
+#include <limits>
 #include <mutex>
 #include <sstream>
 
@@ -62,12 +63,22 @@ std::string uniqueRecordingDirectory()
 
 void removeTestRecording(const std::string& directory)
 {
+  std::vector<unsigned char> journal_bytes;
+  std::string ignored_error;
+  if (readFile(joinPath(directory, "frames.ndjson"), journal_bytes, &ignored_error))
+  {
+    std::istringstream journal(std::string(journal_bytes.begin(), journal_bytes.end()));
+    std::string line;
+    while (std::getline(journal, line))
+    {
+      JournalEntry entry;
+      if (parseJournalEntry(line, entry, 0))
+        std::remove(joinPath(directory, entry.path).c_str());
+    }
+  }
   std::remove(joinPath(directory, "recording.complete").c_str());
   std::remove(joinPath(directory, "manifest.json").c_str());
   std::remove(joinPath(directory, "calibration/p0.bin").c_str());
-  std::remove(joinPath(directory, "frames/color/0000000000.jpg").c_str());
-  std::remove(joinPath(directory, "frames/depth/0000000000.depth").c_str());
-  std::remove(joinPath(directory, "frames/depth/0000000001.depth").c_str());
   std::remove(joinPath(directory, "frames.ndjson").c_str());
 #if defined(_WIN32)
   _rmdir(joinPath(directory, "frames/color").c_str());
@@ -160,8 +171,12 @@ TEST(RecordingPaths, RejectsAbsoluteAndTraversalPaths)
   EXPECT_FALSE(isSafeRelativePath("frames/./color.jpg"));
   EXPECT_FALSE(isSafeRelativePath("frames//color.jpg"));
   EXPECT_FALSE(isSafeRelativePath("frames/color.jpg/"));
+  EXPECT_FALSE(isSafeRelativePath("frames/color/data:stream"));
   EXPECT_FALSE(isSafeRelativePath(std::string("frames/color.jpg\0ignored", 24)));
 }
+
+namespace
+{
 
 ManifestV1 sampleManifest()
 {
@@ -226,6 +241,21 @@ TEST(RecordingManifest, RejectsMissingAndNonFiniteCalibration)
   ASSERT_NE(fx, std::string::npos);
   text.replace(fx, 6, "1e4000");
   EXPECT_FALSE(parseManifestV1(text, parsed, &error));
+
+  ManifestV1 non_finite = sampleManifest();
+  non_finite.color.fx = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_FALSE(serializeManifestV1(non_finite, text, &error));
+  EXPECT_NE(error.find("non-finite"), std::string::npos);
+}
+
+TEST(RecordingManifest, RejectsUnsupportedClockSemantics)
+{
+  ManifestV1 manifest = sampleManifest();
+  manifest.device_clock = "unspecified-device-clock";
+  std::string text;
+  std::string error;
+  EXPECT_FALSE(serializeManifestV1(manifest, text, &error));
+  EXPECT_NE(error.find("unsupported clock"), std::string::npos);
 }
 
 JournalEntry sampleColorEntry()
@@ -243,6 +273,8 @@ JournalEntry sampleColorEntry()
   entry.gamma = 1.0f;
   return entry;
 }
+
+} // namespace
 
 TEST(RecordingJournal, RoundTripsColorMetadata)
 {
@@ -280,6 +312,13 @@ TEST(RecordingJournal, RejectsInvalidStreamsPathsAndMetadata)
   entry.has_rgb_metadata = false;
   EXPECT_FALSE(serializeJournalEntry(entry, line, &error));
   EXPECT_FALSE(parseJournalEntry("{\"index\":0}\n", entry, &error));
+
+  entry = sampleColorEntry();
+  entry.path = "frames/color/";
+  entry.path.push_back(static_cast<char>(0xff));
+  entry.path += ".jpg";
+  EXPECT_FALSE(serializeJournalEntry(entry, line, &error));
+  EXPECT_NE(error.find("serialize"), std::string::npos);
 }
 
 TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)

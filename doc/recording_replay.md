@@ -31,10 +31,12 @@ the cross-stream replay order.
 ### Durability and recovery
 
 Each frame and metadata file is first written to a sibling `.part` file,
-closed, and atomically renamed. Only then is its journal entry appended and
-flushed. `recording.complete` is published last, after the frame journal,
-calibration, and manifest close successfully. A process interruption therefore
-leaves an obviously incomplete directory rather than a falsely complete one.
+closed, synchronized to durable storage, and atomically renamed. The containing
+directory is synchronized before the journal entry is appended. The journal is
+also synchronized before `recording.complete` is published last. A process or
+power interruption therefore leaves an incomplete directory rather than a
+falsely complete one, subject to the storage device honoring synchronization
+requests.
 
 Replay rejects a missing or empty completion marker by default. Explicit
 `ReplayOptions::salvage_incomplete` mode ignores only a truncated final journal

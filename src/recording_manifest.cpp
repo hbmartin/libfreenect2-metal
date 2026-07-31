@@ -23,6 +23,9 @@ namespace
 
 typedef nlohmann::json Json;
 
+const char* const kDeviceClock = "kinect-v2-0.125ms-wrap32";
+const char* const kArrivalClock = "monotonic-host-microseconds-relative-to-recording-start";
+
 Json colorToJson(const Freenect2Device::ColorCameraParams& value)
 {
   Json result;
@@ -129,6 +132,20 @@ void irFromJson(const Json& object, Freenect2Device::IrCameraParams& value)
 #undef LIBFREENECT2_IR_FROM_JSON
 }
 
+bool allFinite(const Json& object, std::string* error)
+{
+  for (Json::const_iterator entry = object.begin(); entry != object.end(); ++entry)
+  {
+    if (!entry->is_number() || !std::isfinite(entry->get<double>()))
+    {
+      if (error != 0)
+        *error = "recording manifest contains a non-finite camera parameter: " + entry.key();
+      return false;
+    }
+  }
+  return true;
+}
+
 bool validateManifest(const ManifestV1& manifest, std::string* error)
 {
   if (manifest.serial.empty() || manifest.firmware.empty())
@@ -137,6 +154,8 @@ bool validateManifest(const ManifestV1& manifest, std::string* error)
       *error = "recording manifest requires device serial and firmware";
     return false;
   }
+  if (!allFinite(colorToJson(manifest.color), error) || !allFinite(irToJson(manifest.ir), error))
+    return false;
   if (manifest.color_encoding != "jpeg" || manifest.depth_encoding != "kinect-v2-raw")
   {
     if (error != 0)
@@ -149,10 +168,10 @@ bool validateManifest(const ManifestV1& manifest, std::string* error)
       *error = "recording manifest contains an unsafe P0 path";
     return false;
   }
-  if (manifest.device_clock.empty() || manifest.arrival_clock.empty())
+  if (manifest.device_clock != kDeviceClock || manifest.arrival_clock != kArrivalClock)
   {
     if (error != 0)
-      *error = "recording manifest requires clock semantics";
+      *error = "recording manifest declares unsupported clock semantics";
     return false;
   }
   return true;
@@ -162,8 +181,7 @@ bool validateManifest(const ManifestV1& manifest, std::string* error)
 
 ManifestV1::ManifestV1()
     : color_encoding("jpeg"), depth_encoding("kinect-v2-raw"), p0_path("calibration/p0.bin"),
-      device_clock("kinect-v2-0.125ms-wrap32"),
-      arrival_clock("monotonic-host-microseconds-relative-to-recording-start")
+      device_clock(kDeviceClock), arrival_clock(kArrivalClock)
 {
   std::memset(&color, 0, sizeof(color));
   std::memset(&ir, 0, sizeof(ir));
@@ -174,17 +192,26 @@ bool serializeManifestV1(const ManifestV1& manifest, std::string& text, std::str
   if (!validateManifest(manifest, error))
     return false;
 
-  Json root;
-  root["version"] = 1;
-  root["device"] = {{"serial", manifest.serial}, {"firmware", manifest.firmware}};
-  root["streams"] = {{"color", {{"encoding", manifest.color_encoding}}},
-                     {"depth", {{"encoding", manifest.depth_encoding}}}};
-  root["calibration"] = {{"color", colorToJson(manifest.color)},
-                         {"ir", irToJson(manifest.ir)},
-                         {"p0", manifest.p0_path}};
-  root["clocks"] = {{"device", manifest.device_clock}, {"arrival", manifest.arrival_clock}};
-  text = root.dump(2) + "\n";
-  return true;
+  try
+  {
+    Json root;
+    root["version"] = 1;
+    root["device"] = {{"serial", manifest.serial}, {"firmware", manifest.firmware}};
+    root["streams"] = {{"color", {{"encoding", manifest.color_encoding}}},
+                       {"depth", {{"encoding", manifest.depth_encoding}}}};
+    root["calibration"] = {{"color", colorToJson(manifest.color)},
+                           {"ir", irToJson(manifest.ir)},
+                           {"p0", manifest.p0_path}};
+    root["clocks"] = {{"device", manifest.device_clock}, {"arrival", manifest.arrival_clock}};
+    text = root.dump(2) + "\n";
+    return true;
+  }
+  catch (const std::exception& exception)
+  {
+    if (error != 0)
+      *error = std::string("failed to serialize recording manifest: ") + exception.what();
+    return false;
+  }
 }
 
 bool parseManifestV1(const std::string& text, ManifestV1& manifest, std::string* error)
