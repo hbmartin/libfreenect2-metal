@@ -846,6 +846,9 @@ public:
     if (config.EnableBilateralFilter) {
       filterPixelStage1<<<grid_size, block_size>>>(d_a, d_b, d_n, d_a_filtered, d_b_filtered, d_edge_test);
     }
+    else {
+      CHECK_CUDA(cudaMemsetAsync(d_edge_test, 1, IMAGE_SIZE * sizeof(char)));
+    }
 
     processPixelStage2<<<grid_size, block_size>>>(
       config.EnableBilateralFilter ? d_a_filtered : d_a,
