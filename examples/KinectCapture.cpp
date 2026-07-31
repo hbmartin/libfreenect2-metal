@@ -8,6 +8,7 @@
  * GNU General Public License, Version 2.0. See APACHE20 and GPL2.
  */
 
+#include <libfreenect2/depth_calibration.h>
 #include <libfreenect2/frame_listener_impl.h>
 #include <libfreenect2/libfreenect2.hpp>
 #include <libfreenect2/packet_pipeline.h>
@@ -52,9 +53,11 @@ bool parseUint32(const std::string& text, uint32_t& value)
 
 void printUsage()
 {
-  std::cerr << "usage: KinectCapture OUTPUT_DIRECTORY\n"
+  std::cerr << "usage: KinectCapture OUTPUT_DIRECTORY "
+               "[--depth-correction PROFILE.json] [--allow-device-mismatch]\n"
             << "       KinectCapture snapshot OUTPUT_DIRECTORY "
-               "[--max-delta-ticks TICKS]\n"
+               "[--max-delta-ticks TICKS] [--depth-correction PROFILE.json] "
+               "[--allow-device-mismatch]\n"
             << "       KinectCapture record OUTPUT_DIRECTORY "
                "(--depth-frames N | --duration-seconds N)\n";
 }
@@ -221,27 +224,17 @@ int main(int argc, char** argv)
   uint32_t max_delta_ticks = DEFAULT_MAX_DELTA_TICKS;
   uint32_t recording_depth_frames = 0;
   uint32_t recording_duration_seconds = 0;
+  std::string correction_profile_path;
+  bool allow_device_mismatch = false;
   std::string output;
-  if (argc == 2)
+  int capture_option_start = 0;
+  if (argc >= 2 && std::string(argv[1]) == "record")
   {
-    output = argv[1];
-  }
-  else if (argc >= 3 && std::string(argv[1]) == "snapshot")
-  {
-    timestamp_aligned = true;
-    output = argv[2];
-    for (int argument = 3; argument < argc; ++argument)
+    if (argc != 5)
     {
-      if (std::string(argv[argument]) != "--max-delta-ticks" || argument + 1 >= argc ||
-          !parseUint32(argv[++argument], max_delta_ticks))
-      {
-        printUsage();
-        return 2;
-      }
+      printUsage();
+      return 2;
     }
-  }
-  else if (argc == 5 && std::string(argv[1]) == "record")
-  {
     recording_mode = true;
     output = argv[2];
     const std::string option = argv[3];
@@ -267,10 +260,78 @@ int main(int argc, char** argv)
       return 2;
     }
   }
+  else if (argc >= 2 && std::string(argv[1]) == "snapshot")
+  {
+    if (argc < 3)
+    {
+      printUsage();
+      return 2;
+    }
+    timestamp_aligned = true;
+    output = argv[2];
+    capture_option_start = 3;
+  }
+  else if (argc >= 2)
+  {
+    output = argv[1];
+    capture_option_start = 2;
+  }
   else
   {
     printUsage();
     return 2;
+  }
+
+  if (!recording_mode)
+  {
+    for (int argument = capture_option_start; argument < argc; ++argument)
+    {
+      const std::string option = argv[argument];
+      if (option == "--max-delta-ticks" && timestamp_aligned && argument + 1 < argc)
+      {
+        if (!parseUint32(argv[++argument], max_delta_ticks))
+        {
+          printUsage();
+          return 2;
+        }
+      }
+      else if (option == "--depth-correction" && argument + 1 < argc)
+      {
+        correction_profile_path = argv[++argument];
+        if (correction_profile_path.empty())
+        {
+          printUsage();
+          return 2;
+        }
+      }
+      else if (option == "--allow-device-mismatch")
+      {
+        allow_device_mismatch = true;
+      }
+      else
+      {
+        printUsage();
+        return 2;
+      }
+    }
+    if (allow_device_mismatch && correction_profile_path.empty())
+    {
+      printUsage();
+      return 2;
+    }
+  }
+
+  libfreenect2::DepthCorrectionProfile correction_profile;
+  const bool apply_depth_correction = !correction_profile_path.empty();
+  if (apply_depth_correction)
+  {
+    std::string error;
+    if (!libfreenect2::DepthCorrectionProfile::load(correction_profile_path,
+                                                     correction_profile, &error))
+    {
+      std::cerr << "Unable to load depth correction profile: " << error << "\n";
+      return 2;
+    }
   }
 
   std::ofstream output_probe;
@@ -316,6 +377,26 @@ int main(int argc, char** argv)
     std::cerr << "Unable to open Kinect " << serial << "\n";
     return 1;
   }
+  const std::string firmware = device->getFirmwareVersion();
+  bool correction_device_match = true;
+  if (apply_depth_correction)
+  {
+    correction_device_match =
+        correction_profile.serial == serial && correction_profile.firmware == firmware;
+    if (!correction_device_match)
+    {
+      std::cerr << "Warning: depth correction profile was fitted for "
+                << correction_profile.serial << " / " << correction_profile.firmware
+                << ", but the open device is " << serial << " / " << firmware << "\n";
+      if (!allow_device_mismatch)
+      {
+        std::cerr << "Refusing to apply a mismatched profile without "
+                     "--allow-device-mismatch\n";
+        device->close();
+        return 2;
+      }
+    }
+  }
 
   if (recording_mode)
   {
@@ -337,7 +418,7 @@ int main(int argc, char** argv)
 
     libfreenect2::CalibrationData calibration;
     if (!device->getCalibrationData(calibration) ||
-        !writer.setCalibration(serial, device->getFirmwareVersion(), calibration))
+        !writer.setCalibration(serial, firmware, calibration))
     {
       std::cerr << "Unable to publish recording calibration: " << writer.getLastError() << "\n";
       device->stop();
@@ -440,6 +521,18 @@ int main(int argc, char** argv)
     return 1;
   }
 
+  if (apply_depth_correction && !correction_profile.apply(*depth))
+  {
+    std::cerr << "Depth correction profile could not be applied to the decoded depth frame\n";
+    if (timestamp_aligned)
+      aligned_listener.release(frames);
+    else
+      legacy_listener.release(frames);
+    device->stop();
+    device->close();
+    return 1;
+  }
+
   libfreenect2::Registration registration(device->getIrCameraParams(),
                                           device->getColorCameraParams());
   libfreenect2::Frame undistorted(512, 424, 4);
@@ -460,7 +553,7 @@ int main(int argc, char** argv)
       aligned_listener.getStatistics();
   metadata << std::fixed << std::setprecision(2) << "{\n"
            << "  \"serial\": \"" << serial << "\",\n"
-           << "  \"firmware\": \"" << device->getFirmwareVersion() << "\",\n"
+           << "  \"firmware\": \"" << firmware << "\",\n"
            << "  \"pipeline\": \"" << pipeline_name << "\",\n"
            << "  \"color_size\": [" << color->width << ", " << color->height << "],\n"
            << "  \"depth_size\": [" << depth->width << ", " << depth->height << "],\n"
@@ -483,6 +576,15 @@ int main(int argc, char** argv)
            << ", \"arrival_us\": " << depth->arrival_timestamp_us
            << ", \"sequence\": " << depth->sequence << "}\n"
            << "  }";
+  if (apply_depth_correction)
+  {
+    metadata << ",\n"
+             << "  \"depth_correction\": {\"scale\": " << correction_profile.scale
+             << ", \"offset_mm\": " << correction_profile.offset_mm
+             << ", \"rmse_mm\": " << correction_profile.rmse_mm
+             << ", \"device_match\": " << (correction_device_match ? "true" : "false")
+             << "}";
+  }
   if (timestamp_aligned)
   {
     metadata << ",\n"
@@ -509,6 +611,8 @@ int main(int argc, char** argv)
     return 1;
   }
   std::cout << "Captured Kinect " << serial << ": " << stats.valid << " valid depth pixels";
+  if (apply_depth_correction)
+    std::cout << "; applied depth correction from " << correction_profile_path;
   if (timestamp_aligned)
   {
     std::cout << "; alignment threshold=" << max_delta_ticks
