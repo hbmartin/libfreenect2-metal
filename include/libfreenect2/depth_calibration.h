@@ -63,6 +63,9 @@ struct LIBFREENECT2_API DepthCorrectionProfile
 
   DepthCorrectionProfile();
 
+  uint32_t version;
+  std::string serial;
+  std::string firmware;
   Model model;
   double scale;
   double offset_mm;
@@ -79,6 +82,13 @@ struct LIBFREENECT2_API DepthCorrectionProfile
 
   /** Apply this profile to a decoded float depth frame. Invalid pixels are unchanged. */
   bool apply(Frame& depth) const;
+
+  /** Atomically save a versioned JSON profile. */
+  bool save(const std::string& path, std::string* error = 0) const;
+
+  /** Load and validate a versioned JSON profile. */
+  static bool load(const std::string& path, DepthCorrectionProfile& profile,
+                   std::string* error = 0);
 };
 
 /** Compute the median and median absolute deviation for one decoded depth frame. */

@@ -6,9 +6,14 @@
  */
 
 #include <libfreenect2/depth_calibration.h>
+#include <libfreenect2/recording_utils.h>
+
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
+#include <limits>
 #include <map>
 #include <vector>
 
@@ -16,13 +21,15 @@ namespace libfreenect2
 {
 
 DepthCorrectionProfile::DepthCorrectionProfile()
-    : model(OffsetOnly), scale(1.0), offset_mm(0.0), rmse_mm(0.0)
+    : version(1), model(OffsetOnly), scale(1.0), offset_mm(0.0), rmse_mm(0.0)
 {
 }
 
 bool DepthCorrectionProfile::isValid() const
 {
-  return std::isfinite(scale) && scale > 0.0 && std::isfinite(offset_mm);
+  return version == 1 && (model == OffsetOnly || model == Linear) && std::isfinite(scale) &&
+         scale > 0.0 && std::isfinite(offset_mm) && std::isfinite(rmse_mm) && rmse_mm >= 0.0 &&
+         samples.size() == residuals_mm.size();
 }
 
 float DepthCorrectionProfile::correct(float measured_mm) const
@@ -84,6 +91,28 @@ bool fail(const std::string& message, std::string* error)
   if (error != 0)
     *error = message;
   return false;
+}
+
+bool validateSerializableProfile(const DepthCorrectionProfile& profile, std::string* error)
+{
+  if (!profile.isValid())
+    return fail("depth correction profile has invalid coefficients or diagnostics", error);
+  if (profile.serial.empty() || profile.firmware.empty())
+    return fail("depth correction profile requires device serial and firmware", error);
+  if (profile.roi.width == 0 || profile.roi.height == 0)
+    return fail("depth correction profile requires a non-empty ROI", error);
+  if (profile.samples.empty())
+    return fail("depth correction profile requires calibration samples", error);
+  for (size_t index = 0; index < profile.samples.size(); ++index)
+  {
+    const DepthCalibrationSample& sample = profile.samples[index];
+    if (!std::isfinite(sample.known_distance_mm) || sample.known_distance_mm <= 0.0 ||
+        !std::isfinite(sample.measured_median_mm) || sample.measured_median_mm <= 0.0 ||
+        !std::isfinite(sample.mad_mm) || sample.mad_mm < 0.0 || sample.valid_pixel_count == 0 ||
+        !std::isfinite(profile.residuals_mm[index]))
+      return fail("depth correction profile contains an invalid sample", error);
+  }
+  return true;
 }
 
 } // namespace
@@ -207,6 +236,102 @@ bool fitDepthCorrectionProfile(const std::vector<DepthCalibrationSample>& sample
   if (error != 0)
     error->clear();
   return true;
+}
+
+bool DepthCorrectionProfile::save(const std::string& path, std::string* error) const
+{
+  if (path.empty())
+    return fail("depth correction profile path is empty", error);
+  if (!validateSerializableProfile(*this, error))
+    return false;
+
+  nlohmann::json root;
+  root["format"] = "libfreenect2-depth-correction";
+  root["version"] = version;
+  root["device"] = {{"serial", serial}, {"firmware", firmware}};
+  root["model"] = model == OffsetOnly ? "offset_only" : "linear";
+  root["formula"] = "corrected_mm = scale * measured_mm + offset_mm";
+  root["scale"] = scale;
+  root["offset_mm"] = offset_mm;
+  root["rmse_mm"] = rmse_mm;
+  root["roi"] = {{"x", roi.x}, {"y", roi.y}, {"width", roi.width}, {"height", roi.height}};
+  root["samples"] = nlohmann::json::array();
+  for (size_t index = 0; index < samples.size(); ++index)
+  {
+    root["samples"].push_back(
+        {{"known_distance_mm", samples[index].known_distance_mm},
+         {"measured_median_mm", samples[index].measured_median_mm},
+         {"mad_mm", samples[index].mad_mm},
+         {"valid_pixel_count", samples[index].valid_pixel_count},
+         {"residual_mm", residuals_mm[index]}});
+  }
+  return recording::writeFileAtomically(path, root.dump(2) + "\n", error);
+}
+
+bool DepthCorrectionProfile::load(const std::string& path, DepthCorrectionProfile& profile,
+                                  std::string* error)
+{
+  std::vector<unsigned char> bytes;
+  if (!recording::readFile(path, bytes, error))
+    return false;
+
+  try
+  {
+    const nlohmann::json root = nlohmann::json::parse(bytes.begin(), bytes.end());
+    if (root.at("format").get<std::string>() != "libfreenect2-depth-correction" ||
+        root.at("version").get<uint32_t>() != 1)
+      return fail("unsupported depth correction profile version", error);
+
+    DepthCorrectionProfile loaded;
+    loaded.version = root.at("version").get<uint32_t>();
+    loaded.serial = root.at("device").at("serial").get<std::string>();
+    loaded.firmware = root.at("device").at("firmware").get<std::string>();
+    const std::string model_name = root.at("model").get<std::string>();
+    if (model_name == "offset_only")
+      loaded.model = OffsetOnly;
+    else if (model_name == "linear")
+      loaded.model = Linear;
+    else
+      return fail("unsupported depth correction model", error);
+    if (root.at("formula").get<std::string>() !=
+        "corrected_mm = scale * measured_mm + offset_mm")
+      return fail("unsupported depth correction formula", error);
+    loaded.scale = root.at("scale").get<double>();
+    loaded.offset_mm = root.at("offset_mm").get<double>();
+    loaded.rmse_mm = root.at("rmse_mm").get<double>();
+    loaded.roi.x = root.at("roi").at("x").get<uint32_t>();
+    loaded.roi.y = root.at("roi").at("y").get<uint32_t>();
+    loaded.roi.width = root.at("roi").at("width").get<uint32_t>();
+    loaded.roi.height = root.at("roi").at("height").get<uint32_t>();
+
+    const nlohmann::json& serialized_samples = root.at("samples");
+    if (!serialized_samples.is_array())
+      return fail("depth correction samples must be an array", error);
+    for (nlohmann::json::const_iterator item = serialized_samples.begin();
+         item != serialized_samples.end(); ++item)
+    {
+      DepthCalibrationSample sample;
+      sample.known_distance_mm = item->at("known_distance_mm").get<double>();
+      sample.measured_median_mm = item->at("measured_median_mm").get<double>();
+      sample.mad_mm = item->at("mad_mm").get<double>();
+      const uint64_t valid_pixel_count = item->at("valid_pixel_count").get<uint64_t>();
+      if (valid_pixel_count > std::numeric_limits<size_t>::max())
+        return fail("depth correction sample count is too large", error);
+      sample.valid_pixel_count = static_cast<size_t>(valid_pixel_count);
+      loaded.samples.push_back(sample);
+      loaded.residuals_mm.push_back(item->at("residual_mm").get<double>());
+    }
+    if (!validateSerializableProfile(loaded, error))
+      return false;
+    profile = loaded;
+    if (error != 0)
+      error->clear();
+    return true;
+  }
+  catch (const std::exception& exception)
+  {
+    return fail(std::string("invalid depth correction profile: ") + exception.what(), error);
+  }
 }
 
 } // namespace libfreenect2
