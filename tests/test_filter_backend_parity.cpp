@@ -12,8 +12,6 @@
 /** @file test_filter_backend_parity.cpp Exercises independent filter controls
  * on accelerator backends using the CPU pipeline as the reference. */
 
-#include <array>
-
 #include <gtest/gtest.h>
 
 #include <libfreenect2/config.h>
@@ -38,8 +36,7 @@ TEST(OpenCLCpuParity, SupportsEveryFilterCombination)
   if(!opencl.good())
     GTEST_SKIP() << "No usable OpenCL device on this machine";
 
-  const std::array<DepthFilterConfiguration, 4>& configurations =
-      depthFilterConfigurations();
+  const auto& configurations = depthFilterConfigurations();
   for(size_t i = 0; i < configurations.size(); ++i)
   {
     const DepthFilterConfiguration& filter = configurations[i];
@@ -91,7 +88,7 @@ TEST(OpenGLCpuParity, SupportsEveryFilterCombination)
   if (!opengl.good())
     GTEST_SKIP() << "No usable OpenGL context on this machine";
 
-  const std::array<DepthFilterConfiguration, 4>& configurations = depthFilterConfigurations();
+  const auto& configurations = depthFilterConfigurations();
   for(size_t i = 0; i < configurations.size(); ++i)
   {
     const DepthFilterConfiguration& filter = configurations[i];

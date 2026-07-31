@@ -245,17 +245,11 @@ public:
   bool hasNewFrame() const { return !ready_frame_.empty(); }
 
   void searchCombinations(size_t type_index, std::vector<size_t>& candidate,
-                          std::vector<size_t>& best, uint32_t& best_span) const
+                          std::vector<size_t>& best, std::vector<uint32_t>& timestamps,
+                          uint32_t& best_span) const
   {
     if (type_index == subscribed_types_.size())
     {
-      std::vector<uint32_t> timestamps(subscribed_types_.size());
-      for (size_t i = 0; i < subscribed_types_.size(); ++i)
-      {
-        const FrameQueue& queue = queues_.find(subscribed_types_[i])->second;
-        timestamps[i] = queue[candidate[i]]->timestamp;
-      }
-
       const uint32_t span = deviceTimestampSpan(timestamps.data(), timestamps.size());
       if (best.empty() || span < best_span)
       {
@@ -269,7 +263,8 @@ public:
     for (size_t i = 0; i < queue.size(); ++i)
     {
       candidate[type_index] = i;
-      searchCombinations(type_index + 1, candidate, best, best_span);
+      timestamps[type_index] = queue[i]->timestamp;
+      searchCombinations(type_index + 1, candidate, best, timestamps, best_span);
     }
   }
 
@@ -286,8 +281,9 @@ public:
 
     std::vector<size_t> candidate(subscribed_types_.size(), 0);
     std::vector<size_t> best;
+    std::vector<uint32_t> timestamps(subscribed_types_.size(), 0);
     uint32_t best_span = std::numeric_limits<uint32_t>::max();
-    searchCombinations(0, candidate, best, best_span);
+    searchCombinations(0, candidate, best, timestamps, best_span);
     if (best.empty() || best_span > max_delta_ticks_)
       return false;
 
