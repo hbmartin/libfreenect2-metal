@@ -521,13 +521,6 @@ SET(HAVE_CUDA disabled)
 IF(ENABLE_CUDA)
   SET(HAVE_CUDA no)
 
-  # NOTE: The CUDA depth processors #include <helper_math.h>, which used to ship
-  # with the CUDA Toolkit under samples/common/inc but is NOT bundled by modern
-  # toolkits (CUDA >= 11). If detection succeeds but the build fails on a missing
-  # helper_math.h, vendor the CUDA samples' Common dir into
-  # depends/cuda-samples/Common (from https://github.com/NVIDIA/cuda-samples) —
-  # both detection paths below add it to the include search.
-
   # Modern path: first-class CMake CUDA language support (CMake >= 3.18).
   # Avoids the deprecated FindCUDA module / CUDA_COMPILE machinery and works with
   # current CUDA toolkits and host compilers. Falls back to legacy FindCUDA below.
@@ -557,8 +550,6 @@ IF(ENABLE_CUDA)
         INCLUDE_DIRECTORIES(
           "${MY_DIR}/include/"
           "${CUDAToolkit_INCLUDE_DIRS}"
-          "${CUDAToolkit_TARGET_DIR}/samples/common/inc"
-          "${DEPENDS_DIR}/cuda-samples/Common"
         )
 
         SET_SOURCE_FILES_PROPERTIES(
@@ -588,14 +579,8 @@ IF(ENABLE_CUDA)
       SET(LIBFREENECT2_WITH_CUDA_SUPPORT 1)
       SET(HAVE_CUDA yes)
 
-      STRING(REPLACE "\\" "/" NVCUDASAMPLES_ROOT "$ENV{NVCUDASAMPLES_ROOT}")
-      STRING(REPLACE "\\" "/" NVCUDASAMPLES8_0_ROOT "$ENV{NVCUDASAMPLES8_0_ROOT}")
       CUDA_INCLUDE_DIRECTORIES(
         "${MY_DIR}/include/"
-        "${CUDA_TOOLKIT_ROOT_DIR}/samples/common/inc"
-        "${NVCUDASAMPLES_ROOT}/common/inc"
-        "${NVCUDASAMPLES8_0_ROOT}/common/inc"
-        "${DEPENDS_DIR}/cuda-samples/Common"
       )
       SET(CUDA_FLAGS -use_fast_math)
       IF(NOT MSVC)
