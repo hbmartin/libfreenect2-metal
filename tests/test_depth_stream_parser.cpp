@@ -105,6 +105,8 @@ TEST(DepthStreamParser, AssemblesFullFrameAndForwardsOnce)
 
   EXPECT_EQ(proc.count, 1);
   EXPECT_EQ(proc.last_sequence, 1u);
+  // Footer timestamps are 1000 + subsequence, so 1000 proves that the frame
+  // retains the first subpacket's device timestamp rather than the last one's.
   EXPECT_EQ(proc.last_timestamp, 1000u);
   EXPECT_EQ(proc.last_arrival_timestamp_us, 100u);
 }

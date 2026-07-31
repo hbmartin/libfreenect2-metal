@@ -79,6 +79,8 @@ namespace
 
 double median(std::vector<double>& values)
 {
+  if (values.empty())
+    return 0.0;
   std::sort(values.begin(), values.end());
   const size_t middle = values.size() / 2;
   if (values.size() % 2 != 0)

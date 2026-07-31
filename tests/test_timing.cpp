@@ -10,6 +10,7 @@
  */
 
 #include <chrono>
+#include <cstdint>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -49,5 +50,5 @@ TEST(Timing, DeviceTimestampSpanHandlesWraparound)
   const uint32_t timestamps[] = {UINT32_MAX - 2u, 1u, 4u};
   EXPECT_EQ(libfreenect2::deviceTimestampSpan(timestamps, 3), 7u);
   EXPECT_EQ(libfreenect2::deviceTimestampSpan(timestamps, 1), 0u);
-  EXPECT_EQ(libfreenect2::deviceTimestampSpan(0, 0), 0u);
+  EXPECT_EQ(libfreenect2::deviceTimestampSpan(nullptr, 0), 0u);
 }

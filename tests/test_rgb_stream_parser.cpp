@@ -161,6 +161,8 @@ TEST(RgbStreamParser, RetainsFirstArrivalAcrossFragments)
                         packet.size() - first_length - second_length, 3000);
 
   ASSERT_EQ(proc.count, 1);
+  EXPECT_EQ(proc.last_sequence, 12u);
+  EXPECT_EQ(proc.last_jpeg_length, 512u);
   EXPECT_EQ(proc.last_arrival_timestamp_us, 1000u);
 }
 

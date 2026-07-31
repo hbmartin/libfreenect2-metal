@@ -12,7 +12,7 @@
 #include <libfreenect2/timing.h>
 
 #include <chrono>
-#include <climits>
+#include <cstdint>
 
 namespace libfreenect2
 {

@@ -123,12 +123,10 @@ void Viewer::winsize_callback(int w, int h)
     win_height = h/2;
 }
 
-void Viewer::key_callbackstatic(GLFWwindow* window, int key, int scancode, int action, int mods)
+void Viewer::key_callbackstatic(GLFWwindow* window, int key, int, int action, int)
 {
-    Viewer* viewer = reinterpret_cast<Viewer*>(glfwGetWindowUserPointer(window));
-    viewer->key_callback(key, action);
-    (void)scancode;
-    (void)mods;
+  Viewer* viewer = reinterpret_cast<Viewer*>(glfwGetWindowUserPointer(window));
+  viewer->key_callback(key, action);
 }
 
 void Viewer::key_callback(int key, int action)

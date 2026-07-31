@@ -29,6 +29,7 @@
 #include <libfreenect2/protocol/command_transaction.h>
 #include <libfreenect2/logging.h>
 
+#include <cstring>
 #include <stdint.h>
 
 #define WRITE_LIBUSB_ERROR(__RESULT) \

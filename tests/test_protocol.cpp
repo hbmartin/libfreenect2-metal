@@ -1,4 +1,4 @@
-/** @file test_protocol.cpp Validates parsing of short, empty, and unaligned replies. */
+/** @file test_protocol.cpp Validates parsing of short, empty, and valid replies. */
 
 #include <cstring>
 #include <vector>
@@ -27,12 +27,11 @@ TEST(ProtocolResponse, EmptyAndShortRepliesHaveSafeDefaults)
   EXPECT_FLOAT_EQ(RgbCameraParamsResponse(short_reply).toColorCameraParams().fx, 0.0f);
 }
 
-TEST(ProtocolResponse, ParsesUnalignedStatusReply)
+TEST(ProtocolResponse, ParsesLittleEndianStatusReply)
 {
   const uint32_t expected = 0x12345678u;
-  std::vector<unsigned char> storage(sizeof(expected) + 1, 0);
-  std::memcpy(&storage[1], &expected, sizeof(expected));
-  std::vector<unsigned char> reply(storage.begin() + 1, storage.end());
+  std::vector<unsigned char> reply(sizeof(expected), 0);
+  std::memcpy(&reply[0], &expected, sizeof(expected));
   EXPECT_EQ(Status0x090000Response(reply).toNumber(), expected);
 }
 

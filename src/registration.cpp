@@ -27,6 +27,7 @@
 /** @file Implementation of merging depth and color images. */
 
 #define _USE_MATH_DEFINES
+#include <cmath>
 #include <math.h>
 #include <libfreenect2/registration.h>
 #include <limits>
