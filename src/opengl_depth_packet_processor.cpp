@@ -132,6 +132,28 @@ struct ShaderProgram : public WithOpenGLBindings
   {
   }
 
+  void release()
+  {
+    if (gl() == 0)
+      return;
+
+    if (program != 0)
+    {
+      gl()->glDeleteProgram(program);
+      program = 0;
+    }
+    if (vertex_shader != 0)
+    {
+      gl()->glDeleteShader(vertex_shader);
+      vertex_shader = 0;
+    }
+    if (fragment_shader != 0)
+    {
+      gl()->glDeleteShader(fragment_shader);
+      fragment_shader = 0;
+    }
+  }
+
   void checkMesaBug()
   {
     if (is_mesa_checked)
