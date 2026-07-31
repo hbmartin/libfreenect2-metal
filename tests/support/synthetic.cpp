@@ -23,23 +23,47 @@ namespace testing
 
 namespace
 {
-// Small deterministic LCG so fixtures are reproducible across runs/platforms.
-struct Lcg
-{
-  uint32_t state;
-  explicit Lcg(uint32_t seed) : state(seed ? seed : 1u) {}
-  uint32_t next()
-  {
-    state = state * 1664525u + 1013904223u;
-    return state;
-  }
-};
-
 const int kWidth = 512;
 const int kHeight = 424;
 const size_t kTableSize = libfreenect2::DepthPacketProcessor::TABLE_SIZE; // 512*424
 const size_t kLutSize = libfreenect2::DepthPacketProcessor::LUT_SIZE;     // 2048
+const size_t kPackedRowBytes = 352 * sizeof(uint16_t);
+const size_t kPackedImageBytes = kPackedRowBytes * kHeight;
+
+void setPackedDepthMeasurement(std::vector<unsigned char>& buffer, int subimage,
+                               int x, int y, uint16_t value)
+{
+  const int storage_y = y < 212 ? y + 212 : 423 - y;
+  const size_t bit_offset = static_cast<size_t>((x >> 2) + ((x & 3) << 7)) * 11;
+  unsigned char* row = buffer.data() + subimage * kPackedImageBytes +
+                       storage_y * kPackedRowBytes;
+  for(size_t bit = 0; bit < 11; ++bit)
+  {
+    if((value & (1u << bit)) != 0)
+      row[(bit_offset + bit) / 8] |=
+          static_cast<unsigned char>(1u << ((bit_offset + bit) % 8));
+  }
+}
 } // namespace
+
+libfreenect2::Freenect2Device::Config DepthFilterConfiguration::config() const
+{
+  libfreenect2::Freenect2Device::Config value;
+  value.EnableBilateralFilter = bilateral;
+  value.EnableEdgeAwareFilter = edge_aware;
+  return value;
+}
+
+const std::array<DepthFilterConfiguration, 4>& depthFilterConfigurations()
+{
+  static const std::array<DepthFilterConfiguration, 4> configurations = {{
+      {"bilateral-and-edge", true, true},
+      {"bilateral-only", true, false},
+      {"edge-only", false, true},
+      {"unfiltered", false, false},
+  }};
+  return configurations;
+}
 
 CollectingFrameListener::CollectingFrameListener()
     : ir_(0), depth_(0), ir_count_(0), depth_count_(0)
@@ -125,14 +149,7 @@ std::vector<unsigned char> makeSyntheticP0Tables(uint32_t seed)
 
   resp->headersize = sizeof(libfreenect2::protocol::P0TablesResponse);
   resp->tablesize = static_cast<uint32_t>(kTableSize * sizeof(uint16_t));
-
-  Lcg rng(seed);
-  for (size_t i = 0; i < kTableSize; ++i)
-  {
-    resp->p0table0[i] = static_cast<uint16_t>(rng.next() & 0xffff);
-    resp->p0table1[i] = static_cast<uint16_t>(rng.next() & 0xffff);
-    resp->p0table2[i] = static_cast<uint16_t>(rng.next() & 0xffff);
-  }
+  (void)seed;
   return buf;
 }
 
@@ -140,17 +157,11 @@ void makeSyntheticXZTables(const libfreenect2::Freenect2Device::IrCameraParams& 
                            std::vector<float>& xtable, std::vector<float>& ztable)
 {
   xtable.assign(kTableSize, 0.0f);
-  ztable.assign(kTableSize, 0.0f);
-  for (int y = 0; y < kHeight; ++y)
-  {
-    for (int x = 0; x < kWidth; ++x)
-    {
-      size_t i = static_cast<size_t>(y) * kWidth + x;
-      // Normalized ray directions, like the real back-projection tables.
-      xtable[i] = (static_cast<float>(x) - ir.cx) / ir.fx;
-      ztable[i] = (static_cast<float>(y) - ir.cy) / ir.fy;
-    }
-  }
+  // The depth processor's Z table scales unwrapped phase to millimetres; it
+  // is not the normalized camera-ray Z component. A constant planar scale
+  // keeps the synthetic packet inside the default 0.5-4.5 m range.
+  ztable.assign(kTableSize, 25000.0f);
+  (void)ir;
 }
 
 void makeSyntheticLookupTable(std::vector<short>& lut)
@@ -165,11 +176,24 @@ void makeSyntheticLookupTable(std::vector<short>& lut)
 
 std::vector<unsigned char> makeSyntheticDepthBuffer(uint32_t seed)
 {
-  const size_t single_image = static_cast<size_t>(kWidth) * kHeight * 11 / 8;
-  std::vector<unsigned char> buf(10 * single_image);
-  Lcg rng(seed);
-  for (size_t i = 0; i < buf.size(); ++i)
-    buf[i] = static_cast<unsigned char>(rng.next() & 0xff);
+  std::vector<unsigned char> buf(10 * kPackedImageBytes, 0);
+  const float phase = 0.25f + 0.005f * static_cast<float>(seed % 5u);
+  const float phase_step = 2.09439510239f;
+  uint16_t samples[3];
+  for(int sample = 0; sample < 3; ++sample)
+  {
+    const float raw = 1024.0f + 500.0f * std::cos(phase + sample * phase_step);
+    samples[sample] = static_cast<uint16_t>(std::lround(raw));
+  }
+
+  for(int subimage = 0; subimage < 9; ++subimage)
+  {
+    for(int y = 0; y < kHeight; ++y)
+    {
+      for(int x = 0; x < kWidth; ++x)
+        setPackedDepthMeasurement(buf, subimage, x, y, samples[subimage % 3]);
+    }
+  }
   return buf;
 }
 
@@ -188,6 +212,81 @@ void loadSyntheticTables(libfreenect2::DepthPacketProcessor& proc,
   std::vector<short> lut;
   makeSyntheticLookupTable(lut);
   proc.loadLookupTable(lut.data());
+}
+
+void runSyntheticDepthProcessor(libfreenect2::DepthPacketProcessor& proc,
+                                const libfreenect2::Freenect2Device::Config& config,
+                                uint32_t seed,
+                                CollectingFrameListener& listener)
+{
+  proc.setConfiguration(config);
+  loadSyntheticTables(proc, makeIrParams(), seed);
+  proc.setFrameListener(&listener);
+
+  std::vector<unsigned char> buffer = makeSyntheticDepthBuffer(seed);
+  libfreenect2::DepthPacket packet;
+  packet.sequence = seed;
+  packet.timestamp = seed * 100u;
+  packet.buffer = buffer.data();
+  packet.buffer_length = buffer.size();
+  packet.memory = 0;
+  proc.process(packet);
+}
+
+size_t countValidDepthPixels(const libfreenect2::Frame* depth)
+{
+  if(depth == 0 || depth->format != libfreenect2::Frame::Float)
+    return 0;
+
+  const size_t count = depth->width * depth->height;
+  const float* values = reinterpret_cast<const float*>(depth->data);
+  size_t valid = 0;
+  for(size_t i = 0; i < count; ++i)
+  {
+    if(std::isfinite(values[i]) && values[i] > 0.0f)
+      ++valid;
+  }
+  return valid;
+}
+
+DepthFrameAgreement compareDepthFrames(const libfreenect2::Frame* depth_a,
+                                       const libfreenect2::Frame* depth_b,
+                                       const libfreenect2::Frame* ir_a,
+                                       const libfreenect2::Frame* ir_b,
+                                       float depth_tolerance_mm)
+{
+  DepthFrameAgreement agreement = {0.0, 0.0};
+  if(depth_a == 0 || depth_b == 0 || ir_a == 0 || ir_b == 0)
+    return agreement;
+
+  const size_t count = depth_a->width * depth_a->height;
+  if(depth_b->width * depth_b->height != count ||
+     ir_a->width * ir_a->height != count || ir_b->width * ir_b->height != count)
+    return agreement;
+
+  const float* da = reinterpret_cast<const float*>(depth_a->data);
+  const float* db = reinterpret_cast<const float*>(depth_b->data);
+  const float* ia = reinterpret_cast<const float*>(ir_a->data);
+  const float* ib = reinterpret_cast<const float*>(ir_b->data);
+  size_t depth_matches = 0;
+  size_t ir_matches = 0;
+  for(size_t i = 0; i < count; ++i)
+  {
+    const bool da_invalid = !std::isfinite(da[i]) || da[i] <= 0.0f;
+    const bool db_invalid = !std::isfinite(db[i]) || db[i] <= 0.0f;
+    if((da_invalid && db_invalid) ||
+       (!da_invalid && !db_invalid && std::fabs(da[i] - db[i]) <= depth_tolerance_mm))
+      ++depth_matches;
+
+    const float magnitude = std::fmax(std::fabs(ia[i]), std::fabs(ib[i]));
+    const float tolerance = std::fmax(1.0f, 1e-2f * magnitude);
+    if(std::fabs(ia[i] - ib[i]) <= tolerance)
+      ++ir_matches;
+  }
+
+  agreement.depth_ratio = static_cast<double>(depth_matches) / count;
+  agreement.ir_ratio = static_cast<double>(ir_matches) / count;
+  return agreement;
 }
 
 } // namespace testing
