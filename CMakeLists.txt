@@ -193,6 +193,7 @@ SET(SOURCES
   include/internal/libfreenect2/recording_utils.h
   include/internal/libfreenect2/recording_loader.h
   include/internal/libfreenect2/rgb_packet_processor.h
+  include/internal/libfreenect2/rgb_decoder_fallback.h
   include/internal/libfreenect2/rgb_packet_stream_parser.h
   include/internal/libfreenect2/threading.h
 
@@ -204,6 +205,7 @@ SET(SOURCES
   src/packet_pipeline.cpp
   src/rgb_packet_stream_parser.cpp
   src/rgb_packet_processor.cpp
+  src/rgb_decoder_fallback.cpp
   src/depth_packet_stream_parser.cpp
   src/depth_packet_processor.cpp
   src/cpu_depth_packet_processor.cpp

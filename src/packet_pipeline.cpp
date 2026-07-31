@@ -30,6 +30,7 @@
 #include <libfreenect2/async_packet_processor.h>
 #include <libfreenect2/data_callback.h>
 #include <libfreenect2/rgb_packet_stream_parser.h>
+#include <libfreenect2/rgb_decoder_fallback.h>
 #include <libfreenect2/depth_packet_stream_parser.h>
 #include <libfreenect2/logging.h>
 #include <libfreenect2/protocol/response.h>
@@ -55,77 +56,11 @@ public:
 
 #if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT) && \
     defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
-class VaapiFallbackRgbPacketProcessor : public RgbPacketProcessor
-{
-public:
-  explicit VaapiFallbackRgbPacketProcessor(VaapiRgbPacketProcessor *primary):
-    primary_(primary), fallback_(new TurboJpegRgbPacketProcessor()), using_fallback_(false)
-  {
-  }
-
-  virtual ~VaapiFallbackRgbPacketProcessor()
-  {
-    delete primary_;
-    delete fallback_;
-  }
-
-  virtual bool good()
-  {
-    return using_fallback_ ? fallback_->good() : primary_->good();
-  }
-
-  virtual const char *name()
-  {
-    return using_fallback_ ? fallback_->name() : primary_->name();
-  }
-
-  virtual void setFrameListener(FrameListener *listener)
-  {
-    RgbPacketProcessor::setFrameListener(listener);
-    primary_->setFrameListener(listener);
-    fallback_->setFrameListener(listener);
-  }
-
-  virtual void process(const RgbPacket &packet)
-  {
-    if(using_fallback_)
-    {
-      fallback_->process(packet);
-      return;
-    }
-    primary_->process(packet);
-    if(!primary_->good())
-    {
-      using_fallback_ = true;
-      LOG_WARNING << "VAAPI RGB decoding failed; using TurboJPEG for this and subsequent frames";
-      fallback_->process(packet);
-    }
-  }
-
-  virtual void releaseBuffer(RgbPacket &packet)
-  {
-    if(packet.memory != 0 && packet.memory->allocator != 0)
-      packet.memory->allocator->free(packet.memory);
-    packet.memory = 0;
-  }
-
-protected:
-  virtual Allocator *getAllocator()
-  {
-    return using_fallback_ ? fallback_->getPacketAllocator() : primary_->getPacketAllocator();
-  }
-
-private:
-  VaapiRgbPacketProcessor *primary_;
-  TurboJpegRgbPacketProcessor *fallback_;
-  bool using_fallback_;
-};
-
 static RgbPacketProcessor *withVaapiRuntimeFallback(VaapiRgbPacketProcessor *processor,
                                                     bool allow_fallback)
 {
   if(allow_fallback)
-    return new VaapiFallbackRgbPacketProcessor(processor);
+    return new RgbDecoderFallback(processor, new TurboJpegRgbPacketProcessor());
   return processor;
 }
 #endif

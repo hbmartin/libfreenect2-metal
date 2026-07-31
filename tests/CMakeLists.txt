@@ -30,6 +30,7 @@ ADD_EXECUTABLE(unit_tests
   test_mediapipe_pose_bridge.cpp
   test_depth_stream_parser.cpp
   test_rgb_stream_parser.cpp
+  test_rgb_decoder_fallback.cpp
   test_cpu_depth_processor.cpp
   test_filter_backend_parity.cpp
   test_metal_cpu_parity.cpp
