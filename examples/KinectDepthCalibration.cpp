@@ -31,7 +31,7 @@ struct RecordingInput
 void printUsage()
 {
   std::cerr << "usage: KinectDepthCalibration OUTPUT.json --roi X Y WIDTH HEIGHT "
-               "[--frames N] [--warmup-frames N] [--serial SERIAL] "
+               "[--frames N] [--warmup-frames N] [--serial SERIAL] [--pipeline NAME] "
                "(--recording DISTANCE_MM DIRECTORY | --live DISTANCE_MM) ...\n";
 }
 
@@ -122,13 +122,20 @@ bool collectFrames(libfreenect2::Freenect2Device& device, double known_distance_
 
 bool collectRecording(const RecordingInput& input,
                       const libfreenect2::DepthCalibrationRoi& roi, uint32_t frame_count,
+                      const std::string& pipeline_name,
                       std::string& serial, std::string& firmware,
                       std::vector<libfreenect2::DepthCalibrationSample>& samples,
                       std::string& error)
 {
+  libfreenect2::PacketPipeline* pipeline = libfreenect2::createPacketPipeline(pipeline_name);
+  if (pipeline == 0)
+  {
+    error = "requested packet pipeline is not compiled in: '" + pipeline_name + "'";
+    return false;
+  }
   libfreenect2::Freenect2Replay replay;
   libfreenect2::Freenect2Device* device = replay.openRecording(
-      input.directory, new libfreenect2::CpuPacketPipeline(), libfreenect2::ReplayOptions());
+      input.directory, pipeline, libfreenect2::ReplayOptions());
   if (device == 0)
   {
     error = "unable to open recording directory '" + input.directory + "'";
@@ -165,7 +172,8 @@ bool collectRecording(const RecordingInput& input,
 
 bool collectLive(const std::vector<double>& known_distances,
                  const libfreenect2::DepthCalibrationRoi& roi, uint32_t warmup_frame_count,
-                 uint32_t frame_count, const std::string& requested_serial, std::string& serial,
+                 uint32_t frame_count, const std::string& requested_serial,
+                 const std::string& pipeline_name, std::string& serial,
                  std::string& firmware,
                  std::vector<libfreenect2::DepthCalibrationSample>& samples,
                  std::string& error)
@@ -178,8 +186,13 @@ bool collectLive(const std::vector<double>& known_distances,
   }
   const std::string live_serial =
       requested_serial.empty() ? freenect2.getDefaultDeviceSerialNumber() : requested_serial;
-  libfreenect2::Freenect2Device* device =
-      freenect2.openDevice(live_serial, new libfreenect2::CpuPacketPipeline());
+  libfreenect2::PacketPipeline* pipeline = libfreenect2::createPacketPipeline(pipeline_name);
+  if (pipeline == 0)
+  {
+    error = "requested packet pipeline is not compiled in: '" + pipeline_name + "'";
+    return false;
+  }
+  libfreenect2::Freenect2Device* device = freenect2.openDevice(live_serial, pipeline);
   if (device == 0)
   {
     error = "unable to open Kinect '" + live_serial + "' for live calibration";
@@ -247,6 +260,7 @@ int main(int argc, char** argv)
   uint32_t frame_count = 30;
   uint32_t warmup_frame_count = 30;
   std::string requested_serial;
+  std::string pipeline_name = "cpu";
   std::vector<RecordingInput> recordings;
   std::vector<double> live_distances;
   for (int argument = 2; argument < argc; ++argument)
@@ -283,6 +297,15 @@ int main(int argc, char** argv)
     {
       requested_serial = argv[++argument];
       if (requested_serial.empty())
+      {
+        printUsage();
+        return 2;
+      }
+    }
+    else if (option == "--pipeline" && argument + 1 < argc)
+    {
+      pipeline_name = argv[++argument];
+      if (pipeline_name.empty())
       {
         printUsage();
         return 2;
@@ -328,7 +351,8 @@ int main(int argc, char** argv)
   std::vector<libfreenect2::DepthCalibrationSample> samples;
   for (size_t index = 0; index < recordings.size(); ++index)
   {
-    if (!collectRecording(recordings[index], roi, frame_count, serial, firmware, samples, error))
+    if (!collectRecording(recordings[index], roi, frame_count, pipeline_name, serial, firmware,
+                          samples, error))
     {
       std::cerr << "Calibration input failed: " << error << "\n";
       return 1;
@@ -336,7 +360,7 @@ int main(int argc, char** argv)
   }
   if (!live_distances.empty() &&
       !collectLive(live_distances, roi, warmup_frame_count, frame_count, requested_serial,
-                   serial, firmware, samples, error))
+                   pipeline_name, serial, firmware, samples, error))
   {
     std::cerr << "Live calibration failed: " << error << "\n";
     return 1;
