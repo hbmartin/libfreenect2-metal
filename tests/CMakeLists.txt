@@ -68,6 +68,7 @@ IF(ENABLE_FUZZING)
   libfreenect2_add_fuzzer(fuzz_rgb_stream_parser fuzz/fuzz_rgb_stream_parser.cpp)
   libfreenect2_add_fuzzer(fuzz_depth_stream_parser fuzz/fuzz_depth_stream_parser.cpp)
   libfreenect2_add_fuzzer(fuzz_protocol_response fuzz/fuzz_protocol_response.cpp)
+  libfreenect2_add_fuzzer(fuzz_recording_metadata fuzz/fuzz_recording_metadata.cpp)
 
   ADD_TEST(NAME fuzz_rgb_stream_parser_smoke
     COMMAND fuzz_rgb_stream_parser -runs=1000 -max_len=2097152
@@ -77,10 +78,14 @@ IF(ENABLE_FUZZING)
             -dict=${CMAKE_CURRENT_SOURCE_DIR}/fuzz/depth.dict)
   ADD_TEST(NAME fuzz_protocol_response_smoke
     COMMAND fuzz_protocol_response -runs=1000 -max_len=65536)
+  ADD_TEST(NAME fuzz_recording_metadata_smoke
+    COMMAND fuzz_recording_metadata -runs=1000 -max_len=1048576
+            -dict=${CMAKE_CURRENT_SOURCE_DIR}/fuzz/recording.dict)
   SET_TESTS_PROPERTIES(
     fuzz_rgb_stream_parser_smoke
     fuzz_depth_stream_parser_smoke
     fuzz_protocol_response_smoke
+    fuzz_recording_metadata_smoke
     PROPERTIES LABELS "fuzz" TIMEOUT 120
   )
 ENDIF()

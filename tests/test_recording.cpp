@@ -397,6 +397,38 @@ TEST(RecordingLoader, LoadsIdentityAndCalibrationAndEnforcesCompletion)
   removeTestRecording(directory);
 }
 
+TEST(RecordingLoader, SalvagesOnlyCompleteFinalJournalLines)
+{
+  const std::string directory = uniqueRecordingDirectory();
+  RecordingWriter writer(directory, 2);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
+      << writer.getLastError();
+  Frame frame(1, 1, 4);
+  frame.format = Frame::Raw;
+  frame.arrival_timestamp_us = monotonicTimeMicroseconds();
+  std::memset(frame.data, 0x44, 4);
+  EXPECT_FALSE(writer.onNewFrame(Frame::Color, &frame));
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  std::vector<unsigned char> bytes;
+  std::string error;
+  const std::string journal_path = joinPath(directory, "frames.ndjson");
+  ASSERT_TRUE(readFile(journal_path, bytes, &error)) << error;
+  const std::string valid(bytes.begin(), bytes.end());
+  ASSERT_TRUE(writeFileAtomically(journal_path, valid + "{\"truncated\"", &error)) << error;
+
+  RecordingData recording;
+  EXPECT_FALSE(loadRecordingData(directory, false, recording, &error));
+  ASSERT_TRUE(loadRecordingData(directory, true, recording, &error)) << error;
+  ASSERT_EQ(1u, recording.entries.size());
+
+  ASSERT_TRUE(writeFileAtomically(journal_path, valid + "not-json\n{\"truncated\"", &error))
+      << error;
+  EXPECT_FALSE(loadRecordingData(directory, true, recording, &error));
+  removeTestRecording(directory);
+}
+
 TEST(RecordingReplay, ReplaysJournaledColorWithRecordedMetadata)
 {
   const std::string directory = uniqueRecordingDirectory();
