@@ -8,8 +8,10 @@
 #include <vector>
 
 #include <libfreenect2/config.h>
+#include <libfreenect2/depth_packet_processor.h>
 #include <libfreenect2/libfreenect2.hpp>
 #include <libfreenect2/packet_pipeline.h>
+#include <libfreenect2/protocol/response.h>
 
 namespace libfreenect2
 {
@@ -29,15 +31,15 @@ bool parse(const std::string& filename, size_t values[2])
 {
   return lf::parseFrameFilename(filename, values);
 }
-}
+} // namespace libfreenect2_detail
 
 #if defined(LIBFREENECT2_WITH_OPENGL_SUPPORT) || defined(LIBFREENECT2_WITH_OPENCL_SUPPORT)
-void setPipelineEnvironment(const char *value)
+void setPipelineEnvironment(const char* value)
 {
 #if defined(_WIN32)
   _putenv_s("LIBFREENECT2_PIPELINE", value == NULL ? "" : value);
 #else
-  if(value == NULL)
+  if (value == NULL)
     unsetenv("LIBFREENECT2_PIPELINE");
   else
     setenv("LIBFREENECT2_PIPELINE", value, 1);
@@ -64,26 +66,27 @@ TEST(PublicApi, ExposesCanonicalPipelineFactories)
   EXPECT_NE(compiled.end(), std::find(compiled.begin(), compiled.end(), "cpu"));
   EXPECT_NE(compiled.end(), std::find(compiled.begin(), compiled.end(), "dump"));
 
-  for(std::vector<std::string>::const_iterator it = compiled.begin(); it != compiled.end(); ++it)
+  for (std::vector<std::string>::const_iterator it = compiled.begin(); it != compiled.end(); ++it)
   {
-    libfreenect2::PacketPipeline *pipeline = libfreenect2::createPacketPipeline(*it);
-    ASSERT_NE(static_cast<libfreenect2::PacketPipeline *>(NULL), pipeline) << *it;
+    libfreenect2::PacketPipeline* pipeline = libfreenect2::createPacketPipeline(*it);
+    ASSERT_NE(static_cast<libfreenect2::PacketPipeline*>(NULL), pipeline) << *it;
     EXPECT_EQ(*it, pipeline->getName());
     delete pipeline;
   }
 
-  EXPECT_EQ(static_cast<libfreenect2::PacketPipeline *>(NULL),
+  EXPECT_EQ(static_cast<libfreenect2::PacketPipeline*>(NULL),
             libfreenect2::createPacketPipeline("not-a-pipeline"));
-  EXPECT_EQ(static_cast<libfreenect2::PacketPipeline *>(NULL),
+  EXPECT_EQ(static_cast<libfreenect2::PacketPipeline*>(NULL),
             libfreenect2::createPacketPipeline("gl"));
-  EXPECT_EQ(static_cast<libfreenect2::PacketPipeline *>(NULL),
+  EXPECT_EQ(static_cast<libfreenect2::PacketPipeline*>(NULL),
             libfreenect2::createPacketPipeline("cl"));
 }
 
 TEST(PublicApi, ParsesReplayFilenameFromTheFinalTwoUnderscores)
 {
   size_t values[2] = {0, 0};
-  EXPECT_TRUE(libfreenect2_detail::parse("/tmp/path_with_underscores/color_frame_123_45.jpg", values));
+  EXPECT_TRUE(
+      libfreenect2_detail::parse("/tmp/path_with_underscores/color_frame_123_45.jpg", values));
   EXPECT_EQ(123u, values[0]);
   EXPECT_EQ(45u, values[1]);
   EXPECT_FALSE(libfreenect2_detail::parse("color_0_1.jpg", values));
@@ -95,8 +98,8 @@ TEST(PublicApi, ParsesReplayFilenameFromTheFinalTwoUnderscores)
 TEST(PublicApi, PreservesGlAsEnvironmentAlias)
 {
   setPipelineEnvironment("gl");
-  lf::PacketPipeline *pipeline = lf::createDefaultPacketPipeline();
-  ASSERT_NE(static_cast<lf::PacketPipeline *>(NULL), pipeline);
+  lf::PacketPipeline* pipeline = lf::createDefaultPacketPipeline();
+  ASSERT_NE(static_cast<lf::PacketPipeline*>(NULL), pipeline);
   EXPECT_EQ("opengl", pipeline->getName());
   delete pipeline;
   setPipelineEnvironment(NULL);
@@ -107,8 +110,8 @@ TEST(PublicApi, PreservesGlAsEnvironmentAlias)
 TEST(PublicApi, PreservesClAsEnvironmentAlias)
 {
   setPipelineEnvironment("cl");
-  lf::PacketPipeline *pipeline = lf::createDefaultPacketPipeline();
-  ASSERT_NE(static_cast<lf::PacketPipeline *>(NULL), pipeline);
+  lf::PacketPipeline* pipeline = lf::createDefaultPacketPipeline();
+  ASSERT_NE(static_cast<lf::PacketPipeline*>(NULL), pipeline);
   EXPECT_EQ("opencl", pipeline->getName());
   delete pipeline;
   setPipelineEnvironment(NULL);
@@ -125,6 +128,35 @@ TEST(PublicApi, RejectsInvalidReplayCalibration)
 
   EXPECT_EQ(static_cast<libfreenect2::Freenect2Device*>(NULL),
             replay.openDevice(files, calibration, new libfreenect2::CpuPacketPipeline()));
+}
+
+TEST(PublicApi, ExposesAnImmutableReplayCalibrationSnapshot)
+{
+  lf::Freenect2Replay replay;
+  lf::Freenect2Replay::Calibration expected = {};
+  expected.color.fx = 1081.0f;
+  expected.ir.fx = 365.0f;
+  expected.ir.fy = 365.0f;
+  expected.p0_tables.resize(sizeof(lf::protocol::P0TablesResponse));
+  expected.x_table.resize(lf::DepthPacketProcessor::TABLE_SIZE);
+  expected.z_table.resize(lf::DepthPacketProcessor::TABLE_SIZE);
+  expected.lookup_table.resize(lf::DepthPacketProcessor::LUT_SIZE);
+  std::vector<std::string> files(1, "missing_color_1_1.jpg");
+
+  lf::Freenect2Device* device = replay.openDevice(files, expected, new lf::CpuPacketPipeline());
+  ASSERT_NE(static_cast<lf::Freenect2Device*>(NULL), device);
+
+  lf::CalibrationData actual;
+  ASSERT_TRUE(device->getCalibrationData(actual));
+  EXPECT_FLOAT_EQ(expected.color.fx, actual.color.fx);
+  EXPECT_FLOAT_EQ(expected.ir.fx, actual.ir.fx);
+  EXPECT_EQ(expected.p0_tables, actual.p0_tables);
+  actual.p0_tables[0] = 42;
+
+  lf::CalibrationData second_copy;
+  ASSERT_TRUE(device->getCalibrationData(second_copy));
+  EXPECT_EQ(0, second_copy.p0_tables[0]);
+  EXPECT_TRUE(device->close());
 }
 
 TEST(PublicApi, ReplayStartStopCloseIsRepeatable)
