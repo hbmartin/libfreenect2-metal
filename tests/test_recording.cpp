@@ -63,6 +63,15 @@ void removeTestRecording(const std::string& directory)
 #endif
 }
 
+CalibrationData sampleCalibrationData()
+{
+  CalibrationData calibration = {};
+  calibration.color.fx = 1081.0f;
+  calibration.ir.fx = 365.0f;
+  calibration.p0_tables.resize(sizeof(protocol::P0TablesResponse), 0x2a);
+  return calibration;
+}
+
 } // namespace
 
 TEST(RecordingPaths, AcceptsCanonicalRecordingPaths)
@@ -211,6 +220,8 @@ TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)
   const std::string directory = uniqueRecordingDirectory();
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
+      << writer.getLastError();
 
   Frame frame(1, 1, 4);
   frame.format = Frame::Raw;
@@ -246,6 +257,17 @@ TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)
   EXPECT_EQ(4u, entry.byte_count);
   EXPECT_EQ(123u, entry.device_timestamp);
   EXPECT_EQ(4u, entry.sequence);
+
+  std::vector<unsigned char> manifest_text;
+  ASSERT_TRUE(readFile(joinPath(directory, "manifest.json"), manifest_text, &error)) << error;
+  ManifestV1 manifest;
+  ASSERT_TRUE(
+      parseManifestV1(std::string(manifest_text.begin(), manifest_text.end()), manifest, &error))
+      << error;
+  EXPECT_EQ("123456789", manifest.serial);
+  size_t complete_size = 0;
+  EXPECT_TRUE(regularFileSize(joinPath(directory, "recording.complete"), complete_size));
+  EXPECT_GT(complete_size, 0u);
   removeTestRecording(directory);
 }
 
@@ -255,10 +277,7 @@ TEST(RecordingWriter, PersistsRawDepthAndP0Calibration)
   RecordingWriter writer(directory, 2);
   ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
 
-  CalibrationData calibration = {};
-  calibration.color.fx = 1081.0f;
-  calibration.ir.fx = 365.0f;
-  calibration.p0_tables.resize(sizeof(protocol::P0TablesResponse), 0x2a);
+  CalibrationData calibration = sampleCalibrationData();
   ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", calibration))
       << writer.getLastError();
 
@@ -281,6 +300,22 @@ TEST(RecordingWriter, PersistsRawDepthAndP0Calibration)
   std::vector<unsigned char> p0;
   ASSERT_TRUE(readFile(joinPath(directory, "calibration/p0.bin"), p0, &error)) << error;
   EXPECT_EQ(calibration.p0_tables, p0);
+  size_t complete_size = 0;
+  EXPECT_TRUE(regularFileSize(joinPath(directory, "recording.complete"), complete_size));
+  EXPECT_GT(complete_size, 0u);
+  EXPECT_TRUE(writer.close());
+  removeTestRecording(directory);
+}
+
+TEST(RecordingWriter, LeavesAnIncompleteRecordingWithoutCalibration)
+{
+  const std::string directory = uniqueRecordingDirectory();
+  RecordingWriter writer(directory, 1);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  EXPECT_FALSE(writer.close());
+  EXPECT_NE(std::string::npos, writer.getLastError().find("calibration"));
+  size_t unused = 0;
+  EXPECT_FALSE(regularFileSize(joinPath(directory, "recording.complete"), unused));
   removeTestRecording(directory);
 }
 

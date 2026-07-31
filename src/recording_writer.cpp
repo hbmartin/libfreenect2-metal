@@ -60,7 +60,7 @@ public:
   RecordingWriterImpl(const std::string& directory, size_t queue_capacity)
       : directory_(directory), queue_capacity_(queue_capacity), worker_(0), accepting_(false),
         stopping_(false), start_time_us_(monotonicTimeMicroseconds()), next_index_(0),
-        calibration_set_(false)
+        calibration_set_(false), closed_(false)
   {
     if (directory_.empty())
     {
@@ -186,8 +186,11 @@ public:
 
   bool close()
   {
+    libfreenect2::lock_guard close_guard(close_mutex_);
     {
       libfreenect2::lock_guard guard(mutex_);
+      if (closed_)
+        return last_error_.empty();
       accepting_ = false;
       stopping_ = true;
     }
@@ -201,9 +204,32 @@ public:
 
     std::string journal_error;
     const bool journal_closed = journal_.close(&journal_error);
+    std::string error;
+    bool can_publish = false;
+    {
+      libfreenect2::lock_guard guard(mutex_);
+      if (!journal_closed && last_error_.empty())
+        last_error_ = journal_error;
+      if (!calibration_set_ && last_error_.empty())
+        last_error_ = "recording closed without a calibration snapshot";
+      can_publish = last_error_.empty();
+    }
+
+    std::string manifest_text;
+    if (can_publish && !recording::serializeManifestV1(manifest_, manifest_text, &error))
+      can_publish = false;
+    if (can_publish && !recording::writeFileAtomically(
+                           recording::joinPath(directory_, "manifest.json"), manifest_text, &error))
+      can_publish = false;
+    if (can_publish &&
+        !recording::writeFileAtomically(recording::joinPath(directory_, "recording.complete"),
+                                        std::string("complete\n"), &error))
+      can_publish = false;
+
     libfreenect2::lock_guard guard(mutex_);
-    if (!journal_closed && last_error_.empty())
-      last_error_ = journal_error;
+    if (!can_publish && last_error_.empty())
+      last_error_ = error;
+    closed_ = true;
     return last_error_.empty();
   }
 
@@ -272,6 +298,7 @@ private:
 
   std::string directory_;
   size_t queue_capacity_;
+  libfreenect2::mutex close_mutex_;
   mutable libfreenect2::mutex mutex_;
   libfreenect2::condition_variable condition_;
   std::deque<RecordingJob> queue_;
@@ -282,6 +309,7 @@ private:
   uint64_t next_index_;
   recording::ManifestV1 manifest_;
   bool calibration_set_;
+  bool closed_;
   recording::FrameJournal journal_;
   RecordingWriter::Stats stats_;
   std::string last_error_;
