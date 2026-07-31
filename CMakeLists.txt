@@ -208,6 +208,7 @@ SET(SOURCES
   src/resource.cpp
   src/recording_utils.cpp
   src/recording_manifest.cpp
+  src/recording_journal.cpp
   src/command_transaction.cpp
   src/registration.cpp
   src/logging.cpp

@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <libfreenect2/recording_manifest.h>
+#include <libfreenect2/recording_journal.h>
 #include <libfreenect2/recording_utils.h>
 
 namespace libfreenect2
@@ -100,6 +101,60 @@ TEST(RecordingManifest, RejectsMissingAndNonFiniteCalibration)
   ASSERT_NE(fx, std::string::npos);
   text.replace(fx, 6, "1e4000");
   EXPECT_FALSE(parseManifestV1(text, parsed, &error));
+}
+
+JournalEntry sampleColorEntry()
+{
+  JournalEntry entry;
+  entry.stream = "color";
+  entry.path = "frames/color/0000000000.jpg";
+  entry.byte_count = 42;
+  entry.device_timestamp = 100;
+  entry.sequence = 7;
+  entry.arrival_offset_us = 1234;
+  entry.has_rgb_metadata = true;
+  entry.exposure = 1.25f;
+  entry.gain = 2.0f;
+  entry.gamma = 1.0f;
+  return entry;
+}
+
+TEST(RecordingJournal, RoundTripsColorMetadata)
+{
+  const JournalEntry expected = sampleColorEntry();
+  std::string line;
+  std::string error;
+  ASSERT_TRUE(serializeJournalEntry(expected, line, &error)) << error;
+  ASSERT_EQ('\n', line[line.size() - 1]);
+
+  JournalEntry actual;
+  ASSERT_TRUE(parseJournalEntry(line, actual, &error)) << error;
+  EXPECT_EQ(expected.index, actual.index);
+  EXPECT_EQ(expected.stream, actual.stream);
+  EXPECT_EQ(expected.path, actual.path);
+  EXPECT_EQ(expected.byte_count, actual.byte_count);
+  EXPECT_EQ(expected.device_timestamp, actual.device_timestamp);
+  EXPECT_EQ(expected.sequence, actual.sequence);
+  EXPECT_EQ(expected.arrival_offset_us, actual.arrival_offset_us);
+  EXPECT_FLOAT_EQ(expected.exposure, actual.exposure);
+  EXPECT_FLOAT_EQ(expected.gain, actual.gain);
+  EXPECT_FLOAT_EQ(expected.gamma, actual.gamma);
+}
+
+TEST(RecordingJournal, RejectsInvalidStreamsPathsAndMetadata)
+{
+  JournalEntry entry = sampleColorEntry();
+  std::string line;
+  std::string error;
+  entry.stream = "infrared";
+  EXPECT_FALSE(serializeJournalEntry(entry, line, &error));
+  entry.stream = "color";
+  entry.path = "../outside.jpg";
+  EXPECT_FALSE(serializeJournalEntry(entry, line, &error));
+  entry.path = "frames/color/0000000000.jpg";
+  entry.has_rgb_metadata = false;
+  EXPECT_FALSE(serializeJournalEntry(entry, line, &error));
+  EXPECT_FALSE(parseJournalEntry("{\"index\":0}\n", entry, &error));
 }
 
 } // namespace recording
