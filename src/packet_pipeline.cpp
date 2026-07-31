@@ -175,7 +175,7 @@ static RgbPacketProcessor *getConfiguredRgbPacketProcessor(const PacketPipelineC
     break;
   }
 
-  if(processor != 0 && processor->good())
+  if (processor != 0 && processor->good())
   {
 #if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT) && defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
     if(resolved.rgb_decoder == PacketPipelineConfig::VAAPI)
