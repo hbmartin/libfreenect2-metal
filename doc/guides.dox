@@ -17,6 +17,8 @@ questions from the upstream issue tracker into a single, self-contained page.
   build point clouds.
 - @subpage depth_accuracy &mdash; systematic offset, warm-up drift,
   calibration limits, and how to correct them.
+- @subpage depth_calibration &mdash; fit, validate, and explicitly apply a
+  per-device linear depth correction profile.
 
 @par Integrate
 - @subpage recording_replay &mdash; capture raw streams, replay them through

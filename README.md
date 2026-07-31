@@ -50,6 +50,7 @@ is published at https://hbmartin.github.io/libfreenect2-metal/.
 Additional guides (also rendered on the documentation site):
 
 * [Depth accuracy and calibration](doc/depth_accuracy.md)
+* [Fitting and applying per-device depth correction](doc/depth_calibration.md)
 * [Using the Kinect v2 as a webcam](doc/webcam.md)
 * [Using libfreenect2 from Python](doc/python.md)
 * [Registration and coordinate mapping recipes](doc/registration.md)

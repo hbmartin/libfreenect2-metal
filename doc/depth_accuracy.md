@@ -27,13 +27,12 @@ Microsoft SDK applies (#865). All GPU/CPU depth processors in libfreenect2
 share the same math and tables, so the offset is the same regardless of the
 `cpu`, `opengl`, `opencl`, `cuda`, or `metal` pipeline.
 
-If your application needs absolute accuracy:
-
-* Measure the offset for your unit against a known-distance flat target and
-  subtract it. Per-device offsets between roughly 15 and 30 mm have been
-  reported.
-* Or perform a full external calibration (below), which absorbs the offset
-  into the model.
+If your application needs absolute accuracy, fit an opt-in per-device
+@ref depth_calibration "depth correction profile" from known-distance
+measurements. Do not hardcode the commonly reported offset: one distance can
+fit an offset-only model, while multiple distances can establish whether your
+unit also needs a scale term. A full external camera calibration (below)
+addresses spatial intrinsics and distortion rather than only scalar Z bias.
 
 ## Warm-up drift
 

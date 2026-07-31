@@ -95,6 +95,7 @@ INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/mainpage.dox \
                          @CMAKE_CURRENT_SOURCE_DIR@/configuration.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/registration.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/depth_accuracy.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/depth_calibration.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/recording_replay.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/webcam.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/python.md
