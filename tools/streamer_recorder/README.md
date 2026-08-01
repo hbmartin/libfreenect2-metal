@@ -30,20 +30,16 @@ TODO
 
 ### Mac OS X
 
-* Install OpenCV
+* Install the Blender viewer's Python dependencies
+
+The viewer, like the other Python tools in this repository, requires Python
+3.12 or newer. Install NumPy and OpenCV into the same embedded Python
+interpreter that runs the Blender game rather than linking packages from a
+different Python installation:
 
 ```
-brew install opencv3
+/path/to/blender/python -m pip install numpy opencv-python
 ```
-
-* Install Numpy for Blender viewer
-```
-pip3 install numpy
-```
-
-and link numpy and cv2 to blender python3 site-package (rename / remove old numpy if needed)
-
-(tested with 1.10.4, previous versions happened to raise ``ImportError: numpy.core.multiarray failed to import`` when typing ``import cv2`` in python)
 
 * Build (start from the libfreenect2 root directory)
 ```

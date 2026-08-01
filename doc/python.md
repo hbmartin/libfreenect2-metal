@@ -1,5 +1,8 @@
 # Using libfreenect2 from Python {#python}
 
+The Python helper and maintenance scripts stored in this repository require
+Python 3.12 or newer.
+
 The maintained Python interface for this fork is
 [pylibfreenect3](https://github.com/hbmartin/pylibfreenect3). It binds the
 0.3 device, recording, alignment, registration, and vision APIs without a

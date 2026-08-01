@@ -67,7 +67,7 @@ Additional guides (also rendered on the documentation site):
 * [Frame timing and software pairing](doc/frame_timing.md)
 * [Recording, replay, and multiple Kinects](doc/recording_replay.md)
 * [Runtime configuration reference](doc/configuration.md)
-* [C++ quality checks, sanitizers, fuzzing, and coverage](doc/quality.md)
+* [Quality checks, sanitizers, fuzzing, and coverage](doc/quality.md)
 
 ## Requirements
 
@@ -91,6 +91,7 @@ It has been reported to work for up to 5 devices on a high-end PC using multiple
 
 ### Requirements for optional features
 
+* Python 3.12 or newer: repository Python tools
 * OpenGL depth processing: OpenGL 3.1 (Windows, Linux, Mac OS X). OpenGL ES is not supported at the moment.
 * OpenCL depth processing: OpenCL 1.1
 * CUDA depth processing: CUDA Toolkit; CUDA 12.3 is covered by compile-only CI

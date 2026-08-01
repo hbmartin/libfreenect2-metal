@@ -23,7 +23,8 @@ opened by common image tools. `depth_mm.pgm` stores the depth value directly as
 a big-endian 16-bit millimeter value; zero means that no valid depth return was
 available.
 
-To create the labeled contact sheet, install Pillow and run:
+The helper scripts in this repository require Python 3.12 or newer. To create
+the labeled contact sheet, install Pillow and run:
 
 ```sh
 python3 -m pip install 'Pillow>=9.1'
