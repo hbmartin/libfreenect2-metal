@@ -1,7 +1,7 @@
 # Using libfreenect2 from Python {#python}
 
 The maintained Python interface for this fork is
-[pylibfreenect3](https://github.com/haroldmartin/pylibfreenect3). It binds the
+[pylibfreenect3](https://github.com/hbmartin/pylibfreenect3). It binds the
 0.3 device, recording, alignment, registration, and vision APIs without a
 ctypes bridge.
 

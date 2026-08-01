@@ -29,6 +29,7 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <math.h>
+#include <libfreenect2/logging.h>
 #include <libfreenect2/registration.h>
 #include <limits>
 
@@ -137,7 +138,12 @@ void RegistrationImpl::apply(const Frame *rgb, const Frame *depth_frame, Frame *
       undistorted->width != 512 || undistorted->height != 424 || undistorted->bytes_per_pixel != 4 ||
       registered->width != 512 || registered->height != 424 || registered->bytes_per_pixel != 4 ||
       (bigdepth && (!bigdepth->data || bigdepth->width != 1920 || bigdepth->height != 1082 || bigdepth->bytes_per_pixel != 4)))
+  {
+    LOG_ERROR << "invalid frame(s) rejected: rgb must be 1920x1080 4Bpp BGRX or RGBX, depth must "
+                 "be 512x424 Float, outputs must match documented sizes. Frame::format defaults "
+                 "to Invalid and must be set on caller-constructed frames.";
     return;
+  }
 
   undistorted->format = Frame::Float;
   registered->format = rgb->format;
@@ -294,7 +300,12 @@ void RegistrationImpl::undistortDepth(const Frame *depth_frame, Frame *undistort
       !depth_frame->data || !undistorted->data ||
       depth_frame->width != 512 || depth_frame->height != 424 || depth_frame->bytes_per_pixel != 4 || depth_frame->format != Frame::Float ||
       undistorted->width != 512 || undistorted->height != 424 || undistorted->bytes_per_pixel != 4)
+  {
+    LOG_ERROR << "invalid frame(s) rejected: depth must be 512x424 Float and undistorted must be "
+                 "512x424 4Bpp. Frame::format defaults to Invalid and must be set on "
+                 "caller-constructed frames.";
     return;
+  }
 
   undistorted->format = Frame::Float;
 

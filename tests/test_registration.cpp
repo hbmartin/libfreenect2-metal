@@ -15,6 +15,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -150,6 +151,39 @@ TEST(Registration, FullFrameApplyRunsBothFilterModes)
   rgb.format = Frame::RGBX;
   reg.apply(&rgb, depth, &undistorted, &registered, true, &bigdepth);
   EXPECT_EQ(registered.format, Frame::RGBX);
+
+  delete depth;
+}
+
+TEST(Registration, ApplyRejectsUnsetOrWrongFormatsWithoutTouchingOutputs)
+{
+  Registration reg(makeIrParams(), makeColorParams());
+
+  Frame rgb(1920, 1080, 4); // format intentionally left at the Invalid default
+  std::memset(rgb.data, 0x7f, 1920 * 1080 * 4);
+  Frame* depth = makeConstantDepthFrame(1500.0f);
+  Frame undistorted(kW, kH, 4);
+  Frame registered(kW, kH, 4);
+  std::memset(undistorted.data, 0xab, kW * kH * 4);
+  std::memset(registered.data, 0xab, kW * kH * 4);
+  const std::vector<unsigned char> untouched(kW * kH * 4, 0xab);
+
+  reg.apply(&rgb, depth, &undistorted, &registered, true);
+  EXPECT_EQ(undistorted.format, Frame::Invalid);
+  EXPECT_EQ(registered.format, Frame::Invalid);
+  EXPECT_EQ(std::memcmp(undistorted.data, untouched.data(), untouched.size()), 0);
+  EXPECT_EQ(std::memcmp(registered.data, untouched.data(), untouched.size()), 0);
+
+  // A non-Float depth frame is rejected even when the color format is valid.
+  rgb.format = Frame::BGRX;
+  depth->format = Frame::Invalid;
+  reg.apply(&rgb, depth, &undistorted, &registered, true);
+  EXPECT_EQ(registered.format, Frame::Invalid);
+  EXPECT_EQ(std::memcmp(registered.data, untouched.data(), untouched.size()), 0);
+
+  reg.undistortDepth(depth, &undistorted);
+  EXPECT_EQ(undistorted.format, Frame::Invalid);
+  EXPECT_EQ(std::memcmp(undistorted.data, untouched.data(), untouched.size()), 0);
 
   delete depth;
 }

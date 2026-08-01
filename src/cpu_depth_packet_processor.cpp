@@ -239,9 +239,13 @@ public:
 
   Frame *ir_frame, *depth_frame;
 
+  /** Scratch output matrices reused across process() calls; every pixel is
+   * rewritten each frame before the results are copied into the frames. */
+  Mat<float> out_ir, out_depth;
+
   bool flip_ptables;
 
-  CpuDepthPacketProcessorImpl()
+  CpuDepthPacketProcessorImpl() : out_ir(424, 512), out_depth(424, 512)
   {
     newIrFrame();
     newDepthFrame();
@@ -883,7 +887,8 @@ void CpuDepthPacketProcessor::process(const DepthPacket& packet)
     processed_measurements = &m_filtered;
   }
 
-  Mat<float> out_ir(424, 512), out_depth(424, 512);
+  Mat<float>& out_ir = impl_->out_ir;
+  Mat<float>& out_depth = impl_->out_depth;
 
   if (impl_->enable_edge_filter)
   {
