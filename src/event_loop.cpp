@@ -69,7 +69,7 @@ void EventLoop::start(void *usb_context)
 {
   if(thread_ == 0)
   {
-    shutdown_ = false;
+    shutdown_.store(false);
     usb_context_ = usb_context;
     thread_ = new libfreenect2::thread(&EventLoop::static_execute, this);
   }
@@ -80,7 +80,7 @@ void EventLoop::stop()
 {
   if(thread_ != 0)
   {
-    shutdown_ = true;
+    shutdown_.store(true);
     thread_->join();
     delete thread_;
     thread_ = 0;
@@ -96,7 +96,7 @@ void EventLoop::execute()
   t.tv_sec = 0;
   t.tv_usec = 100000;
 
-  while(!shutdown_)
+  while (!shutdown_.load())
   {
     libusb_handle_events_timeout_completed(reinterpret_cast<libusb_context *>(usb_context_), &t, 0);
   }

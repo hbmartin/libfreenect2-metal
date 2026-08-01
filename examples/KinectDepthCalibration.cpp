@@ -265,9 +265,10 @@ int main(int argc, char** argv)
     const std::string option = argv[argument];
     if (option == "--roi" && argument + 4 < argc)
     {
-      have_roi = parseUint32(argv[++argument], roi.x) && parseUint32(argv[++argument], roi.y) &&
-                 parseUint32(argv[++argument], roi.width) &&
-                 parseUint32(argv[++argument], roi.height) && roi.width != 0 && roi.height != 0;
+      have_roi = parseUint32(argv[argument + 1], roi.x) && parseUint32(argv[argument + 2], roi.y) &&
+                 parseUint32(argv[argument + 3], roi.width) &&
+                 parseUint32(argv[argument + 4], roi.height) && roi.width != 0 && roi.height != 0;
+      argument += 4;
       if (!have_roi)
       {
         printUsage();

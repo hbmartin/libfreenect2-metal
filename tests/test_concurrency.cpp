@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <future>
 #include <limits>
 #include <thread>
@@ -95,6 +96,7 @@ TEST(PoolAllocator, BlocksUntilABufferIsReleased)
       });
 
   Buffer* first = first_result.get();
+  const std::uintptr_t first_address = reinterpret_cast<std::uintptr_t>(first);
   Buffer* second = second_result.get();
   const std::chrono::steady_clock::time_point entered_deadline =
       std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -125,7 +127,7 @@ TEST(PoolAllocator, BlocksUntilABufferIsReleased)
   Buffer* reused = result.get();
   waiter.join();
 
-  EXPECT_EQ(reused, first);
+  EXPECT_EQ(reinterpret_cast<std::uintptr_t>(reused), first_address);
   EXPECT_EQ(reused->length, 0u);
   allocator.free(reused);
   allocator.free(second);

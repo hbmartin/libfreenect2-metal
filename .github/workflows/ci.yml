@@ -140,6 +140,7 @@ jobs:
           cmake -S . -B build-filter-backends -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
           -DCMAKE_CXX_STANDARD=11
+          -DBUILD_SHARED_LIBS=OFF
           -DBUILD_TESTING=ON
           -DBUILD_EXAMPLES=OFF
           -DBUILD_OPENNI2_DRIVER=OFF
@@ -151,7 +152,7 @@ jobs:
           -DENABLE_WARNINGS_AS_ERRORS=ON
 
       - name: Build filter parity tests
-        run: cmake --build build-filter-backends -j 2 --target unit_tests
+        run: cmake --build build-filter-backends -j 2 --target freenect2 unit_tests
 
       - name: Test all OpenCL and OpenGL filter combinations
         run: >-
@@ -159,6 +160,14 @@ jobs:
           ctest --test-dir build-filter-backends
           -R '^(OpenCLCpuParity|OpenGLCpuParity)\.'
           --timeout 120 --output-on-failure
+
+      - name: Test installed static OpenGL package
+        run: |
+          cmake --install build-filter-backends --prefix "$PWD/build-filter-backends/install"
+          cmake -S examples -B build-filter-package-consumer -G Ninja \
+            -DENABLE_OPENGL=OFF \
+            -Dfreenect2_DIR="$PWD/build-filter-backends/install/lib/cmake/freenect2"
+          cmake --build build-filter-package-consumer -j 2
 
   linux-vaapi:
     name: Clang, VAAPI selection and fake failover
