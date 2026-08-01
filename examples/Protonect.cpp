@@ -31,6 +31,7 @@
 #include <climits>
 #include <cstdlib>
 #include <limits>
+#include <memory>
 #include <signal.h>
 
 /// [headers]
@@ -146,11 +147,14 @@ int main(int argc, char *argv[])
     delete filelogger;
 /// [file logging]
 
+  // Preserve the indentation of source excerpts embedded in the generated docs.
+  // clang-format off
 /// [context]
   libfreenect2::Freenect2 freenect2;
   libfreenect2::Freenect2Device *dev = 0;
-  libfreenect2::PacketPipeline *pipeline = 0;
+  std::unique_ptr<libfreenect2::PacketPipeline> pipeline;
 /// [context]
+  // clang-format on
 
   std::string serial = "";
 
@@ -190,15 +194,17 @@ int main(int argc, char *argv[])
     else if(arg == "cpu")
     {
       if(!pipeline)
+        // clang-format off
 /// [pipeline]
-        pipeline = new libfreenect2::CpuPacketPipeline();
+        pipeline.reset(new libfreenect2::CpuPacketPipeline());
 /// [pipeline]
+      // clang-format on
     }
     else if(arg == "gl")
     {
 #ifdef LIBFREENECT2_WITH_OPENGL_SUPPORT
       if(!pipeline)
-        pipeline = new libfreenect2::OpenGLPacketPipeline();
+        pipeline.reset(new libfreenect2::OpenGLPacketPipeline());
 #else
       std::cout << "OpenGL pipeline is not supported!" << std::endl;
 #endif
@@ -207,7 +213,7 @@ int main(int argc, char *argv[])
     {
 #ifdef LIBFREENECT2_WITH_OPENCL_SUPPORT
       if(!pipeline)
-        pipeline = new libfreenect2::OpenCLPacketPipeline(deviceId);
+        pipeline.reset(new libfreenect2::OpenCLPacketPipeline(deviceId));
 #else
       std::cout << "OpenCL pipeline is not supported!" << std::endl;
 #endif
@@ -216,7 +222,7 @@ int main(int argc, char *argv[])
     {
 #ifdef LIBFREENECT2_WITH_OPENCL_SUPPORT
       if(!pipeline)
-        pipeline = new libfreenect2::OpenCLKdePacketPipeline(deviceId);
+        pipeline.reset(new libfreenect2::OpenCLKdePacketPipeline(deviceId));
 #else
       std::cout << "OpenCL pipeline is not supported!" << std::endl;
 #endif
@@ -225,7 +231,7 @@ int main(int argc, char *argv[])
     {
 #ifdef LIBFREENECT2_WITH_CUDA_SUPPORT
       if(!pipeline)
-        pipeline = new libfreenect2::CudaPacketPipeline(deviceId);
+        pipeline.reset(new libfreenect2::CudaPacketPipeline(deviceId));
 #else
       std::cout << "CUDA pipeline is not supported!" << std::endl;
 #endif
@@ -234,7 +240,7 @@ int main(int argc, char *argv[])
     {
 #ifdef LIBFREENECT2_WITH_CUDA_SUPPORT
       if(!pipeline)
-        pipeline = new libfreenect2::CudaKdePacketPipeline(deviceId);
+        pipeline.reset(new libfreenect2::CudaKdePacketPipeline(deviceId));
 #else
       std::cout << "CUDA pipeline is not supported!" << std::endl;
 #endif
@@ -243,7 +249,7 @@ int main(int argc, char *argv[])
     {
 #ifdef LIBFREENECT2_WITH_METAL_SUPPORT
       if(!pipeline)
-        pipeline = new libfreenect2::MetalPacketPipeline(deviceId);
+        pipeline.reset(new libfreenect2::MetalPacketPipeline(deviceId));
 #else
       std::cout << "Metal pipeline is not supported!" << std::endl;
 #endif
@@ -315,9 +321,11 @@ int main(int argc, char *argv[])
 
   if(pipeline)
   {
+    // clang-format off
 /// [open]
-    dev = freenect2.openDevice(serial, pipeline);
+    dev = freenect2.openDevice(serial, pipeline.release());
 /// [open]
+    // clang-format on
   }
   else
   {

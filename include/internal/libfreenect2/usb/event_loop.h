@@ -27,6 +27,8 @@
 #ifndef EVENT_LOOP_H_
 #define EVENT_LOOP_H_
 
+#include <atomic>
+
 #include <libfreenect2/threading.h>
 
 namespace libfreenect2
@@ -44,7 +46,7 @@ public:
 
   void stop();
 private:
-  bool shutdown_;
+  std::atomic<bool> shutdown_;
   libfreenect2::thread *thread_;
   void *usb_context_;
 
