@@ -684,6 +684,15 @@ STRING(REPLACE ";" "\n " LIBRARIES_STRING "${LIBRARIES}")
 MESSAGE(STATUS "Linking with these libraries: \n ${LIBRARIES_STRING}")
 TARGET_LINK_LIBRARIES(freenect2 PRIVATE ${LIBRARIES})
 
+# Consumers of the shared library do not link its private implementation
+# dependencies. Omitting them from the installed target also keeps the CMake
+# package relocatable across dependency upgrades and Homebrew Cellar versions.
+# Static consumers still need the complete link interface.
+SET(LIBFREENECT2_INTERFACE_LIBRARIES "${LIBRARIES}")
+IF(BUILD_SHARED_LIBS)
+  SET(LIBFREENECT2_INTERFACE_LIBRARIES "")
+ENDIF()
+
 CONFIGURE_FILE(freenect2.cmake.in "${PROJECT_BINARY_DIR}/freenect2Config.cmake" @ONLY)
 CONFIGURE_FILE(freenect2Version.cmake.in "${PROJECT_BINARY_DIR}/freenect2ConfigVersion.cmake" @ONLY)
 CONFIGURE_FILE(freenect2.pc.in "${PROJECT_BINARY_DIR}/freenect2.pc" @ONLY)
@@ -698,6 +707,10 @@ INSTALL(FILES "${MY_DIR}/third_party/nlohmann/LICENSE.MIT"
   DESTINATION share/doc/${PROJECT_NAME}
   RENAME nlohmann-json-LICENSE.MIT)
 INSTALL(FILES
+  "${MY_DIR}/LICENSE"
+  "${MY_DIR}/APACHE20"
+  "${MY_DIR}/GPL2"
+  "${MY_DIR}/CONTRIB"
   "${MY_DIR}/README.md"
   "${MY_DIR}/doc/v0.3_migration.md"
   "${MY_DIR}/doc/v0.3_upstream_coverage.md"

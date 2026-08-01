@@ -1,9 +1,11 @@
 /*
  * This file is part of the OpenKinect Project. http://www.openkinect.org
  *
- * Copyright (c) 2026 individual OpenKinect contributors.
+ * Copyright (c) 2026 individual OpenKinect contributors. See the CONTRIB file
+ * for details.
  *
- * This code is licensed under the terms described in the LICENSES directory.
+ * This code is licensed under either the Apache License, Version 2.0, or the
+ * GNU General Public License, Version 2.0. See APACHE20 and GPL2.
  */
 
 /** @file vision.h Reusable color conversion and depth geometry helpers. */
