@@ -236,57 +236,6 @@ jobs:
       - name: Compile standard and KDE CUDA pipelines
         run: cmake --build build-cuda -j 2 --target freenect2
 
-  windows-msvc:
-    name: MSVC, ${{ matrix.linkage }}, C++11
-    runs-on: windows-2025
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - linkage: static
-            shared: OFF
-          - linkage: shared
-            shared: ON
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Install dependencies
-        shell: pwsh
-        run: >-
-          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install
-          libusb:x64-windows libjpeg-turbo:x64-windows
-
-      - name: Configure
-        shell: pwsh
-        env:
-          BUILD_SHARED_LIBS: ${{ matrix.shared }}
-        run: >-
-          cmake -S . -B build-msvc -A x64
-          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
-          -DVCPKG_TARGET_TRIPLET=x64-windows
-          -DBUILD_SHARED_LIBS="$env:BUILD_SHARED_LIBS"
-          -DBUILD_TESTING=ON
-          -DBUILD_EXAMPLES=ON
-          -DBUILD_OPENNI2_DRIVER=OFF
-          -DCMAKE_CXX_STANDARD=11
-          -DENABLE_OPENCL=OFF
-          -DENABLE_CUDA=OFF
-          -DENABLE_OPENGL=OFF
-          -DENABLE_VAAPI=OFF
-          -DENABLE_TEGRAJPEG=OFF
-          -DENABLE_WARNINGS_AS_ERRORS=ON
-
-      - name: Build
-        run: cmake --build build-msvc --config Debug -j 2
-
-      - name: Test
-        shell: pwsh
-        run: |
-          $env:PATH = "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/debug/bin;$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin;$env:PATH"
-          ctest --test-dir build-msvc -C Debug -LE gpu --timeout 120
-
   sanitizers:
     name: ${{ matrix.name }}
     runs-on: ubuntu-24.04

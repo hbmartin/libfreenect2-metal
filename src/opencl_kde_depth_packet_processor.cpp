@@ -36,6 +36,12 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 
+// The bundled cl.hpp implements OpenCL 1.2. Keep newer C headers from
+// exposing later struct layouts that the legacy wrapper cannot initialize.
+#ifndef CL_TARGET_OPENCL_VERSION
+#define CL_TARGET_OPENCL_VERSION 120
+#endif
+
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_2_0_APIS
 
