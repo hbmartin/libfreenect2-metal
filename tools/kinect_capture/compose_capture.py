@@ -45,7 +45,9 @@ def main():
     top, bottom = 70, 60
     sheet = Image.new("RGB", (width * 2, top + panel_height * 2 + bottom), "#11151a")
     draw = ImageDraw.Draw(sheet)
-    draw.text((30, 17), "Kinect v2 synchronized capture", font=title_font, fill="#f4f7fa")
+    draw.text(
+        (30, 17), "Kinect v2 synchronized capture", font=title_font, fill="#f4f7fa"
+    )
 
     panels = [
         ("rgb.ppm", "RGB • 1920×1080"),
@@ -68,7 +70,9 @@ def main():
         f"{metadata['valid_depth_pixels']:,} valid depth pixels ({metadata['valid_depth_percent']:.2f}%)  •  "
         f"range {metadata['minimum_depth_mm']:.0f}–{metadata['maximum_depth_mm']:.0f} mm"
     )
-    draw.text((30, top + panel_height * 2 + 18), summary, font=detail_font, fill="#cbd5df")
+    draw.text(
+        (30, top + panel_height * 2 + 18), summary, font=detail_font, fill="#cbd5df"
+    )
     sheet.save(os.path.join(folder, "kinect_contact_sheet.png"), optimize=True)
     return 0
 

@@ -16,13 +16,19 @@ def main() -> int:
     args = parser.parse_args()
 
     total_line = next(
-        (line for line in args.report.read_text().splitlines() if line.startswith("TOTAL")),
+        (
+            line
+            for line in args.report.read_text().splitlines()
+            if line.startswith("TOTAL")
+        ),
         None,
     )
     if total_line is None:
         raise SystemExit("coverage report has no TOTAL row")
 
-    percentages = [float(value) for value in re.findall(r"([0-9]+(?:\.[0-9]+)?)%", total_line)]
+    percentages = [
+        float(value) for value in re.findall(r"([0-9]+(?:\.[0-9]+)?)%", total_line)
+    ]
     if len(percentages) != 4:
         raise SystemExit(f"unexpected llvm-cov TOTAL row: {total_line}")
 
