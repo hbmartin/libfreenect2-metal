@@ -72,7 +72,11 @@ sensors. Use libfreenect1 for those.
 
 Missing features: firmware updates (see
 [issue #460](https://github.com/OpenKinect/libfreenect2/issues/460) for WiP) and
-calibrated directional audio.
+calibrated directional audio. Native Kinect SDK-style body/skeleton tracking is
+also out of scope; the supported
+[Python pose-estimation workflow](doc/python.md#pose-estimation-workflow) uses
+MediaPipe plus registered depth and produces estimates rather than
+sensor-provided joints.
 
 ## Quickstart
 

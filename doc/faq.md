@@ -22,6 +22,18 @@ kills depth measurements (the IR image remains usable with ambient IR).
 If you only need the color stream, note that `startStreams(rgb=true,
 depth=false)` still powers the sensor bar as the firmware dictates.
 
+## Can libfreenect2 return body or skeleton frames? ([#1199](https://github.com/OpenKinect/libfreenect2/issues/1199))
+
+No. libfreenect2 returns color, infrared, and depth frames; it does not
+implement the Kinect SDK's body tracker or its 25-joint skeleton frame.
+
+The supported pose workflow for this fork is to capture aligned frames through
+[pylibfreenect3](https://github.com/hbmartin/pylibfreenect3), run MediaPipe on
+the color image, and lift landmarks with valid registered depth into metric XYZ
+coordinates. See @ref python. Those joints are estimates from a machine-learning
+model combined with measured depth. They are not sensor-provided ground truth,
+and they do not carry the Kinect SDK's tracking states or body identities.
+
 ## How do I silence the [Info] log spam? ([#1058](https://github.com/OpenKinect/libfreenect2/issues/1058))
 
 Two ways:
