@@ -1,7 +1,7 @@
 /** @page guides User Guides
 
 Task-oriented recipes and reference material that complement the
-[API reference](modules.html). Each guide distills the most frequently asked
+[API reference](topics.html). Each guide distills the most frequently asked
 questions from the upstream issue tracker into a single, self-contained page.
 
 @par Install
@@ -57,6 +57,8 @@ questions from the upstream issue tracker into a single, self-contained page.
 @par Maintain
 - @subpage development &mdash; toolchain requirements, Python tooling, test
   suite, quality options, formatting, docs build, CI matrix, and contributing.
+- @subpage quality &mdash; unit tests, sanitizers, fuzzing, coverage, static
+  analysis, and hardware-soak checks.
 - @subpage test_plan &mdash; automated coverage matrix, hardware smoke
   checklist, lifecycle tests, and release evidence.
 - @subpage self_hosted_runner &mdash; set up the self-hosted macOS GitHub

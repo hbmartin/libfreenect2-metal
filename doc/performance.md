@@ -22,7 +22,7 @@ cmake --build build-perf
 `ENABLE_PROFILING` accumulates a timing sample per frame per stage in memory for
 the process's lifetime, so it is memory-hungry on long runs and should never be
 enabled in a shipping build. It is listed among the build options in the
-[README](../README.md#build-options).
+[README](https://github.com/hbmartin/libfreenect2-metal#build-options).
 
 ## Running a measurement
 

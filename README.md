@@ -3,6 +3,7 @@
 [![CI](https://github.com/hbmartin/libfreenect2-metal/actions/workflows/ci.yml/badge.svg)](https://github.com/hbmartin/libfreenect2-metal/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/docs-online-blue.svg)](https://hbmartin.github.io/libfreenect2-metal/)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20GPL--2.0-blue.svg)](#license)
+<!-- Keep the version badge and the Version section in sync with PROJECT_VERSION in CMakeLists.txt. -->
 [![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](#version)
 [![C++11](https://img.shields.io/badge/C%2B%2B-11-blue.svg)](#requirements)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](#installation)
@@ -409,37 +410,37 @@ The full site, including the API reference and every guide below, is published
 at **<https://hbmartin.github.io/libfreenect2-metal/>**.
 
 **Upgrade**
-* [Migrating to libfreenect2 0.3](doc/v0.3_migration.md)
-* [v0.3 upstream issue coverage](doc/v0.3_upstream_coverage.md)
+* [Migrating to libfreenect2 0.3](https://hbmartin.github.io/libfreenect2-metal/v0_3_migration.html)
+* [v0.3 upstream issue coverage](https://hbmartin.github.io/libfreenect2-metal/v0_3_upstream_coverage.html)
 
 **Install and fix**
-* [macOS](doc/install_macos.md) · [Linux](doc/install_linux.md) · [Windows](doc/install_windows.md)
-* [Troubleshooting](doc/troubleshooting.md)
-* [USB bandwidth and transfer tuning](doc/linux_usb.md)
-* [FAQ](doc/faq.md)
-* [Runtime configuration reference](doc/configuration.md)
-* [Kinect v1 versus Kinect v2](doc/kinect_v1_vs_v2.md)
+* [macOS](https://hbmartin.github.io/libfreenect2-metal/install_macos.html) · [Linux](https://hbmartin.github.io/libfreenect2-metal/install_linux.html) · [Windows](https://hbmartin.github.io/libfreenect2-metal/install_windows.html)
+* [Troubleshooting](https://hbmartin.github.io/libfreenect2-metal/troubleshooting.html)
+* [USB bandwidth and transfer tuning](https://hbmartin.github.io/libfreenect2-metal/linux_usb.html)
+* [FAQ](https://hbmartin.github.io/libfreenect2-metal/faq.html)
+* [Runtime configuration reference](https://hbmartin.github.io/libfreenect2-metal/configuration.html)
+* [Kinect v1 versus Kinect v2](https://hbmartin.github.io/libfreenect2-metal/kinect_v1_vs_v2.html)
 
 **Work with the data**
-* [Registration and coordinate mapping recipes](doc/registration.md)
-* [Depth accuracy and calibration](doc/depth_accuracy.md)
-* [Fitting and applying per-device depth correction](doc/depth_calibration.md)
-* [Frame timing and software pairing](doc/frame_timing.md)
+* [Registration and coordinate mapping recipes](https://hbmartin.github.io/libfreenect2-metal/registration.html)
+* [Depth accuracy and calibration](https://hbmartin.github.io/libfreenect2-metal/depth_accuracy.html)
+* [Fitting and applying per-device depth correction](https://hbmartin.github.io/libfreenect2-metal/depth_calibration.html)
+* [Frame timing and software pairing](https://hbmartin.github.io/libfreenect2-metal/frame_timing.html)
 
 **Integrate**
-* [Recording, replay, and multiple Kinects](doc/recording_replay.md)
-* [Using the Kinect v2 as a webcam](doc/webcam.md)
-* [Using libfreenect2 from Python](doc/python.md)
+* [Recording, replay, and multiple Kinects](https://hbmartin.github.io/libfreenect2-metal/recording_replay.html)
+* [Using the Kinect v2 as a webcam](https://hbmartin.github.io/libfreenect2-metal/webcam.html)
+* [Using libfreenect2 from Python](https://hbmartin.github.io/libfreenect2-metal/python.html)
 
 **Go deeper**
-* [Kinect v2 USB protocol](doc/protocol.md)
-* [Benchmarking and performance](doc/performance.md)
+* [Kinect v2 USB protocol](https://hbmartin.github.io/libfreenect2-metal/protocol.html)
+* [Benchmarking and performance](https://hbmartin.github.io/libfreenect2-metal/performance.html)
 
 **Maintain**
-* [Development and contributing](doc/development.md)
-* [Quality checks, sanitizers, fuzzing, and coverage](doc/quality.md)
-* [Test plan](doc/test_plan.md)
-* [Self-hosted runner setup](doc/self_hosted_runner.md)
+* [Development and contributing](https://hbmartin.github.io/libfreenect2-metal/development.html)
+* [Quality checks, sanitizers, fuzzing, and coverage](https://hbmartin.github.io/libfreenect2-metal/quality.html)
+* [Test plan](https://hbmartin.github.io/libfreenect2-metal/test_plan.html)
+* [Self-hosted runner setup](https://hbmartin.github.io/libfreenect2-metal/self_hosted_runner.html)
 
 ## Troubleshooting
 

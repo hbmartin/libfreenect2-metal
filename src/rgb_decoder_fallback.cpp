@@ -14,6 +14,13 @@
 namespace libfreenect2
 {
 
+/** Buffers the primary decoder's frames until the decode is known healthy.
+ *
+ * Not thread-safe: it requires the wrapped decoder to emit frames
+ * synchronously inside process() on the decode thread, which holds for the
+ * decoders RgbDecoderFallback wraps (VAAPI, TegraJPEG). Do not wrap a decoder
+ * that emits frames asynchronously.
+ */
 class RgbDecoderFallback::DeferredFrameListener : public FrameListener
 {
 public:
@@ -38,7 +45,6 @@ public:
       if (target_ == 0 || !target_->onNewFrame(frame->type, frame->frame))
         delete frame->frame;
     }
-    frames_.clear();
   }
 
   void discard()
