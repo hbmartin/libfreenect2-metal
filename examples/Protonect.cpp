@@ -100,7 +100,7 @@ public:
 };
 /// [logger]
 
-#ifdef LIBFREENECT2_WITH_OPENCL_SUPPORT
+#if defined(LIBFREENECT2_WITH_OPENCL_SUPPORT) || defined(LIBFREENECT2_WITH_CUDA_SUPPORT)
 namespace
 {
 bool selectExplicitPipeline(std::unique_ptr<libfreenect2::PacketPipeline>& selected,
@@ -254,22 +254,30 @@ int main(int argc, char *argv[])
       return -1;
 #endif
     }
-    else if(arg == "cuda")
+    else if (arg == "cuda")
     {
 #ifdef LIBFREENECT2_WITH_CUDA_SUPPORT
-      if(!pipeline)
-        pipeline.reset(new libfreenect2::CudaPacketPipeline(deviceId));
+      if (!pipeline &&
+          !selectExplicitPipeline(
+              pipeline, new libfreenect2::CudaPacketPipeline(deviceId), "cuda",
+              "Verify the NVIDIA driver, CUDA toolkit, and GPU architecture, or select cpu."))
+        return -1;
 #else
-      std::cout << "CUDA pipeline is not supported!" << std::endl;
+      std::cerr << "Requested pipeline 'cuda' is not compiled into Protonect." << std::endl;
+      return -1;
 #endif
     }
-    else if(arg == "cudakde")
+    else if (arg == "cudakde")
     {
 #ifdef LIBFREENECT2_WITH_CUDA_SUPPORT
-      if(!pipeline)
-        pipeline.reset(new libfreenect2::CudaKdePacketPipeline(deviceId));
+      if (!pipeline &&
+          !selectExplicitPipeline(
+              pipeline, new libfreenect2::CudaKdePacketPipeline(deviceId), "cudakde",
+              "Verify the NVIDIA driver, CUDA toolkit, and GPU architecture, or select cpu."))
+        return -1;
 #else
-      std::cout << "CUDA pipeline is not supported!" << std::endl;
+      std::cerr << "Requested pipeline 'cudakde' is not compiled into Protonect." << std::endl;
+      return -1;
 #endif
     }
     else if(arg == "metal")

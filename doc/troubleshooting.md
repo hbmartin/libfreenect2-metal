@@ -219,6 +219,17 @@ fallback to another backend is acceptable.
 | CUDA | Hosted CI compiles the CUDA pipelines but does not validate them at runtime. Compare CUDA against CPU output on your own hardware. |
 | VAAPI | Intel, Ivy Bridge or newer, Linux only. Select an explicit node with `LIBFREENECT2_VAAPI_DEVICE=/dev/dri/renderD128` if autodetection picks the wrong one. |
 
+### CUDA reports an unsupported PTX toolchain ([#1195](https://github.com/OpenKinect/libfreenect2/issues/1195))
+
+`the provided PTX was compiled with an unsupported toolchain` means the NVIDIA
+driver cannot JIT the PTX produced by the selected CUDA toolkit. Confirm the GPU
+and installed driver with `nvidia-smi`, then either update the driver or rebuild
+with a toolkit supported by that driver. Set `CMAKE_CUDA_ARCHITECTURES` to the
+compute capability of the target GPU. An explicit `Protonect cuda` or
+`Protonect cudakde` selection exits before USB enumeration when CUDA
+initialization already reports the pipeline unhealthy; select `cpu` to confirm
+the sensor and USB path independently.
+
 ### macOS: crash inside the RGB decoder on Apple Silicon
 
 The VideoToolbox decoder crashes on M1 and later. `ENABLE_VIDEOTOOLBOX` already

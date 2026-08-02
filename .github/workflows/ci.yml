@@ -278,7 +278,7 @@ jobs:
           -DCMAKE_CXX_STANDARD=11
           -DCMAKE_CUDA_ARCHITECTURES=75
           -DBUILD_TESTING=OFF
-          -DBUILD_EXAMPLES=OFF
+          -DBUILD_EXAMPLES=ON
           -DBUILD_OPENNI2_DRIVER=OFF
           -DENABLE_CUDA=ON
           -DENABLE_OPENCL=OFF
@@ -287,8 +287,28 @@ jobs:
           -DENABLE_TEGRAJPEG=OFF
           -DENABLE_WARNINGS_AS_ERRORS=ON
 
-      - name: Compile standard and KDE CUDA pipelines
-        run: cmake --build build-cuda -j 2 --target freenect2
+      - name: Compile standard and KDE CUDA pipelines and Protonect
+        run: cmake --build build-cuda -j 2 --target freenect2 Protonect
+
+      - name: Reject an unavailable explicit CUDA pipeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          output="$(CUDA_VISIBLE_DEVICES='' timeout 30s \
+            ./build-cuda/bin/Protonect cuda -noviewer 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if (( status == 0 )); then
+            echo "Protonect accepted an unavailable explicit CUDA pipeline" >&2
+            exit 1
+          fi
+          grep -F "Requested pipeline 'cuda' is compiled but unavailable at runtime." <<<"$output"
+          if grep -F "enumerating devices" <<<"$output"; then
+            echo "Protonect enumerated USB devices after CUDA selection failed" >&2
+            exit 1
+          fi
 
   sanitizers:
     name: ${{ matrix.name }}
