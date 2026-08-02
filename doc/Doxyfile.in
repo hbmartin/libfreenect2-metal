@@ -98,6 +98,9 @@ INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/mainpage.dox \
                          @CMAKE_CURRENT_SOURCE_DIR@/troubleshooting.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/linux_usb.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/faq.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/kinect_v1_vs_v2.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/protocol.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/performance.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/frame_timing.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/configuration.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/registration.md \

@@ -30,8 +30,36 @@ The practical consequences:
   so the sensors still share the same budget and add latency.
 * **USB 2.0 is not merely slow, it is unsupported.** The isochronous bandwidth
   the IR endpoint requires does not exist at 480 Mbps.
-* **PCIe expansion cards need lanes.** An x1 slot does not have the bandwidth
-  for a USB3 controller running a Kinect; use x8 or x16.
+* **PCIe expansion cards need lanes.** See the budget below — a PCIe v1 x1 slot
+  is definitively too narrow, and v2 x1 leaves no margin. Prefer x8 or x16.
+
+### The actual budget
+
+Upstream worked the reservation out from the kernel's SuperSpeed bandwidth
+formula (`xhci_get_ss_bw_consumed()`):
+
+| Endpoint | Consumption |
+|---|---|
+| IR (isochronous) | **2.47 Gbps reserved**, whether or not it is used |
+| Color (bulk) | ~0.25 Gbps effective; bulk reserves nothing |
+
+That is roughly 2.7 Gbps before any other device on the controller, and both
+endpoints transfer in bursts and idle in between, so headroom matters more than
+the average suggests. **Treat 3 Gbps as the practical minimum** for one sensor.
+
+Against that: PCIe v1 x1 carries 2 Gbps — not enough for the isochronous
+endpoint alone. PCIe v2 x1 carries 4 Gbps, which works but has little room. This
+is also the arithmetic that decides whether a multi-Kinect configuration is
+feasible at all: two sensors need two controllers on two adequately-wide links,
+not one wider link.
+
+### Why the packet size is 33792
+
+The 33792-byte (`0x8400`) isochronous packet comes from `wBytesPerInterval`, and
+equals `(Mult + 1) × (bMaxBurst + 1) × wMaxPacketSize`. `bMaxBurst` is 10 as
+reported by `lsusb`, which puts the result below the 49152-byte maximum the
+Linux kernel permits. The value appears to be fixed by the Kinect's firmware
+rather than negotiated, so it should be the same on every platform.
 
 ### Confirming the link actually negotiated SuperSpeed
 
@@ -46,6 +74,24 @@ The Kinect's port must show `5000M`. Anything lower (`480M`, `12M`) means the
 link did not come up at SuperSpeed and depth streaming will not work — replace
 the cable, try a different port, and confirm you are using the Kinect's own
 powered adapter.
+
+A healthy sensor looks like this:
+
+```
+Bus 03.Port 1: Dev 1, Class=root_hub, Driver=xhci_hcd/4p, 5000M          <- USB 3 controller
+|__ Port 1: Dev 2, If 0, Class=Hub, Driver=hub/1p, 5000M                 <- Kinect adaptor
+    |__ Port 1: Dev 8, If 0, Class=Vendor Specific Class, Driver=, 5000M <- control + color
+    |__ Port 1: Dev 8, If 1, Class=Vendor Specific Class, Driver=, 5000M <- IR/depth
+    |__ Port 1: Dev 8, If 2, Class=Audio, Driver=snd-usb-audio, 5000M    <- mic array
+    |__ Port 1: Dev 8, If 3, Class=Audio, Driver=snd-usb-audio, 5000M
+```
+
+Four interfaces, two vendor-specific and two audio, all at `5000M`. The empty
+`Driver=` on the vendor-specific interfaces is correct — libusb claims them at
+runtime. `snd-usb-audio` holding the audio interfaces is also correct and does
+not conflict with libfreenect2, which never touches them (see @ref faq for what
+that means if you want the microphones). The interface layout is explained in
+@ref protocol.
 
 On macOS the equivalent is:
 
@@ -130,6 +176,23 @@ two sensors on one controller.
 Keep the product of transfers and packets in the same ballpark as the default
 unless you are deliberately trading memory for jitter tolerance, and change one
 variable at a time.
+
+### Hard ceilings
+
+These are enforced below libfreenect2, so exceeding them fails the transfer
+submission outright rather than degrading performance:
+
+| Limit | Value | Enforced by |
+|---|---|---|
+| Isochronous packets per transfer | 128 | Linux `usb/core/devio.c`, returns `-EINVAL` |
+| Bytes per isochronous packet | 49152 | Linux, same path (`1024 × 16 × 3`) |
+| Frames per isochronous transfer | 1000 | macOS `AppleUSBXHCI::UIMCreateIsochTransfer` |
+| Total pinned transfer memory | `usbfs_memory_mb` | Linux, returns `-ENOMEM` (see below) |
+
+`LIBFREENECT2_IR_PACKETS` above 128 therefore cannot work on Linux — which is
+also why the macOS default of 128 is exactly at the ceiling. libusb additionally
+splits a submission into multiple URBs once `num_iso_packets × packet_length`
+exceeds 6 MB.
 
 ### USBFS memory limit (Linux only)
 

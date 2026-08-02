@@ -23,7 +23,9 @@ Apple Silicon with a Metal GPU pipeline.
 > APIs described below. See [What's different in this fork](#whats-different-in-this-fork).
 
 Note: this driver does nothing for Kinect for Windows v1 or Kinect for Xbox 360
-sensors. Use libfreenect1 for those.
+sensors. Use [libfreenect](https://github.com/OpenKinect/libfreenect) for those.
+Not sure which one you have, or why v1 advice keeps not working?
+See [Kinect v1 versus Kinect v2](doc/kinect_v1_vs_v2.md).
 
 ## Table of Contents
 
@@ -416,6 +418,7 @@ at **<https://hbmartin.github.io/libfreenect2-metal/>**.
 * [USB bandwidth and transfer tuning](doc/linux_usb.md)
 * [FAQ](doc/faq.md)
 * [Runtime configuration reference](doc/configuration.md)
+* [Kinect v1 versus Kinect v2](doc/kinect_v1_vs_v2.md)
 
 **Work with the data**
 * [Registration and coordinate mapping recipes](doc/registration.md)
@@ -427,6 +430,10 @@ at **<https://hbmartin.github.io/libfreenect2-metal/>**.
 * [Recording, replay, and multiple Kinects](doc/recording_replay.md)
 * [Using the Kinect v2 as a webcam](doc/webcam.md)
 * [Using libfreenect2 from Python](doc/python.md)
+
+**Go deeper**
+* [Kinect v2 USB protocol](doc/protocol.md)
+* [Benchmarking and performance](doc/performance.md)
 
 **Maintain**
 * [Development and contributing](doc/development.md)
@@ -502,5 +509,9 @@ please cite the ECCV 2016
 
 The [libfreenect2 wiki](https://github.com/OpenKinect/libfreenect2/wiki) and the
 [mailing list](https://groups.google.com/forum/#!forum/openkinect) carry
-background on the K4W2 USB protocol. (The former openkinect.org domain has
+background on the K4W2 USB protocol; what remained useful from the wiki has been
+absorbed into [`doc/`](#documentation) — see
+[the protocol reference](doc/protocol.md), [performance](doc/performance.md),
+[USB notes](doc/linux_usb.md), and [troubleshooting](doc/troubleshooting.md).
+(The former openkinect.org domain, which hosted the **Kinect v1** wiki, has
 lapsed and now serves unrelated ads — do not use it.)

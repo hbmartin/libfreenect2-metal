@@ -92,6 +92,25 @@ metal before investigating anything else.
 libfreenect2 needs UsbDk or libusbK bound to the composite parent device; the
 stock Kinect SDK driver will not work. See @ref install_windows.
 
+`LIBUSB_ERROR_NOTSUPPORTED` specifically means the libusb you are linking was
+not built with its libusbK backend enabled. Rebuild it, checking the build log
+for the errors that silently disabled the backend, or use a prebuilt binary.
+
+If streaming starts and then degrades, also disable **USB selective suspend** in
+the Windows power plan — it is the Windows equivalent of the autosuspend problem
+described in section 2.
+
+### macOS
+
+If the sensor does not appear, open System Information, go to the USB section,
+and confirm `Xbox NUI Sensor` is listed under a **USB 3.0 SuperSpeed Bus** and
+not a High-Speed Bus. If it is on the wrong bus, unplug the sensor's power while
+leaving USB connected, then reconnect power and re-check.
+
+Thunderbolt-to-USB 3.0 adaptors are a recurring source of instability for
+isochronous transfers, as are USB 3 hubs. Connect directly to a built-in port
+before investigating anything else.
+
 ## 2. Device opens but streaming fails
 
 The device enumerates and opens, then `waitForNewFrame()` times out or frames
@@ -134,16 +153,48 @@ sudo dmesg -w   # in a second terminal, while starting Protonect
 
 | Message | Severity | Meaning |
 |---|---|---|
-| `xhci_hcd … ERROR Transfer event TRB DMA ptr not part of current TD` | Usually harmless | Common xHCI chatter during isochronous streaming; not by itself a fault |
-| `xhci_hcd … WARN Event TRB for slot … with no TDs queued` | Usually harmless | Same class of noise |
+| `xhci_hcd … ERROR Transfer event TRB DMA ptr not part of current TD` | Depends — see below | Common xHCI chatter during isochronous streaming; not by itself a fault |
+| `xhci_hcd … WARN Event TRB for slot … with no TDs queued` | Usually harmless | Same class of noise. Emitted by bulk transfers that request a larger buffer than they receive, which is exactly what the calibration and P0 table reads do. |
+| `xhci xhci_drop_endpoint called with disabled ep` | Harmless | Emitted during configuration. The kernel stopped printing it in 4.0. |
 | `Not enough bandwidth for new device state` | Fatal | The controller cannot admit the isochronous endpoint. Move the sensor to its own controller. |
 | `device descriptor read/64, error -110` | Fatal | Timeout. Cable, power, or port. |
 | `usb … reset SuperSpeed USB device number … using xhci_hcd` | Investigate | A single reset at start can be normal; repeated resets mean an unstable link |
 | Allocation failure / `-ENOMEM` on submit | Fatal | The usbfs memory limit is too low. See below. |
+| `page allocation failure: order:7` in `proc_do_submiturb` | Fatal | Memory fragmentation, not exhaustion — the kernel could not find a large enough contiguous block for the transfer buffer. See below. |
 
-The distinction that matters: the first two appear constantly on healthy systems
-and are not worth reporting on their own, whereas bandwidth and `-110` errors
-are conclusive.
+Most of these appear on healthy systems and are not worth reporting on their
+own, whereas bandwidth and `-110` errors are conclusive.
+
+**The TRB error is the one that needs reading in context.** On its own it is
+noise. When it escalates into this sequence it is not:
+
+```
+xhci_hcd … ERROR Transfer event TRB DMA ptr not part of current TD
+xhci_hcd … xHCI host not responding to stop endpoint command.
+xhci_hcd … Assuming host is dying, halting host.
+xhci_hcd … HC died; cleaning up
+```
+
+That is the controller failing, and it usually surfaces to the application as
+`LIBUSB_ERROR_NO_DEVICE`. It is characteristic of **ASMedia** controllers, which
+appear to be missing the kernel's `XHCI_SPURIOUS_SUCCESS` quirk. You can test
+that hypothesis by booting with `xhci_hcd.quirks=0x10`, but the reliable fix is
+a different controller — see the controller guidance in section 1.
+
+### Page allocation failures (Linux)
+
+`page allocation failure: order:7` means the kernel could not find 128
+contiguous pages, even though total free memory may be ample. Raising the
+kernel's free-memory reserve gives the allocator room to keep large blocks
+available:
+
+```sh
+sudo sysctl -w vm.min_free_kbytes=65536
+```
+
+Keep the value under about 5% of total RAM. This is a **system-wide** change
+that permanently withholds memory from everything else; treat it as a last
+resort, and see the caveats in @ref linux_usb.
 
 ### usbfs memory limit (Linux)
 
@@ -214,7 +265,7 @@ fallback to another backend is acceptable.
 | Backend | Check |
 |---|---|
 | Metal | macOS only. The log names the GPU it selected, e.g. `MetalDepthPacketProcessor: using device Apple M4 Pro`. |
-| OpenGL | Needs OpenGL 3.1; OpenGL ES is unsupported. Deprecated by Apple — prefer `metal` there. |
+| OpenGL | Needs OpenGL 3.1; OpenGL ES is unsupported. Verify with `glxinfo \| grep OpenGL`: the core-profile or plain version string must exceed 3.1, and the renderer must not be `llvmpipe` (software rasterization). An insufficient version surfaces as `GLFW error 65543 The requested client API version is unavailable`. Deprecated by Apple — prefer `metal` there. |
 | OpenCL | Verify the ICD stack with `clinfo` before suspecting libfreenect2. An unusable explicit `Protonect cl` selection is fatal; an environment-selected OpenCL preference is skipped. |
 | CUDA | Hosted CI compiles the CUDA pipelines but does not validate them at runtime. Compare CUDA against CPU output on your own hardware. |
 | VAAPI | Intel, Ivy Bridge or newer, Linux only. Select an explicit node with `LIBFREENECT2_VAAPI_DEVICE=/dev/dri/renderD128` if autodetection picks the wrong one. |
@@ -229,6 +280,14 @@ compute capability of the target GPU. An explicit `Protonect cuda` or
 `Protonect cudakde` selection exits before USB enumeration when CUDA
 initialization already reports the pipeline unhealthy; select `cpu` to confirm
 the sensor and USB path independently.
+
+### macOS: `Abort trap: 6` with OpenGL on an NVIDIA Mac
+
+On Intel Macs with NVIDIA graphics, the `opengl` pipeline can abort inside
+`gldCreateDevice()` in `GeForceGLDriver`. Confirm with a stack trace from `lldb`.
+This is a defect in NVIDIA's macOS OpenGL driver with no fix available; use the
+`opencl` pipeline instead, or force the process onto the integrated Intel GPU.
+Apple Silicon is unaffected — use `metal` there.
 
 ### macOS: crash inside the RGB decoder on Apple Silicon
 
