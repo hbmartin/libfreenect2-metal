@@ -8,10 +8,12 @@
  * GNU General Public License, Version 2.0. See APACHE20 and GPL2.
  */
 
+#include <libfreenect2/calibration_profile.h>
 #include <libfreenect2/depth_calibration.h>
 #include <libfreenect2/frame_listener_impl.h>
 #include <libfreenect2/libfreenect2.hpp>
 #include <libfreenect2/packet_pipeline.h>
+#include <libfreenect2/projective_registration.h>
 #include <libfreenect2/recording.h>
 #include <libfreenect2/registration.h>
 
@@ -24,6 +26,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -54,12 +57,15 @@ bool parseUint32(const std::string& text, uint32_t& value)
 void printUsage()
 {
   std::cerr << "usage: KinectCapture OUTPUT_DIRECTORY "
-               "[--depth-correction PROFILE.json] [--allow-device-mismatch]\n"
+               "[--calibration-profile PROFILE.json] [--depth-correction PROFILE.json] "
+               "[--allow-device-mismatch]\n"
             << "       KinectCapture snapshot OUTPUT_DIRECTORY "
-               "[--max-delta-ticks TICKS] [--depth-correction PROFILE.json] "
+               "[--max-delta-ticks TICKS] [--calibration-profile PROFILE.json] "
+               "[--depth-correction PROFILE.json] "
                "[--allow-device-mismatch]\n"
             << "       KinectCapture record OUTPUT_DIRECTORY "
-               "(--depth-frames N | --duration-seconds N)\n";
+               "(--depth-frames N | --duration-seconds N) "
+               "[--calibration-profile PROFILE.json] [--allow-device-mismatch]\n";
 }
 
 bool writeColorPpm(const std::string& path, const libfreenect2::Frame& frame)
@@ -224,37 +230,58 @@ int main(int argc, char** argv)
   uint32_t max_delta_ticks = DEFAULT_MAX_DELTA_TICKS;
   uint32_t recording_depth_frames = 0;
   uint32_t recording_duration_seconds = 0;
+  std::string calibration_profile_path;
   std::string correction_profile_path;
   bool allow_device_mismatch = false;
   std::string output;
   int capture_option_start = 0;
   if (argc >= 2 && std::string(argv[1]) == "record")
   {
-    if (argc != 5)
+    if (argc < 5)
     {
       printUsage();
       return 2;
     }
     recording_mode = true;
     output = argv[2];
-    const std::string option = argv[3];
-    if (option == "--depth-frames")
+    for (int argument = 3; argument < argc; ++argument)
     {
-      if (!parseUint32(argv[4], recording_depth_frames) || recording_depth_frames == 0)
+      const std::string option = argv[argument];
+      if (option == "--depth-frames" && argument + 1 < argc && recording_duration_seconds == 0 &&
+          recording_depth_frames == 0)
+      {
+        if (!parseUint32(argv[++argument], recording_depth_frames) || recording_depth_frames == 0)
+        {
+          printUsage();
+          return 2;
+        }
+      }
+      else if (option == "--duration-seconds" && argument + 1 < argc &&
+               recording_depth_frames == 0 && recording_duration_seconds == 0)
+      {
+        if (!parseUint32(argv[++argument], recording_duration_seconds) ||
+            recording_duration_seconds == 0)
+        {
+          printUsage();
+          return 2;
+        }
+      }
+      else if (option == "--calibration-profile" && argument + 1 < argc)
+      {
+        calibration_profile_path = argv[++argument];
+      }
+      else if (option == "--allow-device-mismatch")
+      {
+        allow_device_mismatch = true;
+      }
+      else
       {
         printUsage();
         return 2;
       }
     }
-    else if (option == "--duration-seconds")
-    {
-      if (!parseUint32(argv[4], recording_duration_seconds) || recording_duration_seconds == 0)
-      {
-        printUsage();
-        return 2;
-      }
-    }
-    else
+    if ((recording_depth_frames == 0) == (recording_duration_seconds == 0) ||
+        (allow_device_mismatch && calibration_profile_path.empty()))
     {
       printUsage();
       return 2;
@@ -304,6 +331,15 @@ int main(int argc, char** argv)
           return 2;
         }
       }
+      else if (option == "--calibration-profile" && argument + 1 < argc)
+      {
+        calibration_profile_path = argv[++argument];
+        if (calibration_profile_path.empty())
+        {
+          printUsage();
+          return 2;
+        }
+      }
       else if (option == "--allow-device-mismatch")
       {
         allow_device_mismatch = true;
@@ -314,9 +350,23 @@ int main(int argc, char** argv)
         return 2;
       }
     }
-    if (allow_device_mismatch && correction_profile_path.empty())
+    if (allow_device_mismatch && correction_profile_path.empty() &&
+        calibration_profile_path.empty())
     {
       printUsage();
+      return 2;
+    }
+  }
+
+  libfreenect2::CalibrationProfile calibration_profile;
+  const bool use_calibration_profile = !calibration_profile_path.empty();
+  if (use_calibration_profile)
+  {
+    std::string error;
+    if (!libfreenect2::CalibrationProfile::load(calibration_profile_path, calibration_profile,
+                                                &error))
+    {
+      std::cerr << "Unable to load calibration profile: " << error << "\n";
       return 2;
     }
   }
@@ -408,6 +458,25 @@ int main(int argc, char** argv)
       device->close();
       return 1;
     }
+    if (use_calibration_profile)
+    {
+      std::string warning;
+      std::string error;
+      if (!calibration_profile.matchesDevice(serial, firmware, allow_device_mismatch, &warning,
+                                             &error) ||
+          !writer.setCalibrationProfile(calibration_profile, allow_device_mismatch))
+      {
+        if (error.empty())
+          error = writer.getLastError();
+        std::cerr << "Unable to attach calibration profile: " << error << "\n";
+        device->stop();
+        device->close();
+        writer.close();
+        return 2;
+      }
+      if (!warning.empty())
+        std::cerr << "Warning: " << warning << "\n";
+    }
 
     const std::chrono::steady_clock::time_point deadline =
         std::chrono::steady_clock::now() + std::chrono::seconds(recording_duration_seconds);
@@ -472,6 +541,23 @@ int main(int argc, char** argv)
     return 1;
   }
   firmware = device->getFirmwareVersion();
+  bool calibration_profile_device_match = true;
+  if (use_calibration_profile)
+  {
+    std::string warning;
+    std::string error;
+    calibration_profile_device_match = calibration_profile.serial() == serial;
+    if (!calibration_profile.matchesDevice(serial, firmware, allow_device_mismatch, &warning,
+                                           &error))
+    {
+      std::cerr << "Refusing calibration profile: " << error << "\n";
+      device->stop();
+      device->close();
+      return 2;
+    }
+    if (!warning.empty())
+      std::cerr << "Warning: " << warning << "\n";
+  }
   if (apply_depth_correction)
   {
     correction_device_match =
@@ -544,18 +630,50 @@ int main(int argc, char** argv)
 
   libfreenect2::Registration registration(device->getIrCameraParams(),
                                           device->getColorCameraParams());
-  libfreenect2::Frame undistorted(512, 424, 4);
-  libfreenect2::Frame registered(512, 424, 4);
-  registered.format = libfreenect2::Frame::BGRX;
+  libfreenect2::Frame undistorted(512, 424, 4, nullptr, libfreenect2::Frame::Float);
+  libfreenect2::Frame registered(512, 424, 4, nullptr, libfreenect2::Frame::BGRX);
   registration.apply(color, depth, &undistorted, &registered);
 
+  std::unique_ptr<libfreenect2::Frame> projective_depth;
+  if (use_calibration_profile)
+  {
+    libfreenect2::CalibrationProfile scaled_profile = calibration_profile;
+    scaled_profile.setIrCamera(
+        calibration_profile.irCamera().scaledTo(depth->width, depth->height));
+    const libfreenect2::ProjectiveCameraModel target =
+        calibration_profile.colorCamera().scaledTo(color->width, color->height);
+    scaled_profile.setColorCamera(target);
+    std::string error;
+    std::unique_ptr<libfreenect2::ProjectiveRegistration> projective_registration =
+        libfreenect2::ProjectiveRegistration::create(scaled_profile, target,
+                                                     libfreenect2::ProjectiveRegistrationOptions(),
+                                                     &error);
+    projective_depth = std::make_unique<libfreenect2::Frame>(
+        target.width, target.height, sizeof(float), nullptr, libfreenect2::Frame::Float);
+    if (!projective_registration ||
+        !projective_registration->apply(*depth, *projective_depth, &error))
+    {
+      std::cerr << "Projective registration failed: " << error << "\n";
+      releaseFrames(frames);
+      device->stop();
+      device->close();
+      return 1;
+    }
+  }
+
   DepthStats stats;
+  DepthStats projective_stats;
   bool output_ok = writeColorPpm(output + "/rgb.ppm", *color);
   output_ok = writeColorPpm(output + "/registered.ppm", registered) && output_ok;
   output_ok = writeIrPgm(output + "/infrared.pgm", *ir) && output_ok;
   output_ok =
       writeDepth(output + "/depth_mm.pgm", output + "/depth_false_color.ppm", *depth, stats) &&
       output_ok;
+  if (projective_depth)
+    output_ok = writeDepth(output + "/registered_depth_mm.pgm",
+                           output + "/registered_depth_false_color.ppm", *projective_depth,
+                           projective_stats) &&
+                output_ok;
 
   std::ofstream metadata(output + "/metadata.json");
   const libfreenect2::TimestampAlignedFrameListener::Statistics alignment_statistics =
@@ -597,6 +715,14 @@ int main(int argc, char** argv)
              << ", \"device_match\": " << (correction_device_match ? "true" : "false") << "}"
              << std::fixed << std::setprecision(2);
   }
+  if (use_calibration_profile)
+  {
+    metadata << ",\n"
+             << "  \"calibration_profile\": {\"path\": \"" << calibration_profile_path
+             << "\", \"serial_match\": "
+             << (calibration_profile_device_match ? "true" : "false")
+             << ", \"registered_depth_pixels\": " << projective_stats.valid << "}";
+  }
   if (timestamp_aligned)
   {
     metadata << ",\n"
@@ -622,6 +748,8 @@ int main(int argc, char** argv)
   std::cout << "Captured Kinect " << serial << ": " << stats.valid << " valid depth pixels";
   if (apply_depth_correction)
     std::cout << "; applied depth correction from " << correction_profile_path;
+  if (use_calibration_profile)
+    std::cout << "; projected depth with " << calibration_profile_path;
   if (timestamp_aligned)
   {
     std::cout << "; alignment threshold=" << max_delta_ticks

@@ -1,6 +1,6 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.16)
 
-PROJECT(libfreenect2 VERSION 0.3.0 LANGUAGES C CXX)
+PROJECT(libfreenect2 VERSION 0.4.0 LANGUAGES C CXX)
 
 SET(PROJECT_VER_MAJOR "${PROJECT_VERSION_MAJOR}")
 SET(PROJECT_VER_MINOR "${PROJECT_VERSION_MINOR}")
@@ -36,10 +36,10 @@ IF(NOT DEFINED CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Choose: RelWithDebInfo Release Debug MinSizeRel None")
 ENDIF()
 
-# libfreenect2 0.3 requires the C++11 language and threading library. Keep the
+# libfreenect2 0.4 requires the C++17 language and threading library. Keep the
 # requirement target-independent so every library, example, test, and tool is
 # compiled with the same public ABI assumptions.
-SET(CMAKE_CXX_STANDARD 11)
+SET(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 SET(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -60,6 +60,7 @@ OPTION(ENABLE_VAAPI "Enable VA-API support" ON)
 OPTION(ENABLE_TEGRAJPEG "Enable Tegra HW JPEG support" ON)
 OPTION(ENABLE_PROFILING "Collect profiling stats (memory consuming)" OFF)
 OPTION(BUILD_TESTING "Build the unit test suite" OFF)
+OPTION(BUILD_CALIBRATION_TOOLS "Build the OpenCV-based offline camera calibration tool" OFF)
 OPTION(ENABLE_SANITIZERS "Build project targets with AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
 IF(APPLE)
   OPTION(ENABLE_METAL "Enable Metal GPU depth processing (Apple platforms)" ON)
@@ -83,6 +84,7 @@ ELSE()
 ENDIF()
 
 SET(HAVE_CXX11 yes)
+SET(HAVE_CXX17 yes)
 SET(LIBFREENECT2_WITH_CXX11_SUPPORT 1)
 SET(LIBFREENECT2_THREADING_STDLIB 1)
 
@@ -184,9 +186,11 @@ SET(SOURCES
   include/libfreenect2/frame_listener_impl.h
   include/libfreenect2/libfreenect2.hpp
   include/libfreenect2/color_settings.h
+  include/libfreenect2/calibration_profile.h
   include/libfreenect2/depth_calibration.h
   include/libfreenect2/led_settings.h
   include/libfreenect2/packet_pipeline.h
+  include/libfreenect2/projective_registration.h
   include/internal/libfreenect2/packet_processor.h
   include/libfreenect2/registration.h
   include/libfreenect2/vision.h
@@ -211,6 +215,7 @@ SET(SOURCES
   src/depth_packet_stream_parser.cpp
   src/depth_packet_processor.cpp
   src/depth_calibration.cpp
+  src/calibration_profile.cpp
   src/cpu_depth_packet_processor.cpp
   src/resource.cpp
   src/recording_utils.cpp
@@ -220,6 +225,7 @@ SET(SOURCES
   src/recording_writer.cpp
   src/command_transaction.cpp
   src/registration.cpp
+  src/projective_registration.cpp
   src/vision.cpp
   src/logging.cpp
   src/timing.cpp
@@ -595,7 +601,7 @@ IF(ENABLE_CUDA)
         SET(CUDA_FLAGS "${CUDA_FLAGS} -Xcompiler -fPIC")
       ENDIF()
       IF(CUDA_VERSION VERSION_GREATER 7.0)
-        SET(CUDA_FLAGS "${CUDA_FLAGS} -std=c++11")
+        SET(CUDA_FLAGS "${CUDA_FLAGS} -std=c++17")
       ENDIF()
 
       SET(OLD_CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -653,6 +659,7 @@ GENERATE_RESOURCES(${RESOURCES_INC_FILE} ${MY_DIR} ${RESOURCES})
 
 ADD_DEFINITIONS(-DRESOURCES_INC)
 ADD_LIBRARY(freenect2 ${SOURCES})
+TARGET_COMPILE_FEATURES(freenect2 PUBLIC cxx_std_17)
 libfreenect2_apply_quality(freenect2 PRIVATE)
 TARGET_INCLUDE_DIRECTORIES(freenect2 SYSTEM PRIVATE "${MY_DIR}/third_party")
 
@@ -712,9 +719,12 @@ INSTALL(FILES
   "${MY_DIR}/GPL2"
   "${MY_DIR}/CONTRIB"
   "${MY_DIR}/README.md"
+  "${MY_DIR}/doc/v0.4_migration.md"
   "${MY_DIR}/doc/v0.3_migration.md"
   "${MY_DIR}/doc/v0.3_upstream_coverage.md"
   "${MY_DIR}/doc/configuration.md"
+  "${MY_DIR}/doc/calibration_profiles.md"
+  "${MY_DIR}/doc/calibration_job.example.json"
   "${MY_DIR}/doc/depth_accuracy.md"
   "${MY_DIR}/doc/depth_calibration.md"
   "${MY_DIR}/doc/faq.md"
@@ -727,6 +737,24 @@ INSTALL(FILES
   DESTINATION share/doc/${PROJECT_NAME})
 
 ADD_SUBDIRECTORY(${MY_DIR}/doc)
+
+SET(HAVE_CalibrationTools disabled)
+IF(BUILD_CALIBRATION_TOOLS)
+  # Discover the common components first so the installed version is known;
+  # OpenCV 5 renamed calib3d to calib and moved chessboard detection to
+  # objdetect.
+  FIND_PACKAGE(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
+  IF(OpenCV_VERSION VERSION_LESS 4.5)
+    MESSAGE(FATAL_ERROR "Calibration tools require OpenCV 4.5 or newer (found ${OpenCV_VERSION})")
+  ENDIF()
+  IF(OpenCV_VERSION VERSION_LESS 5.0)
+    FIND_PACKAGE(OpenCV REQUIRED COMPONENTS core calib3d imgproc imgcodecs)
+  ELSE()
+    FIND_PACKAGE(OpenCV REQUIRED COMPONENTS core calib imgproc imgcodecs objdetect)
+  ENDIF()
+  SET(HAVE_CalibrationTools yes)
+  ADD_SUBDIRECTORY(${MY_DIR}/tools/calibration)
+ENDIF()
 
 SET(HAVE_Examples disabled)
 IF(BUILD_EXAMPLES)

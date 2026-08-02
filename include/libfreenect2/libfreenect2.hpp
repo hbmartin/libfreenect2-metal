@@ -60,7 +60,36 @@ enum DeviceState
   DeviceClosed
 };
 
+/** Lifetime counters and most recent metadata for one decoded stream. */
+struct LIBFREENECT2_API StreamRuntimeStatistics
+{
+  StreamRuntimeStatistics();
+
+  uint64_t decoded_frames;
+  uint64_t status_error_frames;
+  uint64_t sequence_gaps;
+  uint32_t last_sequence;
+  uint32_t last_device_timestamp;
+  uint64_t last_arrival_timestamp_us;
+};
+
+/** Thread-safe snapshot of one device object's runtime health. */
+struct LIBFREENECT2_API DeviceRuntimeStatistics
+{
+  DeviceRuntimeStatistics();
+
+  StreamRuntimeStatistics color;
+  StreamRuntimeStatistics ir;
+  StreamRuntimeStatistics depth;
+  uint64_t start_attempts;
+  uint64_t successful_starts;
+  uint64_t stop_calls;
+  uint64_t disconnect_events;
+  uint64_t transfer_stall_events;
+};
+
 struct CalibrationData;
+class CalibrationProfile;
 
 /** Device control. */
 class LIBFREENECT2_API Freenect2Device
@@ -159,10 +188,18 @@ public:
   /** Return a thread-safe snapshot of the most recent lifecycle error. */
   virtual std::string getLastError() const = 0;
 
+  /** Return monotonic counters for the lifetime of this device object. */
+  virtual DeviceRuntimeStatistics getRuntimeStatistics() const;
+
   /** Copy the immutable calibration captured during successful initialization.
    * Returns false until calibration is available.
    */
   virtual bool getCalibrationData(CalibrationData& calibration) const;
+
+  /** Copy an optional user profile attached to a durable recording.
+   * Live devices and legacy recordings return false.
+   */
+  virtual bool getCalibrationProfile(CalibrationProfile& profile) const;
 
   /** Get current color parameters.
    * @copydetails ColorCameraParams

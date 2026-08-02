@@ -4,6 +4,8 @@
 "firmware"
 "streams"
 "calibration"
+"profile"
+"calibration/profile.json"
 "clocks"
 "index"
 "stream"

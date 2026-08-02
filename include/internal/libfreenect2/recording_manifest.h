@@ -21,6 +21,7 @@ struct ManifestV1
 {
   ManifestV1();
 
+  uint32_t version;
   std::string serial;
   std::string firmware;
   std::string color_encoding;
@@ -28,12 +29,15 @@ struct ManifestV1
   Freenect2Device::ColorCameraParams color;
   Freenect2Device::IrCameraParams ir;
   std::string p0_path;
+  std::string profile_path;
   std::string device_clock;
   std::string arrival_clock;
 };
 
 bool serializeManifestV1(const ManifestV1& manifest, std::string& text, std::string* error = 0);
 bool parseManifestV1(const std::string& text, ManifestV1& manifest, std::string* error = 0);
+bool serializeManifestV2(const ManifestV1& manifest, std::string& text, std::string* error = 0);
+bool parseManifest(const std::string& text, ManifestV1& manifest, std::string* error = 0);
 
 } // namespace recording
 } // namespace libfreenect2

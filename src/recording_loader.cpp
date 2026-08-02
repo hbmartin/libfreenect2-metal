@@ -50,8 +50,8 @@ bool loadRecordingMetadata(const std::string& directory, bool salvage_incomplete
 
   RecordingMetadata loaded;
   loaded.directory = directory;
-  if (!parseManifestV1(std::string(manifest_bytes.begin(), manifest_bytes.end()), loaded.manifest,
-                       &local_error))
+  if (!parseManifest(std::string(manifest_bytes.begin(), manifest_bytes.end()), loaded.manifest,
+                     &local_error))
   {
     if (error != 0)
       *error = local_error;
@@ -72,6 +72,26 @@ bool loadRecordingMetadata(const std::string& directory, bool salvage_incomplete
     if (error != 0)
       *error = "recording calibration contains a truncated P0 table response";
     return false;
+  }
+
+  if (!loaded.manifest.profile_path.empty())
+  {
+    if (!CalibrationProfile::load(joinPath(directory, loaded.manifest.profile_path),
+                                  loaded.profile, &local_error))
+    {
+      if (error != 0)
+        *error = "recording calibration profile is invalid: " + local_error;
+      return false;
+    }
+    std::string warning;
+    if (!loaded.profile.matchesDevice(loaded.manifest.serial, loaded.manifest.firmware, false,
+                                      &warning, &local_error))
+    {
+      if (error != 0)
+        *error = "recording calibration profile identity is invalid: " + local_error;
+      return false;
+    }
+    loaded.has_profile = true;
   }
 
   metadata = loaded;

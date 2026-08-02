@@ -282,6 +282,10 @@ TEST(PublicApi, ReplayStartStopCloseIsRepeatable)
   EXPECT_TRUE(waitForDeviceState(device, lf::DeviceOpen, std::chrono::seconds(2)));
   EXPECT_TRUE(device->startStreams(true, false));
   EXPECT_TRUE(device->stop());
+  const lf::DeviceRuntimeStatistics before_close = device->getRuntimeStatistics();
+  EXPECT_EQ(before_close.start_attempts, 3u);
+  EXPECT_EQ(before_close.successful_starts, 3u);
+  EXPECT_EQ(before_close.stop_calls, 3u);
   EXPECT_TRUE(device->close());
   EXPECT_EQ(lf::DeviceClosed, device->getState());
   EXPECT_FALSE(device->startStreams(true, false));
@@ -324,6 +328,7 @@ TEST(PublicApi, ReplayStateSnapshotsRemainValidDuringLifecycleChanges)
           if (state < lf::DeviceCreated || state > lf::DeviceClosed)
             invalid_states.fetch_add(1);
           (void)device->getLastError();
+          (void)device->getRuntimeStatistics();
           std::this_thread::yield();
         }
       });

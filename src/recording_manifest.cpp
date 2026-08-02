@@ -154,7 +154,7 @@ bool allFinite(const Json& object, std::string* error)
   return true;
 }
 
-bool validateManifest(const ManifestV1& manifest, std::string* error)
+bool validateManifest(const ManifestV1& manifest, uint32_t version, std::string* error)
 {
   if (manifest.serial.empty() || manifest.firmware.empty())
   {
@@ -176,6 +176,13 @@ bool validateManifest(const ManifestV1& manifest, std::string* error)
       *error = "recording manifest contains an unsafe P0 path";
     return false;
   }
+  if (version == 2 && !manifest.profile_path.empty() &&
+      !isSafeRelativePath(manifest.profile_path))
+  {
+    if (error != 0)
+      *error = "recording manifest contains an unsafe calibration profile path";
+    return false;
+  }
   if (manifest.device_clock != kDeviceClock || manifest.arrival_clock != kArrivalClock)
   {
     if (error != 0)
@@ -188,7 +195,8 @@ bool validateManifest(const ManifestV1& manifest, std::string* error)
 } // namespace
 
 ManifestV1::ManifestV1()
-    : color_encoding("jpeg"), depth_encoding("kinect-v2-raw"), p0_path("calibration/p0.bin"),
+    : version(1), color_encoding("jpeg"), depth_encoding("kinect-v2-raw"),
+      p0_path("calibration/p0.bin"),
       device_clock(kDeviceClock), arrival_clock(kArrivalClock)
 {
   std::memset(&color, 0, sizeof(color));
@@ -197,7 +205,7 @@ ManifestV1::ManifestV1()
 
 bool serializeManifestV1(const ManifestV1& manifest, std::string& text, std::string* error)
 {
-  if (!validateManifest(manifest, error))
+  if (!validateManifest(manifest, 1, error))
     return false;
 
   try
@@ -222,13 +230,49 @@ bool serializeManifestV1(const ManifestV1& manifest, std::string& text, std::str
   }
 }
 
-bool parseManifestV1(const std::string& text, ManifestV1& manifest, std::string* error)
+bool serializeManifestV2(const ManifestV1& manifest, std::string& text, std::string* error)
+{
+  if (!validateManifest(manifest, 2, error))
+    return false;
+
+  try
+  {
+    Json root;
+    root["version"] = 2;
+    root["device"] = {{"serial", manifest.serial}, {"firmware", manifest.firmware}};
+    root["streams"] = {{"color", {{"encoding", manifest.color_encoding}}},
+                       {"depth", {{"encoding", manifest.depth_encoding}}}};
+    root["calibration"] = {{"color", colorToJson(manifest.color)},
+                           {"ir", irToJson(manifest.ir)},
+                           {"p0", manifest.p0_path}};
+    if (!manifest.profile_path.empty())
+      root["calibration"]["profile"] = manifest.profile_path;
+    root["clocks"] = {{"device", manifest.device_clock}, {"arrival", manifest.arrival_clock}};
+    text = root.dump(2) + "\n";
+    return true;
+  }
+  catch (const std::exception& exception)
+  {
+    if (error != 0)
+      *error = std::string("failed to serialize recording manifest: ") + exception.what();
+    return false;
+  }
+}
+
+bool parseManifest(const std::string& text, ManifestV1& manifest, std::string* error)
 {
   try
   {
     const Json root = Json::parse(text);
-    const Json& version = root.at("version");
-    if (!version.is_number_integer() || version != 1)
+    const Json& version_value = root.at("version");
+    if (!version_value.is_number_integer())
+    {
+      if (error != 0)
+        *error = "unsupported recording manifest version: version must be an integer";
+      return false;
+    }
+    const int64_t version = version_value.get<int64_t>();
+    if (version != 1 && version != 2)
     {
       if (error != 0)
         *error = "unsupported recording manifest version";
@@ -236,6 +280,7 @@ bool parseManifestV1(const std::string& text, ManifestV1& manifest, std::string*
     }
 
     ManifestV1 parsed;
+    parsed.version = static_cast<uint32_t>(version);
     parsed.serial = root.at("device").at("serial").get<std::string>();
     parsed.firmware = root.at("device").at("firmware").get<std::string>();
     parsed.color_encoding = root.at("streams").at("color").at("encoding").get<std::string>();
@@ -243,9 +288,11 @@ bool parseManifestV1(const std::string& text, ManifestV1& manifest, std::string*
     colorFromJson(root.at("calibration").at("color"), parsed.color);
     irFromJson(root.at("calibration").at("ir"), parsed.ir);
     parsed.p0_path = root.at("calibration").at("p0").get<std::string>();
+    if (version == 2 && root.at("calibration").contains("profile"))
+      parsed.profile_path = root.at("calibration").at("profile").get<std::string>();
     parsed.device_clock = root.at("clocks").at("device").get<std::string>();
     parsed.arrival_clock = root.at("clocks").at("arrival").get<std::string>();
-    if (!validateManifest(parsed, error))
+    if (!validateManifest(parsed, parsed.version, error))
       return false;
     manifest = parsed;
     return true;
@@ -256,6 +303,21 @@ bool parseManifestV1(const std::string& text, ManifestV1& manifest, std::string*
       *error = std::string("invalid recording manifest: ") + exception.what();
     return false;
   }
+}
+
+bool parseManifestV1(const std::string& text, ManifestV1& manifest, std::string* error)
+{
+  ManifestV1 parsed;
+  if (!parseManifest(text, parsed, error))
+    return false;
+  if (parsed.version != 1)
+  {
+    if (error != 0)
+      *error = "unsupported recording manifest version";
+    return false;
+  }
+  manifest = parsed;
+  return true;
 }
 
 } // namespace recording

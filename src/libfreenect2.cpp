@@ -40,6 +40,7 @@
 #include <sstream>
 
 #include <libfreenect2/libfreenect2.hpp>
+#include <libfreenect2/calibration_profile.h>
 
 #include <libfreenect2/usb/error.h>
 #include <libfreenect2/usb/event_loop.h>
@@ -75,6 +76,18 @@ uint32_t getApiVersion()
 std::string getBuildRevision()
 {
   return LIBFREENECT2_BUILD_REVISION;
+}
+
+StreamRuntimeStatistics::StreamRuntimeStatistics()
+    : decoded_frames(0), status_error_frames(0), sequence_gaps(0), last_sequence(0),
+      last_device_timestamp(0), last_arrival_timestamp_us(0)
+{
+}
+
+DeviceRuntimeStatistics::DeviceRuntimeStatistics()
+    : start_attempts(0), successful_starts(0), stop_calls(0), disconnect_events(0),
+      transfer_stall_events(0)
+{
 }
 
 template <typename UnsignedT> bool parseUnsignedDecimal(const char* text, UnsignedT* value)
@@ -260,8 +273,81 @@ struct IrCameraTables : Freenect2Device::IrCameraParams
   }
 };
 
+class RuntimeStatisticsRecorder
+{
+public:
+  virtual ~RuntimeStatisticsRecorder() {}
+  virtual void recordFrame(Frame::Type type, const Frame& frame) = 0;
+};
+
+class RuntimeStatisticsFrameListener : public FrameListener
+{
+public:
+  explicit RuntimeStatisticsFrameListener(RuntimeStatisticsRecorder* recorder)
+      : recorder_(recorder), target_(0)
+  {
+  }
+
+  void setTarget(FrameListener* target)
+  {
+    target_.store(target, std::memory_order_release);
+  }
+
+  virtual bool onNewFrame(Frame::Type type, Frame* frame)
+  {
+    if (frame != 0)
+      recorder_->recordFrame(type, *frame);
+    FrameListener* target = target_.load(std::memory_order_acquire);
+    return target != 0 && target->onNewFrame(type, frame);
+  }
+
+private:
+  RuntimeStatisticsRecorder* recorder_;
+  std::atomic<FrameListener*> target_;
+};
+
+void updateRuntimeFrameStatistics(DeviceRuntimeStatistics& statistics, bool has_last_sequence[3],
+                                  Frame::Type type, const Frame& frame)
+{
+  size_t index = 0;
+  StreamRuntimeStatistics* stream = 0;
+  switch (type)
+  {
+  case Frame::Color:
+    index = 0;
+    stream = &statistics.color;
+    break;
+  case Frame::Ir:
+    index = 1;
+    stream = &statistics.ir;
+    break;
+  case Frame::Depth:
+    index = 2;
+    stream = &statistics.depth;
+    break;
+  default:
+    return;
+  }
+
+  if (has_last_sequence[index])
+  {
+    const int32_t skipped = static_cast<int32_t>(frame.sequence - (stream->last_sequence + 1u));
+    if (skipped > 0)
+      stream->sequence_gaps += static_cast<uint32_t>(skipped);
+  }
+  has_last_sequence[index] = true;
+  ++stream->decoded_frames;
+  if (frame.status != 0)
+    ++stream->status_error_frames;
+  stream->last_sequence = frame.sequence;
+  stream->last_device_timestamp = frame.timestamp;
+  stream->last_arrival_timestamp_us = frame.arrival_timestamp_us;
+}
+
 /** Freenect2 device implementation. */
-class Freenect2DeviceImpl : public Freenect2Device, private TransferPoolEventListener
+class Freenect2DeviceImpl : public Freenect2Device,
+                            private TransferPoolEventListener,
+                            private RuntimeStatisticsRecorder
 {
 private:
   mutable libfreenect2::mutex state_mutex_;
@@ -286,8 +372,14 @@ private:
   std::string serial_, firmware_;
   Freenect2Device::IrCameraParams ir_camera_params_;
   Freenect2Device::ColorCameraParams rgb_camera_params_;
+  mutable libfreenect2::mutex statistics_mutex_;
+  DeviceRuntimeStatistics statistics_;
+  bool has_last_sequence_[3];
+  RuntimeStatisticsFrameListener color_statistics_listener_;
+  RuntimeStatisticsFrameListener depth_statistics_listener_;
   void rollbackStreamStart();
   void setOperationalState(DeviceState state, const std::string& error = std::string());
+  virtual void recordFrame(Frame::Type type, const Frame& frame);
   virtual void onTransferPoolEvent(TransferPoolEventListener::Event event, unsigned char endpoint);
 
 public:
@@ -303,6 +395,7 @@ public:
   virtual std::string getPacketPipelineName();
   virtual DeviceState getState() const;
   virtual std::string getLastError() const;
+  virtual DeviceRuntimeStatistics getRuntimeStatistics() const;
   virtual bool getCalibrationData(CalibrationData& calibration) const;
 
   virtual Freenect2Device::ColorCameraParams getColorCameraParams();
@@ -331,7 +424,7 @@ public:
   virtual bool close();
 };
 
-class Freenect2ReplayDevice : public Freenect2Device
+class Freenect2ReplayDevice : public Freenect2Device, private RuntimeStatisticsRecorder
 {
 public:
   Freenect2ReplayDevice(Freenect2ReplayImpl* context_,
@@ -347,7 +440,9 @@ public:
   virtual std::string getPacketPipelineName();
   virtual DeviceState getState() const;
   virtual std::string getLastError() const;
+  virtual DeviceRuntimeStatistics getRuntimeStatistics() const;
   virtual bool getCalibrationData(CalibrationData& calibration) const;
+  virtual bool getCalibrationProfile(CalibrationProfile& profile) const;
 
   virtual ColorCameraParams getColorCameraParams();
   virtual IrCameraParams getIrCameraParams();
@@ -417,6 +512,12 @@ private:
 
   Freenect2Device::IrCameraParams ir_camera_params_;
   Freenect2Device::ColorCameraParams rgb_camera_params_;
+  mutable libfreenect2::mutex statistics_mutex_;
+  DeviceRuntimeStatistics statistics_;
+  bool has_last_sequence_[3];
+  RuntimeStatisticsFrameListener color_statistics_listener_;
+  RuntimeStatisticsFrameListener depth_statistics_listener_;
+  virtual void recordFrame(Frame::Type type, const Frame& frame);
 };
 
 struct PrintBusAndDevice
@@ -739,6 +840,16 @@ bool Freenect2Device::getCalibrationData(CalibrationData&) const
   return false;
 }
 
+bool Freenect2Device::getCalibrationProfile(CalibrationProfile&) const
+{
+  return false;
+}
+
+DeviceRuntimeStatistics Freenect2Device::getRuntimeStatistics() const
+{
+  return DeviceRuntimeStatistics();
+}
+
 Freenect2DeviceImpl::Freenect2DeviceImpl(Freenect2Impl* context, const PacketPipeline* pipeline,
                                          libusb_device* usb_device,
                                          libusb_device_handle* usb_device_handle,
@@ -748,7 +859,8 @@ Freenect2DeviceImpl::Freenect2DeviceImpl(Freenect2Impl* context, const PacketPip
       rgb_transfer_pool_(usb_device_handle, 0x83), ir_transfer_pool_(usb_device_handle, 0x84),
       usb_control_(usb_device_handle_), command_tx_(usb_device_handle_, 0x81, 0x02),
       command_seq_(0), pipeline_(pipeline), serial_(serial), firmware_("<unknown>"),
-      ir_camera_params_(), rgb_camera_params_()
+      ir_camera_params_(), rgb_camera_params_(), has_last_sequence_{false, false, false},
+      color_statistics_listener_(this), depth_statistics_listener_(this)
 {
   rgb_transfer_pool_.setCallback(pipeline_->getRgbPacketParser());
   ir_transfer_pool_.setCallback(pipeline_->getIrPacketParser());
@@ -778,6 +890,13 @@ void Freenect2DeviceImpl::onTransferPoolEvent(TransferPoolEventListener::Event e
   else
     message << "terminal USB transfer stall on endpoint 0x" << std::hex << int(endpoint);
 
+  {
+    libfreenect2::lock_guard statistics_guard(statistics_mutex_);
+    if (event == TransferPoolEventListener::UsbDeviceDisconnected)
+      ++statistics_.disconnect_events;
+    else
+      ++statistics_.transfer_stall_events;
+  }
   {
     libfreenect2::lock_guard guard(state_mutex_);
     if (state_ == DeviceClosed)
@@ -851,6 +970,18 @@ std::string Freenect2DeviceImpl::getLastError() const
   return last_error_;
 }
 
+DeviceRuntimeStatistics Freenect2DeviceImpl::getRuntimeStatistics() const
+{
+  libfreenect2::lock_guard guard(statistics_mutex_);
+  return statistics_;
+}
+
+void Freenect2DeviceImpl::recordFrame(Frame::Type type, const Frame& frame)
+{
+  libfreenect2::lock_guard guard(statistics_mutex_);
+  updateRuntimeFrameStatistics(statistics_, has_last_sequence_, type, frame);
+}
+
 bool Freenect2DeviceImpl::getCalibrationData(CalibrationData& calibration) const
 {
   libfreenect2::lock_guard guard(state_mutex_);
@@ -904,15 +1035,17 @@ void Freenect2DeviceImpl::setConfiguration(const Freenect2Device::Config& config
 void Freenect2DeviceImpl::setColorFrameListener(libfreenect2::FrameListener* rgb_frame_listener)
 {
   // TODO: should only be possible, if not started
+  color_statistics_listener_.setTarget(rgb_frame_listener);
   if (pipeline_->getRgbPacketProcessor() != 0)
-    pipeline_->getRgbPacketProcessor()->setFrameListener(rgb_frame_listener);
+    pipeline_->getRgbPacketProcessor()->setFrameListener(&color_statistics_listener_);
 }
 
 void Freenect2DeviceImpl::setIrAndDepthFrameListener(libfreenect2::FrameListener* ir_frame_listener)
 {
   // TODO: should only be possible, if not started
+  depth_statistics_listener_.setTarget(ir_frame_listener);
   if (pipeline_->getDepthPacketProcessor() != 0)
-    pipeline_->getDepthPacketProcessor()->setFrameListener(ir_frame_listener);
+    pipeline_->getDepthPacketProcessor()->setFrameListener(&depth_statistics_listener_);
 }
 
 void Freenect2DeviceImpl::setColorAutoExposure(float exposure_compensation)
@@ -1084,6 +1217,10 @@ void Freenect2DeviceImpl::rollbackStreamStart()
 bool Freenect2DeviceImpl::startStreams(bool enable_rgb, bool enable_depth)
 {
   LOG_INFO << "starting...";
+  {
+    libfreenect2::lock_guard guard(statistics_mutex_);
+    ++statistics_.start_attempts;
+  }
   if (getState() != DeviceOpen)
     return false;
 
@@ -1260,6 +1397,10 @@ bool Freenect2DeviceImpl::startStreams(bool enable_rgb, bool enable_depth)
     rollbackStreamStart();
     return false;
   }
+  {
+    libfreenect2::lock_guard guard(statistics_mutex_);
+    ++statistics_.successful_starts;
+  }
   LOG_INFO << "started";
   return true;
 }
@@ -1267,6 +1408,10 @@ bool Freenect2DeviceImpl::startStreams(bool enable_rgb, bool enable_depth)
 bool Freenect2DeviceImpl::stop()
 {
   LOG_INFO << "stopping...";
+  {
+    libfreenect2::lock_guard guard(statistics_mutex_);
+    ++statistics_.stop_calls;
+  }
 
   const DeviceState initial_state = getState();
   if (initial_state != DeviceStreaming && initial_state != DeviceDisconnected &&
@@ -1759,7 +1904,9 @@ Freenect2ReplayDevice::Freenect2ReplayDevice(Freenect2ReplayImpl* context,
     : context_(context), pipeline_(pipeline), frame_filenames_(frame_filenames), t_(NULL),
       running_(false), state_(DeviceCreated), enable_rgb_(true), enable_depth_(true),
       has_calibration_(calibration != NULL), recording_mode_(false), serial_(LIBFREENECT2_VERSION),
-      firmware_(LIBFREENECT2_VERSION), ir_camera_params_(), rgb_camera_params_()
+      firmware_(LIBFREENECT2_VERSION), ir_camera_params_(), rgb_camera_params_(),
+      has_last_sequence_{false, false, false}, color_statistics_listener_(this),
+      depth_statistics_listener_(this)
 {
   if (calibration != NULL)
     calibration_ = *calibration;
@@ -1776,7 +1923,9 @@ Freenect2ReplayDevice::Freenect2ReplayDevice(Freenect2ReplayImpl* context,
     : context_(context), pipeline_(pipeline), t_(NULL), running_(false), state_(DeviceCreated),
       enable_rgb_(true), enable_depth_(true), has_calibration_(true), recording_mode_(true),
       replay_options_(options), recording_(recording), serial_(recording.manifest.serial),
-      firmware_(recording.manifest.firmware), ir_camera_params_(), rgb_camera_params_()
+      firmware_(recording.manifest.firmware), ir_camera_params_(), rgb_camera_params_(),
+      has_last_sequence_{false, false, false}, color_statistics_listener_(this),
+      depth_statistics_listener_(this)
 {
   calibration_.color = recording.calibration.color;
   calibration_.ir = recording.calibration.ir;
@@ -1826,6 +1975,18 @@ std::string Freenect2ReplayDevice::getLastError() const
   return last_error_;
 }
 
+DeviceRuntimeStatistics Freenect2ReplayDevice::getRuntimeStatistics() const
+{
+  libfreenect2::lock_guard guard(statistics_mutex_);
+  return statistics_;
+}
+
+void Freenect2ReplayDevice::recordFrame(Frame::Type type, const Frame& frame)
+{
+  libfreenect2::lock_guard guard(statistics_mutex_);
+  updateRuntimeFrameStatistics(statistics_, has_last_sequence_, type, frame);
+}
+
 bool Freenect2ReplayDevice::getCalibrationData(CalibrationData& calibration) const
 {
   libfreenect2::lock_guard guard(state_mutex_);
@@ -1834,6 +1995,16 @@ bool Freenect2ReplayDevice::getCalibrationData(CalibrationData& calibration) con
   calibration.color = calibration_.color;
   calibration.ir = calibration_.ir;
   calibration.p0_tables = calibration_.p0_tables;
+  return true;
+}
+
+bool Freenect2ReplayDevice::getCalibrationProfile(CalibrationProfile& profile) const
+{
+  libfreenect2::lock_guard guard(state_mutex_);
+  if (!recording_mode_ || !recording_.has_profile || state_ == DeviceCreated ||
+      state_ == DeviceError)
+    return false;
+  profile = recording_.profile;
   return true;
 }
 
@@ -1873,19 +2044,21 @@ void Freenect2ReplayDevice::setConfiguration(const Freenect2Device::Config& conf
 
 void Freenect2ReplayDevice::setColorFrameListener(FrameListener* listener)
 {
+  color_statistics_listener_.setTarget(listener);
   RgbPacketProcessor* proc = pipeline_->getRgbPacketProcessor();
   if (proc != NULL)
   {
-    proc->setFrameListener(listener);
+    proc->setFrameListener(&color_statistics_listener_);
   }
 }
 
 void Freenect2ReplayDevice::setIrAndDepthFrameListener(FrameListener* listener)
 {
+  depth_statistics_listener_.setTarget(listener);
   DepthPacketProcessor* proc = pipeline_->getDepthPacketProcessor();
   if (proc != NULL)
   {
-    proc->setFrameListener(listener);
+    proc->setFrameListener(&depth_statistics_listener_);
   }
 }
 
@@ -2042,6 +2215,10 @@ bool Freenect2ReplayDevice::startStreams(bool enable_rgb, bool enable_depth)
   libfreenect2::lock_guard thread_guard(thread_mutex_);
   LOG_INFO << "Freenect2ReplayDevice: starting: rgb: " << enable_rgb << ", depth: " << enable_depth;
   {
+    libfreenect2::lock_guard guard(statistics_mutex_);
+    ++statistics_.start_attempts;
+  }
+  {
     libfreenect2::lock_guard guard(state_mutex_);
     if (state_ != DeviceOpen || running_.load() || (!enable_rgb && !enable_depth))
     {
@@ -2062,6 +2239,10 @@ bool Freenect2ReplayDevice::startStreams(bool enable_rgb, bool enable_depth)
   enable_depth_ = enable_depth;
   running_.store(true);
   t_ = new libfreenect2::thread(static_execute, this);
+  {
+    libfreenect2::lock_guard guard(statistics_mutex_);
+    ++statistics_.successful_starts;
+  }
   LOG_INFO << "replay started";
   return true;
 }
@@ -2069,6 +2250,10 @@ bool Freenect2ReplayDevice::startStreams(bool enable_rgb, bool enable_depth)
 bool Freenect2ReplayDevice::stop()
 {
   libfreenect2::lock_guard thread_guard(thread_mutex_);
+  {
+    libfreenect2::lock_guard guard(statistics_mutex_);
+    ++statistics_.stop_calls;
+  }
   stopWorkerLocked();
   return true;
 }
