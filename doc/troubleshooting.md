@@ -1,5 +1,7 @@
 # Troubleshooting {#troubleshooting}
 
+[TOC]
+
 A diagnostic flow, ordered so that each stage rules out a class of problem
 before the next. Work top to bottom; most reports resolve in the first two
 sections.

@@ -1,5 +1,7 @@
 # Per-device depth correction {#depth_calibration}
 
+[TOC]
+
 libfreenect2 exposes an opt-in linear correction for applications that need
 better absolute Z accuracy:
 

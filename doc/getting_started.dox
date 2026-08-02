@@ -1,0 +1,161 @@
+/** @page getting_started Getting Started
+
+This path takes you from a source checkout to registered color and depth
+frames. Platform guides cover dependency and USB-driver details; this page
+focuses on the common build, first run, and public C++ API.
+
+@note libfreenect2 supports Kinect for Windows v2 hardware only. Check @ref
+kinect_v1_vs_v2 before debugging a device that never enumerates.
+
+@tableofcontents
+
+Install for your platform
+=========================
+
+Choose the complete setup guide for @ref install_macos "macOS", @ref
+install_linux "Linux", or @ref install_windows "Windows". All platforms need
+a Kinect v2 power adapter and a USB 3.0 host connection. Linux users must also
+install the repository's udev rule before opening the device without root.
+
+Build and run Protonect
+=======================
+
+Configure and build from the repository root:
+
+@code{.sh}
+cmake -S . -B build
+cmake --build build --target Protonect
+@endcode
+
+Then run the example from the build output. Single-config generators normally
+place it here:
+
+@code{.sh}
+./build/bin/Protonect
+@endcode
+
+Multi-config generators such as Visual Studio add a configuration directory,
+for example `build/bin/Release/Protonect.exe`. A viewer showing color, IR, and
+depth confirms that device access, USB transfers, decoding, and the selected
+depth pipeline all work. If it fails, go directly to @ref troubleshooting.
+
+API walkthrough
+===============
+
+The snippets below come from `examples/Protonect.cpp`, which remains the full
+working reference.
+
+Headers
+-------
+
+Include the device and frame-listener APIs. Registration and logging are only
+needed when your application uses them.
+
+@snippet Protonect.cpp headers
+
+Logging
+-------
+
+Install a logger before opening a device when you need more or less detail.
+
+@snippet Protonect.cpp logging
+
+@copydetails libfreenect2::createConsoleLoggerWithDefaultLevel
+
+Applications can also implement libfreenect2::Logger. The callback can run
+from multiple library threads, so custom loggers must synchronize their own
+state. This example writes messages to a file:
+
+@snippet Protonect.cpp logger
+
+@snippet Protonect.cpp file logging
+
+Discover a device
+-----------------
+
+Create a context and enumerate devices before requesting a serial number.
+
+@snippet Protonect.cpp context
+
+@snippet Protonect.cpp discovery
+
+The default pipeline selects the best available implementation for the current
+build. To require a particular backend, construct a libfreenect2::PacketPipeline
+explicitly. The example includes the supported selection pattern:
+
+@snippet Protonect.cpp pipeline
+
+Open and configure
+------------------
+
+Open by serial number, optionally passing the chosen pipeline.
+
+@snippet Protonect.cpp open
+
+Attach listeners before starting the device. A
+libfreenect2::SyncMultiFrameListener groups the requested frame types by
+arrival; it does not guarantee a timestamp delta or hardware synchronization.
+Use libfreenect2::TimestampAlignedFrameListener when a bounded device-timestamp
+threshold is required, and read @ref frame_timing for the clock constraints.
+
+@snippet Protonect.cpp listeners
+
+Configure depth clipping and filters before `start()`; see @ref configuration.
+
+Start processing
+----------------
+
+@snippet Protonect.cpp start
+
+Registration uses the factory IR and color camera parameters unless your
+application explicitly supplies replacements.
+
+@snippet Protonect.cpp registration setup
+
+Receive and register frames
+---------------------------
+
+Wait for the requested frame set, then retrieve color and depth by frame type.
+
+@snippet Protonect.cpp loop start
+
+libfreenect2::Frame documents dimensions, pixel formats, timestamps, and
+ownership. The registration call below creates undistorted depth and color
+aligned to the 512×424 depth image:
+
+@snippet Protonect.cpp registration
+
+Release each frame map after the application has finished reading it.
+
+@snippet Protonect.cpp loop end
+
+Stop and close
+--------------
+
+Stop streaming before closing the device and destroying the pipeline.
+
+@snippet Protonect.cpp stop
+
+A device can be paused with libfreenect2::Freenect2Device::stop and restarted
+with libfreenect2::Freenect2Device::start:
+
+@snippet Protonect.cpp pause
+
+Where to go next
+================
+
+- @ref registration explains coordinate mapping and point-cloud construction.
+- @ref recording_replay covers offline processing and multiple sensors.
+- @ref calibration_profiles and @ref depth_calibration cover explicit camera
+  and depth correction profiles.
+- @ref guides lists every task-oriented guide.
+- [API topics](topics.html) and the [class list](annotated.html) provide the
+  complete public reference.
+
+@htmlonly
+<div class="docs-actions docs-footer-actions">
+  <a class="docs-secondary-button" href="index.html">Home</a>
+  <a class="primary-button" href="guides.html">Browse guides</a>
+</div>
+@endhtmlonly
+*/

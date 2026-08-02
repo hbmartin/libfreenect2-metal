@@ -1,21 +1,216 @@
-/* Project-specific tweaks layered on top of doxygen-awesome-css.
- *
- * doxygen-awesome exposes its color scheme through CSS custom properties, so
- * we only override those here. Do not add layout/padding/font rules: the
- * theme owns the layout, and this stylesheet is loaded last. */
+/* Project styling layered on top of Doxygen Awesome. Theme-owned typography,
+ * navigation, spacing, and API-reference rules remain untouched. */
 
 html {
     --primary-color: #1565c0;
     --primary-dark-color: #0d47a1;
     --primary-light-color: #5e92f3;
-    --primary-lighter-color: #c9dcf5;
-    --primary-lightest-color: #eaf2fc;
+    --link-color: #1565c0;
+    --content-maxwidth: 1120px;
 }
 
 html.dark-mode {
-    --primary-color: #5e92f3;
-    --primary-dark-color: #8bb4f7;
-    --primary-light-color: #2b5797;
-    --primary-lighter-color: #1e2a3a;
-    --primary-lightest-color: #16202c;
+    --primary-color: #6ba6f8;
+    --primary-dark-color: #9fc4fa;
+    --primary-light-color: #315f9f;
+    --link-color: #82b4fa;
+}
+
+.docs-hero {
+    margin: var(--spacing-large) 0 calc(2 * var(--spacing-xlarge));
+    padding: clamp(26px, 5vw, 52px);
+    overflow: hidden;
+    border: 1px solid var(--separator-color);
+    border-radius: var(--border-radius-large);
+    background:
+        radial-gradient(circle at 92% 8%, rgba(21, 101, 192, 0.16), transparent 34%),
+        linear-gradient(135deg, var(--note-color), var(--page-background-color) 72%);
+    box-shadow: var(--box-shadow);
+}
+
+.docs-eyebrow {
+    margin-bottom: var(--spacing-medium);
+    color: var(--primary-dark-color);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.docs-lead {
+    max-width: 780px;
+    margin: 0;
+    color: var(--page-foreground-color);
+    font-size: clamp(1.18rem, 2.2vw, 1.55rem);
+    line-height: 1.55;
+}
+
+.docs-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-medium);
+    margin-top: var(--spacing-xlarge);
+}
+
+.docs-actions .primary-button,
+.docs-secondary-button {
+    box-sizing: border-box;
+    min-height: 42px;
+    padding: 9px 18px;
+    border-radius: var(--border-radius-medium);
+    font-weight: 650;
+    line-height: 22px;
+    text-decoration: none;
+}
+
+.docs-secondary-button {
+    border: 1px solid var(--separator-color);
+    background: var(--page-background-color);
+    color: var(--link-color) !important;
+}
+
+.docs-secondary-button:hover {
+    border-color: var(--primary-color);
+    background: var(--side-nav-background);
+    text-decoration: none;
+}
+
+.docs-card-grid,
+.docs-guide-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-large);
+    margin: var(--spacing-large) 0 calc(2 * var(--spacing-xlarge));
+}
+
+.docs-card {
+    min-width: 0;
+    padding: clamp(18px, 3vw, 26px);
+    border: 1px solid var(--separator-color);
+    border-radius: var(--border-radius-large);
+    background: var(--page-background-color);
+    box-shadow: var(--box-shadow);
+    transition: border-color var(--animation-duration),
+                box-shadow var(--animation-duration),
+                transform var(--animation-duration);
+}
+
+.docs-card:hover {
+    border-color: var(--primary-light-color);
+    box-shadow: 0 5px 18px rgba(0, 0, 0, 0.10);
+    transform: translateY(-1px);
+}
+
+html.dark-mode .docs-card:hover {
+    box-shadow: 0 5px 18px rgba(0, 0, 0, 0.32);
+}
+
+.docs-card h2,
+.docs-card h3 {
+    margin-top: 0;
+}
+
+.docs-card p:last-child,
+.docs-card ul:last-child {
+    margin-bottom: 0;
+}
+
+.docs-feature-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-large) var(--spacing-xlarge);
+    margin: var(--spacing-large) 0 calc(2 * var(--spacing-xlarge));
+}
+
+.docs-feature-list > div {
+    padding-left: var(--spacing-large);
+    border-left: 3px solid var(--primary-color);
+}
+
+.docs-guide-grid {
+    align-items: start;
+}
+
+.docs-guide-card:first-child,
+.docs-guide-card:nth-child(2),
+.docs-guide-card:nth-child(3) {
+    grid-column: span 1;
+}
+
+.docs-link-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.docs-link-list li {
+    padding: 12px 0;
+    border-top: 1px solid var(--separator-color);
+}
+
+.docs-link-list li:first-child {
+    padding-top: 0;
+    border-top: 0;
+}
+
+.docs-link-list li:last-child {
+    padding-bottom: 0;
+}
+
+.docs-link-list a {
+    display: inline-block;
+    font-weight: 650;
+}
+
+.docs-link-list span {
+    display: block;
+    margin-top: 2px;
+    color: var(--page-secondary-foreground-color);
+    line-height: 1.5;
+}
+
+.docs-footer-actions {
+    justify-content: flex-end;
+    padding-top: var(--spacing-large);
+    border-top: 1px solid var(--separator-color);
+}
+
+.docs-actions a:focus-visible,
+.docs-card a:focus-visible {
+    outline: 3px solid var(--primary-light-color);
+    outline-offset: 3px;
+}
+
+@media screen and (max-width: 767px) {
+    .docs-card-grid,
+    .docs-guide-grid,
+    .docs-feature-list {
+        grid-template-columns: 1fr;
+    }
+
+    .docs-hero {
+        margin-top: 0;
+    }
+
+    .docs-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .docs-actions .primary-button,
+    .docs-secondary-button {
+        width: 100%;
+        text-align: center;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .docs-card {
+        transition: none;
+    }
+
+    .docs-card:hover {
+        transform: none;
+    }
 }

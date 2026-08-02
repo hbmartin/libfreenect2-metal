@@ -1,5 +1,7 @@
 # USB bandwidth and transfer tuning {#linux_usb}
 
+[TOC]
+
 Advanced reference for how libfreenect2 moves data off the sensor, why the
 Kinect v2 is unusually demanding of a USB 3.0 controller, and when the four
 transfer-pool environment variables are the right tool.

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<doxygenlayout version="2.0">
+  <!-- Curated navigation for the generated site. Keep every top-level
+       Markdown page in exactly one Guides subgroup; check_navigation.cmake
+       enforces that invariant during every docs build. -->
+  <navindex>
+    <tab type="mainpage" visible="yes" title="Home"/>
+    <tab type="user" visible="yes" url="@ref getting_started" title="Getting Started"/>
+
+    <tab type="usergroup" visible="yes" url="@ref guides" title="Guides">
+      <tab type="usergroup" visible="yes" title="Install &amp; Upgrade">
+        <tab type="user" visible="yes" url="@ref install_macos" title="Install on macOS"/>
+        <tab type="user" visible="yes" url="@ref install_linux" title="Install on Linux"/>
+        <tab type="user" visible="yes" url="@ref install_windows" title="Install on Windows"/>
+        <tab type="user" visible="yes" url="@ref kinect_v1_vs_v2" title="Kinect v1 vs. v2"/>
+        <tab type="user" visible="yes" url="@ref v0_4_migration" title="Migrate to 0.4"/>
+        <tab type="user" visible="yes" url="@ref v0_3_migration" title="Migrate to 0.3"/>
+        <tab type="user" visible="yes" url="@ref v0_3_upstream_coverage" title="0.3 upstream coverage"/>
+      </tab>
+
+      <tab type="usergroup" visible="yes" title="Operate &amp; Troubleshoot">
+        <tab type="user" visible="yes" url="@ref configuration" title="Runtime configuration"/>
+        <tab type="user" visible="yes" url="@ref frame_timing" title="Frame timing"/>
+        <tab type="user" visible="yes" url="@ref linux_usb" title="USB bandwidth &amp; tuning"/>
+        <tab type="user" visible="yes" url="@ref troubleshooting" title="Troubleshooting"/>
+        <tab type="user" visible="yes" url="@ref faq" title="FAQ"/>
+      </tab>
+
+      <tab type="usergroup" visible="yes" title="Process &amp; Integrate">
+        <tab type="user" visible="yes" url="@ref registration" title="Registration &amp; mapping"/>
+        <tab type="user" visible="yes" url="@ref calibration_profiles" title="Camera calibration profiles"/>
+        <tab type="user" visible="yes" url="@ref depth_accuracy" title="Depth accuracy"/>
+        <tab type="user" visible="yes" url="@ref depth_calibration" title="Depth correction"/>
+        <tab type="user" visible="yes" url="@ref recording_replay" title="Recording &amp; replay"/>
+        <tab type="user" visible="yes" url="@ref webcam" title="Webcam integration"/>
+        <tab type="user" visible="yes" url="@ref python" title="Python"/>
+      </tab>
+
+      <tab type="usergroup" visible="yes" title="Internals &amp; Performance">
+        <tab type="user" visible="yes" url="@ref protocol" title="USB protocol"/>
+        <tab type="user" visible="yes" url="@ref performance" title="Performance"/>
+      </tab>
+
+      <tab type="usergroup" visible="yes" title="Contribute">
+        <tab type="user" visible="yes" url="@ref development" title="Development"/>
+        <tab type="user" visible="yes" url="@ref quality" title="Quality checks"/>
+        <tab type="user" visible="yes" url="@ref test_plan" title="Test plan"/>
+        <tab type="user" visible="yes" url="@ref self_hosted_runner" title="macOS CI runner"/>
+      </tab>
+    </tab>
+
+    <tab type="usergroup" visible="yes" url="topics.html" title="API Reference">
+      <tab type="topics" visible="yes" title="Topics" intro=""/>
+      <tab type="classes" visible="yes" title="Classes">
+        <tab type="classlist" visible="yes" title="Class List" intro=""/>
+        <tab type="classindex" visible="$ALPHABETICAL_INDEX" title="Class Index"/>
+        <tab type="hierarchy" visible="yes" title="Class Hierarchy" intro=""/>
+        <tab type="classmembers" visible="yes" title="Class Members" intro=""/>
+      </tab>
+    </tab>
+
+    <!-- These default Doxygen tabs are intentionally replaced by the curated
+         Guides and API Reference groups above. -->
+    <tab type="pages" visible="no" title="" intro=""/>
+    <tab type="modules" visible="no" title="" intro=""/>
+    <tab type="namespaces" visible="no" title=""/>
+    <tab type="concepts" visible="no" title=""/>
+    <tab type="interfaces" visible="no" title=""/>
+    <tab type="structs" visible="no" title=""/>
+    <tab type="exceptions" visible="no" title=""/>
+    <tab type="files" visible="no" title=""/>
+    <tab type="examples" visible="no" title="" intro=""/>
+  </navindex>
+</doxygenlayout>

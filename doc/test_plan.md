@@ -1,5 +1,7 @@
 # Test plan {#test_plan}
 
+[TOC]
+
 What CI covers automatically, what only a human with a sensor can cover, and
 what must be attached to a release. This page is the index; it does not restate
 the procedures that already live in @ref quality and
@@ -12,8 +14,8 @@ placement in @ref development.
 
 | Dimension | Covered by | Notes |
 |---|---|---|
-| GCC and Clang, shared and static | `linux-builds` | 4-way matrix, C++11 |
-| C++11 conformance | all build jobs | `-DCMAKE_CXX_STANDARD=11` |
+| GCC and Clang, shared and static | `linux-builds` | 4-way matrix, C++17 |
+| C++17 conformance | all build jobs | `-DCMAKE_CXX_STANDARD=17` |
 | Unit tests | `linux-builds`, `build-test-metal` | `ctest -L unit` |
 | Metal/CPU depth parity | `build-test-metal` | self-hosted macOS, real Apple GPU |
 | Depth filter backend combinations | `linux-filter-backends` | |

@@ -1,0 +1,23 @@
+{
+  "schema": "libfreenect2.calibration-job",
+  "version": 1,
+  "recordings": {
+    "color": ["recordings/color-01"],
+    "ir": ["recordings/ir-01"],
+    "stereo": ["recordings/stereo-01"],
+    "depth": ["recordings/depth-1000", "recordings/depth-2000", "recordings/depth-3000"]
+  },
+  "board": {
+    "type": "chessboard",
+    "columns": 9,
+    "rows": 6,
+    "square_size_mm": 30.0
+  },
+  "distortion_model": "brown_conrady_5",
+  "quality": {
+    "minimum_views": 20,
+    "maximum_intrinsic_rms_px": 1.0,
+    "maximum_stereo_rms_px": 1.5,
+    "maximum_depth_rmse_mm": 20.0
+  }
+}

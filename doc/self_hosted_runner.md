@@ -1,10 +1,12 @@
 # Self-hosted macOS CI runner setup {#self_hosted_runner}
 
+[TOC]
+
 Most of the CI workflow (`.github/workflows/ci.yml`) runs on GitHub-hosted
 `ubuntu-24.04`. Exactly one job needs a real Apple GPU and therefore a
 **self-hosted macOS runner**:
 
-- **build-test-metal** builds with Metal enabled at C++11 with
+- **build-test-metal** builds with Metal enabled at C++17 with
   warnings-as-errors and hardened libc++, then runs the full test suite
   including the Metal-vs-CPU depth parity test on the GPU.
 

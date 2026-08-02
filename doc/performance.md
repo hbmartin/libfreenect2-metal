@@ -1,5 +1,7 @@
 # Benchmarking and performance {#performance}
 
+[TOC]
+
 How to measure this library's per-frame processing cost reproducibly, what the
 numbers mean, and where the time actually goes.
 

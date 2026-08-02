@@ -1,5 +1,7 @@
 # Development and contributing {#development}
 
+[TOC]
+
 Everything needed to build, test, and contribute to libfreenect2 itself. For
 installing the library to *use* it, see @ref install_macos, @ref install_linux,
 or @ref install_windows.
@@ -9,7 +11,7 @@ or @ref install_windows.
 | Tool | Version | Needed for |
 |---|---|---|
 | CMake | 3.16 or newer | building |
-| C++ compiler | C++11 (the CI floor); newer standards work | building |
+| C++ compiler | C++17 (the CI floor) | building |
 | Ninja | any recent | recommended generator; CI uses it |
 | Python | **3.12 or newer** | repository Python tools and tests |
 | uv | 0.12.x | Python dependency management |
@@ -108,8 +110,8 @@ semgrep scan --config tools/quality/semgrep.yml --error --metrics=off
 
 ## Building the documentation
 
-The site is Doxygen with the doxygen-awesome theme. With Doxygen installed, the
-`doc` target is added automatically:
+The site uses Doxygen 1.17 with the vendored Doxygen Awesome base theme. With
+Doxygen installed, the `doc` target is added automatically:
 
 ```sh
 cmake -S . -B build-doc
@@ -120,9 +122,12 @@ Output lands under `build-doc/doc/html`. The published site is built from
 `master` by the `Documentation` workflow and served from
 <https://hbmartin.github.io/libfreenect2-metal/>.
 
-When adding a guide, add the file to both `doc/Doxyfile.in`'s `INPUT` list and
-the relevant `@par` section of `doc/guides.dox`, and give its title a Doxygen
-anchor (`# Title {#anchor}`) so other pages can `@ref` it.
+Top-level `doc/*.md` files are discovered automatically. Give every new guide a
+stable Doxygen anchor in its level-one title (`# Title {#anchor}`), then add it
+to exactly one Guides group in `doc/DoxygenLayout.xml` and to the matching card
+in `doc/guides.dox`. The `doc` target fails if a Markdown page lacks an anchor,
+has no navigation entry, appears more than once, or generates a duplicate raw
+file-reference page.
 
 ## Continuous integration
 
@@ -131,7 +136,7 @@ The `CI` workflow runs on every push to `master` and every pull request:
 | Job | What it covers |
 |---|---|
 | `python-quality` | Ruff lint, Ruff format, pytest |
-| `build-test-metal` | AppleClang on self-hosted macOS: C++11, Metal, warnings-as-errors, hardened stdlib, Metal/CPU parity tests |
+| `build-test-metal` | AppleClang on self-hosted macOS: C++17, Metal, warnings-as-errors, hardened stdlib, Metal/CPU parity tests |
 | `linux-builds` | GCC and Clang × shared and static |
 | `linux-filter-backends` | Depth filter backend combinations |
 | `linux-vaapi` | VAAPI JPEG decoding |

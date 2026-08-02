@@ -22,6 +22,14 @@ on:
       - 'README.md'
       - 'CMakeLists.txt'
       - '.github/workflows/docs.yml'
+  pull_request:
+    paths:
+      - 'doc/**'
+      - 'include/**'
+      - 'examples/**'
+      - 'README.md'
+      - 'CMakeLists.txt'
+      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 # Allow the workflow to deploy to Pages via the GitHub Actions source.
@@ -30,9 +38,9 @@ permissions:
   pages: write
   id-token: write
 
-# Only one Pages deployment at a time; don't cancel an in-progress deploy.
+# Keep runs for different branches independent; preserve in-progress deploys.
 concurrency:
-  group: pages
+  group: documentation-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -44,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install configure dependencies
         run: |
@@ -87,12 +95,18 @@ jobs:
       - name: Build documentation
         run: cmake --build build --target doc
 
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
         with:
           path: build/doc/html
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:

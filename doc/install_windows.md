@@ -1,5 +1,7 @@
 # Installing on Windows {#install_windows}
 
+[TOC]
+
 This is the reference install path for Windows with Visual Studio. For a
 condensed version see the
 [README](https://github.com/hbmartin/libfreenect2-metal#readme).

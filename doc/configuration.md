@@ -1,5 +1,7 @@
 # Runtime configuration reference {#configuration}
 
+[TOC]
+
 ## Depth processing configuration (`Freenect2Device::Config`)
 
 Set via `dev->setConfiguration(config)` **before** `start()`:
