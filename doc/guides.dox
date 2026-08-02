@@ -4,6 +4,14 @@ Task-oriented recipes and reference material that complement the
 [API reference](modules.html). Each guide distills the most frequently asked
 questions from the upstream issue tracker into a single, self-contained page.
 
+@par Install
+- @subpage install_macos &mdash; Homebrew dependencies, Apple Silicon, Metal,
+  and architecture-mismatch fixes.
+- @subpage install_linux &mdash; distribution packages, optional backends, udev
+  rules, multiple Kinects, and legacy distributions.
+- @subpage install_windows &mdash; UsbDk and libusbK driver setup, dependencies,
+  Visual Studio builds, and vcpkg.
+
 @par Upgrade
 - @subpage v0_3_migration &mdash; ABI, C++11, timing, lifecycle, recording,
   decoder, CUDA, and calibration changes in version 0.3.
@@ -11,12 +19,18 @@ questions from the upstream issue tracker into a single, self-contained page.
   versus hardware validation status.
 
 @par Get answers
+- @subpage troubleshooting &mdash; device not enumerating, stalled streaming,
+  pipeline fallback, and how to report a bug.
 - @subpage faq &mdash; mirrored images, IR emitter, log spam, timestamps,
   color/depth synchronization.
 - @subpage frame_timing &mdash; device and arrival clocks, software pairing,
   timestamp thresholds, and the limits of hardware synchronization.
 - @subpage configuration &mdash; the `Config` struct, environment variables,
   and color-camera controls.
+- @subpage linux_usb &mdash; USB bandwidth budget, transfer-pool defaults and
+  tuning, usbfs limits, and autosuspend.
+- @subpage kinect_v1_vs_v2 &mdash; identify your sensor, and why Kinect v1
+  documentation does not transfer.
 
 @par Work with the data
 - @subpage registration &mdash; map between color, depth, and 3-D coordinates;
@@ -34,7 +48,17 @@ questions from the upstream issue tracker into a single, self-contained page.
 - @subpage python &mdash; the community Python bindings and the two most common
   recipes.
 
+@par Go deeper
+- @subpage protocol &mdash; USB topology, command transactions, calibration data
+  pages, and the color and depth stream framing.
+- @subpage performance &mdash; how to benchmark reproducibly, where the
+  per-frame time goes, and historical results.
+
 @par Maintain
+- @subpage development &mdash; toolchain requirements, Python tooling, test
+  suite, quality options, formatting, docs build, CI matrix, and contributing.
+- @subpage test_plan &mdash; automated coverage matrix, hardware smoke
+  checklist, lifecycle tests, and release evidence.
 - @subpage self_hosted_runner &mdash; set up the self-hosted macOS GitHub
   Actions runner that powers CI (build, tests, sanitizers, Metal parity).
 

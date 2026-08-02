@@ -16,8 +16,10 @@ Where to start
 
 - **New here?** Jump to the @ref walkthrough "API walkthrough" below for a
   guided tour of opening a device and receiving frames.
-- **Installing?** See the build and troubleshooting instructions in the
-  [README](https://github.com/hbmartin/libfreenect2-metal#readme).
+- **Installing?** See @ref install_macos, @ref install_linux, or
+  @ref install_windows, and @ref troubleshooting when something goes wrong. The
+  [README](https://github.com/hbmartin/libfreenect2-metal#readme) has the
+  condensed version.
 - **Solving a specific problem?** Browse the @subpage guides &mdash;
   task-oriented recipes for registration, depth accuracy, recording, Python,
   and more.

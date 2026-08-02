@@ -4,7 +4,13 @@ name: Documentation
 #
 # One-time setup: in the repository settings, under Pages, set
 # "Build and deployment" > "Source" to "GitHub Actions". The site is then
-# served at https://<owner>.github.io/libfreenect2/.
+# served at https://<owner>.github.io/libfreenect2-metal/.
+#
+# Doxygen is pinned to an exact upstream release rather than taken from apt,
+# so the published site does not change because a runner image bumped its
+# distribution package. Doxyfile.in is kept free of tags this version has
+# retired; bumping DOXYGEN_VERSION may surface new "has become obsolete"
+# warnings to clear.
 
 on:
   push:
@@ -28,6 +34,10 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  DOXYGEN_VERSION: "1.17.0"
+  DOXYGEN_SHA256: "75419ef4f446fc1c24ef12514b574e66e898ee6f527c6ae2ad84f91a905823c2"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -35,11 +45,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Doxygen and configure dependencies
+      - name: Install configure dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            doxygen graphviz libusb-1.0-0-dev libturbojpeg0-dev
+            graphviz libusb-1.0-0-dev libturbojpeg0-dev
+
+      - name: Install Doxygen ${{ env.DOXYGEN_VERSION }}
+        run: |
+          set -euo pipefail
+          tag="Release_${DOXYGEN_VERSION//./_}"
+          url="https://github.com/doxygen/doxygen/releases/download/${tag}/doxygen-${DOXYGEN_VERSION}.linux.bin.tar.gz"
+          curl -fsSL -o doxygen.tar.gz "$url"
+          echo "${DOXYGEN_SHA256}  doxygen.tar.gz" | sha256sum --check --strict
+          tar xzf doxygen.tar.gz "doxygen-${DOXYGEN_VERSION}/bin/doxygen"
+          sudo install -m 0755 "doxygen-${DOXYGEN_VERSION}/bin/doxygen" /usr/local/bin/doxygen
+          rm -rf doxygen.tar.gz "doxygen-${DOXYGEN_VERSION}"
+
+      - name: Verify Doxygen version
+        run: |
+          set -euo pipefail
+          actual="$(doxygen --version | cut -d' ' -f1)"
+          echo "doxygen $actual"
+          test "$actual" = "$DOXYGEN_VERSION"
 
       # Only the CMake configure step and the `doc` target are needed; the
       # library itself is never compiled, so optional backends are disabled

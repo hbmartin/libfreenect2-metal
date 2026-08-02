@@ -14,9 +14,57 @@
 namespace libfreenect2
 {
 
+class RgbDecoderFallback::DeferredFrameListener : public FrameListener
+{
+public:
+  DeferredFrameListener() : target_(0) {}
+  virtual ~DeferredFrameListener() { discard(); }
+
+  virtual bool onNewFrame(Frame::Type type, Frame* frame)
+  {
+    frames_.push_back(PendingFrame(type, frame));
+    return true;
+  }
+
+  void setTarget(FrameListener* target) { target_ = target; }
+
+  void publish()
+  {
+    std::vector<PendingFrame> pending;
+    pending.swap(frames_);
+    for (std::vector<PendingFrame>::iterator frame = pending.begin(); frame != pending.end();
+         ++frame)
+    {
+      if (target_ == 0 || !target_->onNewFrame(frame->type, frame->frame))
+        delete frame->frame;
+    }
+    frames_.clear();
+  }
+
+  void discard()
+  {
+    std::vector<PendingFrame> pending;
+    pending.swap(frames_);
+    for (std::vector<PendingFrame>::iterator frame = pending.begin(); frame != pending.end();
+         ++frame)
+      delete frame->frame;
+  }
+
+private:
+  struct PendingFrame
+  {
+    PendingFrame(Frame::Type type_, Frame* frame_) : type(type_), frame(frame_) {}
+    Frame::Type type;
+    Frame* frame;
+  };
+
+  FrameListener* target_;
+  std::vector<PendingFrame> frames_;
+};
+
 RgbDecoderFallback::RgbDecoderFallback(RgbPacketProcessor* primary, RgbPacketProcessor* fallback)
-    : primary_(primary), fallback_(fallback), using_fallback_(primary == 0 || !primary->good()),
-      good_(false)
+    : primary_(primary), fallback_(fallback), primary_listener_(new DeferredFrameListener()),
+      using_fallback_(primary == 0 || !primary->good()), good_(false)
 {
   RgbPacketProcessor* active = using_fallback_.load() ? fallback_ : primary_;
   good_.store(active != 0 && active->good());
@@ -26,6 +74,7 @@ RgbDecoderFallback::~RgbDecoderFallback()
 {
   delete primary_;
   delete fallback_;
+  delete primary_listener_;
 }
 
 bool RgbDecoderFallback::good()
@@ -42,8 +91,9 @@ const char* RgbDecoderFallback::name()
 void RgbDecoderFallback::setFrameListener(FrameListener* listener)
 {
   RgbPacketProcessor::setFrameListener(listener);
+  primary_listener_->setTarget(listener);
   if (primary_ != 0)
-    primary_->setFrameListener(listener);
+    primary_->setFrameListener(listener == 0 ? 0 : primary_listener_);
   if (fallback_ != 0)
     fallback_->setFrameListener(listener);
 }
@@ -64,16 +114,18 @@ void RgbDecoderFallback::process(const RgbPacket& packet)
     return;
   }
 
-  // VAAPI temporarily unmaps the allocator-owned JPEG buffer. A remap after
-  // failure may return a different address, so preserve the compressed bytes
-  // before invoking the primary decoder if this packet might need retrying.
+  // A hardware decoder may mutate or temporarily unmap the allocator-owned
+  // JPEG buffer. Preserve the compressed bytes before invoking the primary
+  // decoder if this packet might need retrying.
   std::vector<unsigned char> jpeg_copy;
   if (fallback_ != 0 && packet.jpeg_buffer != 0 && packet.jpeg_buffer_length != 0)
     jpeg_copy.assign(packet.jpeg_buffer, packet.jpeg_buffer + packet.jpeg_buffer_length);
 
+  primary_listener_->discard();
   primary_->process(packet);
   if (!primary_->good())
   {
+    primary_listener_->discard();
     good_.store(fallback_ != 0 && fallback_->good());
     using_fallback_ = true;
     LOG_WARNING << "primary RGB decoding failed; using the fallback for this and subsequent frames";
@@ -89,6 +141,7 @@ void RgbDecoderFallback::process(const RgbPacket& packet)
   }
   else
   {
+    primary_listener_->publish();
     good_.store(true);
   }
 }

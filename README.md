@@ -1,338 +1,517 @@
-# libfreenect2
+# libfreenect2-metal
 
+[![CI](https://github.com/hbmartin/libfreenect2-metal/actions/workflows/ci.yml/badge.svg)](https://github.com/hbmartin/libfreenect2-metal/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/docs-online-blue.svg)](https://hbmartin.github.io/libfreenect2-metal/)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20GPL--2.0-blue.svg)](#license)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](#version)
+[![C++11](https://img.shields.io/badge/C%2B%2B-11-blue.svg)](#requirements)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](#installation)
+
+Open source cross-platform driver for the **Kinect for Windows v2** (K4W2)
+sensor. It streams color, infrared, and depth over USB 3.0 and registers color
+to depth so you can build point clouds — on Linux, Windows, and macOS, including
+Apple Silicon with a Metal GPU pipeline.
 
 📖 **[Full documentation and API reference →](https://hbmartin.github.io/libfreenect2-metal/)**
 
+<!-- TODO: demo GIF -->
+
+> This is [hbmartin/libfreenect2-metal](https://github.com/hbmartin/libfreenect2-metal),
+> an actively maintained fork of
+> [OpenKinect/libfreenect2](https://github.com/OpenKinect/libfreenect2).
+> Clone **this** repository — upstream has no Metal pipeline and none of the 0.3
+> APIs described below. See [What's different in this fork](#whats-different-in-this-fork).
+
+Note: this driver does nothing for Kinect for Windows v1 or Kinect for Xbox 360
+sensors. Use [libfreenect](https://github.com/OpenKinect/libfreenect) for those.
+Not sure which one you have, or why v1 advice keeps not working?
+See [Kinect v1 versus Kinect v2](doc/kinect_v1_vs_v2.md).
+
 ## Table of Contents
 
-* [Description](README.md#description)
-* [Requirements](README.md#requirements)
-* [Troubleshooting](README.md#troubleshooting-and-reporting-bugs)
-* [Maintainers](README.md#maintainers)
-* [Installation](README.md#installation)
-  * [Windows / Visual Studio](README.md#windows--visual-studio)
-  * [MacOS](README.md#macos)
-  * [Linux](README.md#linux)
-* [Documentation site & API reference](https://hbmartin.github.io/libfreenect2-metal/)
+* [What's different in this fork](#whats-different-in-this-fork)
+* [Quickstart](#quickstart)
+* [Requirements](#requirements)
+* [Installation](#installation)
+* [Build options](#build-options)
+* [Depth pipelines](#depth-pipelines)
+* [Example programs](#example-programs)
+* [Documentation](#documentation)
+* [Troubleshooting](#troubleshooting)
+* [Development and contributing](#development-and-contributing)
+* [License](#license)
+* [Credits](#credits)
 
-## Description
+## What's different in this fork
 
-Driver for Kinect for Windows v2 (K4W2) devices (release and developer preview).
+* **Metal depth pipeline** for Apple Silicon, enabled by default on Apple
+  platforms and preferred over the deprecated OpenGL path. CI runs a
+  Metal-versus-CPU parity test on real hardware.
+* **The 0.3 API**: runtime version, API, and build-revision queries; public
+  packet-pipeline discovery; and a device that reports the pipeline it actually
+  consumed. See [Migrating to libfreenect2 0.3](doc/v0.3_migration.md).
+* **`libfreenect2/vision.h`** — a C++11 interface for validated caller-buffer
+  color conversion, forward and reverse registration maps, coherent depth
+  selection, and batched metric XYZ lifting.
+* **Recording and replay**: capture raw streams to disk and replay them through
+  any pipeline, including running multiple Kinects. See
+  [Recording, replay, and multiple Kinects](doc/recording_replay.md).
+* **Per-device depth calibration**: fit, validate, and apply a linear depth
+  correction profile. See
+  [Fitting and applying per-device depth correction](doc/depth_calibration.md).
+* **Self-contained CUDA builds** that need only the CUDA Toolkit — NVIDIA's
+  samples and the former `helper_math.h` are not required, and CMake does not
+  search sample paths.
+* **A real quality gate**: unit tests, ASan/UBSan/TSan profiles, libFuzzer
+  targets over the stream parsers, LLVM coverage, clang-tidy, and Semgrep, all
+  wired into CI. See [Quality checks](doc/quality.md).
+* **Python bindings** via
+  [pylibfreenect3](https://github.com/hbmartin/pylibfreenect3), which binds the
+  0.3 device, recording, alignment, registration, and vision APIs without a
+  ctypes bridge.
+* **Docs**: a published API reference plus task-oriented guides, listed under
+  [Documentation](#documentation).
 
-Note: libfreenect2 does not do anything for either Kinect for Windows v1 or Kinect for Xbox 360 sensors. Use libfreenect1 for those sensors.
+Missing features: firmware updates (see
+[issue #460](https://github.com/OpenKinect/libfreenect2/issues/460) for WiP) and
+calibrated directional audio. Native Kinect SDK-style body/skeleton tracking is
+also out of scope; the supported
+[Python pose-estimation workflow](doc/python.md#pose-estimation-workflow) uses
+MediaPipe plus registered depth and produces estimates rather than
+sensor-provided joints.
 
-If you are using libfreenect2 in an academic context, please cite our work using the following DOI: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.50641.svg)](https://doi.org/10.5281/zenodo.50641)
+## Quickstart
 
+Install for your platform ([macOS](doc/install_macos.md),
+[Linux](doc/install_linux.md), [Windows](doc/install_windows.md)), then open a
+device and pull registered frames:
 
+```cpp
+#include <libfreenect2/libfreenect2.hpp>
+#include <libfreenect2/frame_listener_impl.h>
+#include <libfreenect2/registration.h>
 
-If you use the KDE depth unwrapping algorithm implemented in the library, please also cite this ECCV 2016 [paper](http://users.isy.liu.se/cvl/perfo/abstracts/jaremo16.html).
+int main()
+{
+  libfreenect2::Freenect2 freenect2;
+  if (freenect2.enumerateDevices() == 0)
+    return 1;
 
-This driver supports:
-* RGB image transfer
-* IR and depth image transfer
-* registration of RGB and depth images
-* reusable BGR/RGB conversion and color/depth landmark geometry
+  // Picks the best available pipeline: metal > opengl > cuda > opencl > cpu.
+  libfreenect2::Freenect2Device *dev =
+      freenect2.openDevice(freenect2.getDefaultDeviceSerialNumber());
+  if (dev == 0)
+    return 1;
 
-The 0.3 API also exposes runtime version/API/build-revision queries and public
-packet-pipeline discovery. Canonical pipeline names are `cpu`, `metal`,
-`opengl`, `opencl`, `opencl_kde`, `cuda`, `cuda_kde`, and `dump`; the returned
-device reports the pipeline it actually consumed. The older `gl` and `cl`
-spellings remain accepted only through `LIBFREENECT2_PIPELINE`.
+  libfreenect2::SyncMultiFrameListener listener(
+      libfreenect2::Frame::Color | libfreenect2::Frame::Ir | libfreenect2::Frame::Depth);
+  dev->setColorFrameListener(&listener);
+  dev->setIrAndDepthFrameListener(&listener);
+  if (!dev->start())
+    return 1;
 
-The installed C++11 `libfreenect2/vision.h` interface provides validated
-caller-buffer color conversion, forward/reverse registration maps, coherent
-depth selection, and batched metric XYZ lifting. The canonical Python OpenCV
-and MediaPipe examples live in
-[pylibfreenect3](https://github.com/hbmartin/pylibfreenect3/tree/master/examples).
+  libfreenect2::Registration registration(dev->getIrCameraParams(),
+                                          dev->getColorCameraParams());
+  libfreenect2::Frame undistorted(512, 424, 4), registered(512, 424, 4);
 
-Missing features:
-* firmware updates (see [issue #460](https://github.com/OpenKinect/libfreenect2/issues/460) for WiP)
+  libfreenect2::FrameMap frames;
+  for (int i = 0; i < 100; ++i)
+  {
+    if (!listener.waitForNewFrame(frames, 10 * 1000))  // 10 s timeout
+      break;
 
-Watch the [libfreenect2 wiki](https://github.com/OpenKinect/libfreenect2/wiki) and the mailing list at https://groups.google.com/forum/#!forum/openkinect for the latest developments and more information about the K4W2 USB protocol. (The former openkinect.org domain has lapsed and now serves unrelated ads — do not use it.)
+    libfreenect2::Frame *rgb = frames[libfreenect2::Frame::Color];
+    libfreenect2::Frame *depth = frames[libfreenect2::Frame::Depth];
 
-The full documentation site, including the API reference and the guides below,
-is published at https://hbmartin.github.io/libfreenect2-metal/.
+    // `registered` now holds color aligned to the 512x424 depth image.
+    registration.apply(rgb, depth, &undistorted, &registered);
 
-Additional guides (also rendered on the documentation site):
+    listener.release(frames);
+  }
 
-* [Migrating to libfreenect2 0.3](doc/v0.3_migration.md)
-* [v0.3 upstream issue coverage](doc/v0.3_upstream_coverage.md)
-* [Depth accuracy and calibration](doc/depth_accuracy.md)
-* [Fitting and applying per-device depth correction](doc/depth_calibration.md)
-* [Using the Kinect v2 as a webcam](doc/webcam.md)
-* [Using libfreenect2 from Python](doc/python.md)
-* [Registration and coordinate mapping recipes](doc/registration.md)
-* [FAQ](doc/faq.md)
-* [Frame timing and software pairing](doc/frame_timing.md)
-* [Recording, replay, and multiple Kinects](doc/recording_replay.md)
-* [Runtime configuration reference](doc/configuration.md)
-* [Quality checks, sanitizers, fuzzing, and coverage](doc/quality.md)
+  dev->stop();
+  dev->close();
+  return 0;
+}
+```
+
+Consume the installed library from CMake:
+
+```cmake
+find_package(freenect2 REQUIRED)
+
+add_executable(myapp main.cpp)
+target_link_libraries(myapp PRIVATE freenect2::freenect2)
+```
+
+If you installed to a non-standard prefix, point CMake at it:
+
+```sh
+cmake -Dfreenect2_DIR=$HOME/freenect2/lib/cmake/freenect2 ..
+```
+
+More: the [API walkthrough](https://hbmartin.github.io/libfreenect2-metal/),
+the [registration recipes](doc/registration.md), and
+[`examples/`](#example-programs).
 
 ## Requirements
 
-### Hardware requirements
+### Hardware
 
-* USB 3.0 controller. USB 2 is not supported.
+* A **USB 3.0 controller**, one per sensor. USB 2 is not supported. Intel and
+  NEC host controllers are widely reported to work; ASMedia controllers are
+  widely reported not to.
+* Virtual machines likely do not work, because USB 3.0 isochronous transfer is
+  delicate.
+* The sensor's dedicated AC adapter — the USB connection alone will not power it.
 
-Intel and NEC USB 3.0 host controllers are known to work. ASMedia controllers are known to not work.
+Why one controller per sensor, and how to confirm the link negotiated
+SuperSpeed: [USB bandwidth and transfer tuning](doc/linux_usb.md).
 
-Virtual machines likely do not work, because USB 3.0 isochronous transfer is quite delicate.
+### Platform support
 
-##### Requirements for multiple Kinects
+| Tier | Platforms |
+|---|---|
+| **Tested** | Ubuntu 24.04 (GCC/Clang × shared/static, sanitizers, fuzzers, coverage); macOS on Apple Silicon (Metal, C++11, Metal/CPU parity on real hardware) |
+| **Expected to work** | Ubuntu 22.04 LTS and newer, Debian 12 and newer, other current distributions with libusb ≥ 1.0.20 and kernel ≥ 5.15; macOS on Intel; Windows 10 and newer |
+| **Unsupported** | Ubuntu 20.04 and older, Debian 11 and older, Windows 8 and older, any USB 2 host, virtual machines, Jetson TK1/TX1 |
 
-It has been reported to work for up to 5 devices on a high-end PC using multiple separate PCI Express USB3 expansion cards (with NEC controller chip). If you're using Linux, you may have to [increase USBFS memory buffers](https://github.com/OpenKinect/libfreenect2/wiki/Troubleshooting#multiple-kinects-try-increasing-usbfs-buffer-size). Depending on the number of Kinects, you may need to use an even larger buffer size. If you're using an expansion card, make sure it's not plugged into an PCI-E x1 slot. A single lane doesn't have enough bandwidth. x8 or x16 slots usually work.
+Older platforms are not blocked by the build system, but they are untested and
+some optional-backend packages no longer exist for them.
 
-### Operating system requirements
+### Toolchain
 
-* Windows 7 (buggy), Windows 8, Windows 8.1, and probably Windows 10
-* Debian, Ubuntu 14.04 or newer, probably other Linux distros. Recommend kernel 3.16+ or as new as possible.
-* Mac OS X
+CMake 3.16 or newer, and a C++11 compiler. CI builds at C++11 with GCC, Clang,
+and AppleClang; newer standards work.
 
-### Requirements for optional features
+### Optional features
 
-* Python 3.12 or newer: repository Python tools
-* OpenGL depth processing: OpenGL 3.1 (Windows, Linux, Mac OS X). OpenGL ES is not supported at the moment.
-* OpenCL depth processing: OpenCL 1.1
-* CUDA depth processing: CUDA Toolkit; CUDA 12.3 is covered by compile-only CI
-* VAAPI JPEG decoding: Intel (minimum Ivy Bridge or newer) and Linux only
-* VideoToolbox JPEG decoding: Mac OS X only
-* OpenNI2 integration: OpenNI2 2.2.0.33
-* Jetson TK1: Linux4Tegra 21.3 or later. Check [Jetson TK1 issues](https://github.com/OpenKinect/libfreenect2/wiki/Troubleshooting#jetson-tk1-issues) before installation. Jetson TX1 is not yet supported as the developers don't have one, but it may be easy to add the support.
-
-### Self-contained CUDA builds
-
-The `cuda` and `cuda_kde` depth pipelines depend only on headers and libraries
-from the CUDA Toolkit. NVIDIA's CUDA samples and their former `helper_math.h`
-header are not required, and CMake does not search sample installation paths.
-
-For a local build on a machine with an NVIDIA GPU:
-
-```sh
-cmake -S . -B build-cuda \
-  -DENABLE_CUDA=ON \
-  -DCMAKE_CUDA_ARCHITECTURES=native
-cmake --build build-cuda --target freenect2
-```
-
-For a GPU-less build host or container, specify the target architecture
-explicitly, for example `-DCMAKE_CUDA_ARCHITECTURES=75`. CMake 3.23 and newer
-otherwise defaults to `all-major` so configuration does not need to query a
-local GPU. Hosted CI compiles both pipelines with CUDA 12.3 but does not claim
-runtime validation; compare CUDA and CPU output on real hardware before a
-release.
-
-## Troubleshooting and reporting bugs
-
-First, check https://github.com/OpenKinect/libfreenect2/wiki/Troubleshooting for known issues.
-
-When you report USB issues, please attach relevant debug log from running the program with environment variable `LIBUSB_DEBUG=3`, and relevant log from `dmesg`. Also include relevant hardware information `lspci` and `lsusb -t`.
-
-## Maintainers
-
-* Joshua Blake <joshblake@gmail.com>
-* Florian Echtler
-* Christian Kerl
-* Lingzhu Xiang (development/master branch)
+| Feature | Requirement |
+|---|---|
+| Metal depth processing | macOS (Apple platforms) |
+| OpenGL depth processing | OpenGL 3.1. OpenGL ES is not supported. |
+| OpenCL depth processing | OpenCL 1.1 |
+| CUDA depth processing | CUDA Toolkit (CUDA 12.3 is covered by compile-only CI) |
+| VAAPI JPEG decoding | Intel Ivy Bridge or newer, Linux only |
+| VideoToolbox JPEG decoding | macOS only (off by default on Apple Silicon) |
+| OpenNI2 integration | OpenNI2 2.2.0.33 |
 
 ## Installation
 
-### Windows / Visual Studio
+Full, platform-specific instructions live in `doc/`:
 
-* Install UsbDk driver
+* **[macOS install guide](doc/install_macos.md)** — including Apple Silicon and
+  architecture-mismatch fixes
+* **[Linux install guide](doc/install_linux.md)** — including udev rules, all
+  optional backends, and legacy distributions
+* **[Windows install guide](doc/install_windows.md)** — including UsbDk/libusbK
+  driver setup and vcpkg
 
-    1. (Windows 7) You must first install Microsoft Security Advisory 3033929 otherwise your USB keyboards and mice will stop working!
-    2. Download the latest x64 installer from https://github.com/daynix/UsbDk/releases, install it.
-    3. If UsbDk somehow does not work, uninstall UsbDk and follow the libusbK instructions.
+Condensed versions:
 
-    This doesn't interfere with the Microsoft SDK. Do not install both UsbDK and libusbK drivers
-* (Alternatively) Install libusbK driver
+<details>
+<summary><b>macOS</b></summary>
 
-    You don't need the Kinect for Windows v2 SDK to build and install libfreenect2, though it doesn't hurt to have it too. You don't need to uninstall the SDK or the driver before doing this procedure.
+```sh
+brew install cmake pkg-config ninja libusb glfw3 jpeg-turbo
 
-    Install the libusbK backend driver for libusb. Please follow the steps exactly:
+git clone https://github.com/hbmartin/libfreenect2-metal.git
+cd libfreenect2-metal
 
-    1. Download Zadig from http://zadig.akeo.ie/.
-    2. Run Zadig and in options, check "List All Devices" and uncheck "Ignore Hubs or Composite Parents"
-    3. Select the "Xbox NUI Sensor (composite parent)" from the drop-down box. (Important: Ignore the "NuiSensor Adaptor" varieties, which are the adapter, NOT the Kinect) The current driver will list usbccgp. USB ID is VID 045E, PID 02C4 or 02D8.
-    4. Select libusbK (v3.0.7.0 or newer) from the replacement driver list.
-    5. Click the "Replace Driver" button. Click yes on the warning about replacing a system driver. (This is because it is a composite parent.)
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+cmake --install build
 
-    To uninstall the libusbK driver (and get back the official SDK driver, if installed):
+./build/bin/Protonect
+```
 
-    1. Open "Device Manager"
-    2. Under "libusbK USB Devices" tree, right click the "Xbox NUI Sensor (Composite Parent)" device and select uninstall.
-    3. Important: Check the "Delete the driver software for this device." checkbox, then click OK.
+On Apple Silicon, run the build from a **native arm64 terminal** — `arch` must
+print `arm64`. A shell or IDE under Rosetta produces x86_64 builds that cannot
+link Homebrew's arm64 libraries in `/opt/homebrew`. CMake detects this at
+configure time and stops with instructions. Full detail:
+[macOS install guide](doc/install_macos.md).
 
-    If you already had the official SDK driver installed and you want to use it:
+</details>
 
-    4. In Device Manager, in the Action menu, click "Scan for hardware changes."
+<details>
+<summary><b>Linux</b></summary>
 
-    This will enumerate the Kinect sensor again and it will pick up the K4W2 SDK driver, and you should be ready to run KinectService.exe again immediately.
+```sh
+sudo apt-get install build-essential cmake pkg-config ninja-build \
+  libusb-1.0-0-dev libturbojpeg0-dev libglfw3-dev
 
-    You can go back and forth between the SDK driver and the libusbK driver very quickly and easily with these steps.
+git clone https://github.com/hbmartin/libfreenect2-metal.git
+cd libfreenect2-metal
 
-* Install libusb
+cmake -S . -B build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=$HOME/freenect2
+cmake --build build
+cmake --install build
 
-    Download the latest build (.7z file) from https://github.com/libusb/libusb/releases, and extract as `depends/libusb` (rename folder `libusb-1.x.y` to `libusb` if any).
-* Install TurboJPEG
+# Device access — required, otherwise the sensor is root-only
+sudo cp platform/linux/udev/90-kinect2.rules /etc/udev/rules.d/
+# then unplug and replug the Kinect
 
-    Download the `-vc64.exe` installer from http://sourceforge.net/projects/libjpeg-turbo/files, extract it to `c:\libjpeg-turbo64` (the installer's default) or `depends/libjpeg-turbo64`, or anywhere as specified by the environment variable `TurboJPEG_ROOT`.
-* Install GLFW
+./build/bin/Protonect
+```
 
-    Download from http://www.glfw.org/download.html (64-bit), extract as `depends/glfw` (rename `glfw-3.x.x.bin.WIN64` to `glfw`), or anywhere as specified by the environment variable `GLFW_ROOT`.
-* Install OpenCL (optional)
-    1. Intel GPU: Download "Intel® SDK for OpenCL™ Applications 2016" from https://software.intel.com/en-us/intel-opencl (requires free registration) and install it.
-* Install CUDA (optional, Nvidia only)
-    1. Download and install the CUDA Toolkit. The CUDA samples are not required.
-* Install OpenNI2 (optional)
+Minimum supported release is Ubuntu 22.04 LTS. Optional backends (OpenCL, CUDA,
+VAAPI, OpenNI2), support tiers, and multi-sensor setup:
+[Linux install guide](doc/install_linux.md).
 
-    Download OpenNI 2.2.0.33 (x64) from https://github.com/structureio/OpenNI2/releases (the former structure.io/openni download page is gone), install it to default locations (`C:\Program Files...`).
-* Build
+</details>
 
-    The default installation path is `install`, you may change it by editing `CMAKE_INSTALL_PREFIX`.
-    ```
-    mkdir build && cd build
-    cmake .. -G "Visual Studio 12 2013 Win64"
-    cmake --build . --config RelWithDebInfo --target install
-    ```
-    Or `-G "Visual Studio 14 2015 Win64"`.
-    Or `-G "Visual Studio 16 2019"`.
-* Run the test program: `.\install\bin\Protonect.exe`, or start debugging in Visual Studio.
-* Test OpenNI2 (optional)
+<details>
+<summary><b>Windows / Visual Studio</b></summary>
 
-    Copy freenect2-openni2.dll, and other dll files (libusb-1.0.dll, glfw.dll, etc.) in `install\bin` to `C:\Program Files\OpenNI2\Tools\OpenNI2\Drivers`. Then run `C:\Program Files\OpenNI\Tools\NiViewer.exe`. Environment variable `LIBFREENECT2_PIPELINE` can be set to `cl`, `cuda`, etc to specify the pipeline.
+1. Install a USB driver — **either** [UsbDk](https://github.com/daynix/UsbDk/releases)
+   (recommended) **or** libusbK via [Zadig](http://zadig.akeo.ie/). Not both.
+2. Install dependencies into `depends/`: [libusb](https://github.com/libusb/libusb/releases)
+   as `depends/libusb`, [TurboJPEG](http://sourceforge.net/projects/libjpeg-turbo/files)
+   to `c:\libjpeg-turbo64`, and [GLFW](http://www.glfw.org/download.html) as
+   `depends/glfw`.
+3. Build:
+   ```
+   mkdir build && cd build
+   cmake .. -G "Visual Studio 16 2019"
+   cmake --build . --config RelWithDebInfo --target install
+   ```
+4. Run `.\install\bin\Protonect.exe`.
 
-### Windows / vcpkg
+Exact driver steps, uninstall instructions, and optional backends:
+[Windows install guide](doc/install_windows.md).
 
-You can download and install libfreenect2 using the [vcpkg](https://github.com/Microsoft/vcpkg) dependency manager:
+</details>
+
+<details>
+<summary><b>Windows / vcpkg</b></summary>
+
 ```
 git clone https://github.com/Microsoft/vcpkg.git
 cd vcpkg
 ./vcpkg integrate install
 vcpkg install libfreenect2
 ```
-The libfreenect2 port in vcpkg is kept up to date by Microsoft team members and community contributors. If the version is out of date, please [create an issue or pull request](https://github.com/Microsoft/vcpkg) on the vcpkg repository.
 
-### MacOS
+Note that the vcpkg port tracks **upstream** `OpenKinect/libfreenect2`, not this
+fork, so it has no Metal pipeline or 0.3 APIs.
 
-#### Apple Silicon (M1 and later)
+</details>
 
-Native arm64 builds are supported. The most common failure mode is an
-architecture mismatch between the build and the installed libraries
-("building for macOS-x86_64 but attempting to link with file built for
-macOS-arm64", or many missing libusb/GLFW symbols at link time). CMake now
-detects this at configure time and stops with instructions. To avoid it:
+<details>
+<summary><b>CUDA (self-contained)</b></summary>
 
-* Use a native arm64 terminal (run `arch`; it must print `arm64`, not
-  `i386`). A shell, IDE, or CMake launched under Rosetta produces x86_64
-  builds that cannot link Homebrew's arm64 libraries in `/opt/homebrew`.
-* Use the matching Homebrew prefix: `/opt/homebrew` on Apple Silicon,
-  `/usr/local` on Intel. If CMake picks the wrong one, pass
-  `-DCMAKE_PREFIX_PATH=/opt/homebrew`.
-* Do not force `-DCMAKE_OSX_ARCHITECTURES=x86_64` unless all dependencies
-  are also x86_64.
+The `cuda` and `cuda_kde` pipelines depend only on headers and libraries from
+the CUDA Toolkit. NVIDIA's CUDA samples and their former `helper_math.h` header
+are not required, and CMake does not search sample installation paths.
 
-On Apple Silicon the `metal` pipeline is available for GPU depth processing,
-and RGB decoding uses TurboJPEG by default (VideoToolbox is disabled there,
-see `ENABLE_VIDEOTOOLBOX` in CMakeLists.txt).
+On a machine with an NVIDIA GPU:
 
-Use your favorite package managers (brew, ports, etc.) to install most if not all dependencies:
+```sh
+cmake -S . -B build-cuda -DENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=native
+cmake --build build-cuda --target freenect2
+```
 
-* Make sure these build tools are available: wget, git, cmake, pkg-config. Xcode may provide some of them. Install the rest via package managers.
-* Download libfreenect2 source
-    ```
-    git clone https://github.com/OpenKinect/libfreenect2.git
-    cd libfreenect2
-    ```
-* Install dependencies: libusb, GLFW
-    ```
-    brew update
-    brew install libusb
-    brew install glfw3
-    ```
-* Install TurboJPEG (optional)
-    ```
-    brew install jpeg-turbo
-    ```
-* Install CUDA (optional): TODO
-* Install OpenNI2 (optional)
+For a GPU-less build host or container, specify the architecture explicitly, for
+example `-DCMAKE_CUDA_ARCHITECTURES=75`. CMake 3.23 and newer otherwise defaults
+to `all-major`, so configuration does not need to query a local GPU.
 
-    The old `brewsci/science` Homebrew bottle is no longer downloadable
-    (the hosted archive returns 404), so build OpenNI2 from source:
-    ```
-    git clone https://github.com/structureio/OpenNI2.git
-    cd OpenNI2
-    make release
-    # then point libfreenect2 at the build output, e.g.:
-    export OPENNI2_REDIST=$PWD/Bin/x64-Release
-    export OPENNI2_INCLUDE=$PWD/Include
-    ```
-* Build
-    ```
-    mkdir build && cd build
-    cmake ..
-    make
-    make install
-    ```
-* Run the test program: `./bin/Protonect`
-* Test OpenNI2. `make install-openni2` (may need sudo), then run `NiViewer`. Environment variable `LIBFREENECT2_PIPELINE` can be set to `cl`, `cuda`, etc to specify the pipeline.
+Hosted CI compiles both pipelines with CUDA 12.3 but does not claim runtime
+validation; compare CUDA and CPU output on real hardware before a release.
 
-### Linux
+</details>
 
-Note: Ubuntu 12.04 is too old to support. Debian jessie may also be too old, and Debian stretch is implied in the following.
+## Build options
 
-* Download libfreenect2 source
-    ```
-    git clone https://github.com/OpenKinect/libfreenect2.git
-    cd libfreenect2
-    ```
-* (Ubuntu 14.04 only) Download upgrade deb files
-    ```
-    cd depends; ./download_debs_trusty.sh
-    ```
-* Install build tools
-    ```
-    sudo apt-get install build-essential cmake pkg-config
-    ```
-* Install libusb. The version must be >= 1.0.20.
-    1. (Ubuntu 14.04 only) `sudo dpkg -i debs/libusb*deb`
-    2. (Other) `sudo apt-get install libusb-1.0-0-dev`
-* Install TurboJPEG
-    1. (Ubuntu 14.04 to 16.04) `sudo apt-get install libturbojpeg libjpeg-turbo8-dev`
-    2. (Debian/Ubuntu 17.10 and newer) `sudo apt-get install libturbojpeg0-dev`
-* Install OpenGL
-    1. (Ubuntu 14.04 only) `sudo dpkg -i debs/libglfw3*deb; sudo apt-get install -f`
-    2. (Odroid XU4) OpenGL 3.1 is not supported on this platform. Use `cmake -DENABLE_OPENGL=OFF` later.
-    3. (Other) `sudo apt-get install libglfw3-dev`
-* Install OpenCL (optional)
-    - Intel GPU
-        1. (Ubuntu 14.04 only) `sudo apt-add-repository ppa:floe/beignet; sudo apt-get update; sudo apt-get install beignet-dev; sudo dpkg -i debs/ocl-icd*deb`
-        2. (Other) `sudo apt-get install beignet-dev`
-        3. For older kernels, `# echo 0 >/sys/module/i915/parameters/enable_cmd_parser` is needed. See more known issues at https://www.freedesktop.org/wiki/Software/Beignet/.
-    - AMD GPU: Install the latest version of the AMD Catalyst drivers from https://support.amd.com and `apt-get install opencl-headers`.
-    - Mali GPU (e.g. Odroid XU4): (with root) `mkdir -p /etc/OpenCL/vendors; echo /usr/lib/arm-linux-gnueabihf/mali-egl/libmali.so >/etc/OpenCL/vendors/mali.icd; apt-get install opencl-headers`.
-    - Verify: You can install `clinfo` to verify if you have correctly set up the OpenCL stack.
-* Install CUDA (optional, Nvidia only):
-    - (Ubuntu 14.04 only) Download `cuda-repo-ubuntu1404...*.deb` ("deb (network)") from Nvidia website, follow their installation instructions, including `apt-get install cuda` which installs Nvidia graphics driver.
-    - (Jetson TK1) It is preloaded.
-    - (Nvidia/Intel dual GPUs) After `apt-get install cuda`, use `sudo prime-select intel` to use Intel GPU for desktop.
-    - (Other) Follow Nvidia website's toolkit and driver instructions. The samples package is not required.
-* Install VAAPI (optional, Intel only)
-    1. (Ubuntu 14.04 only) `sudo dpkg -i debs/{libva,i965}*deb; sudo apt-get install -f`
-    2. (Other) `sudo apt-get install libva-dev libjpeg-dev`
-    3. Linux kernels 4.1 to 4.3 have performance regression. Use 4.0 and earlier or 4.4 and later (Though Ubuntu kernel 4.2.0-28.33~14.04.1 has backported the fix).
-* Install OpenNI2 (optional)
-    1. (Ubuntu 14.04 only) `sudo apt-add-repository ppa:deb-rob/ros-trusty && sudo apt-get update` (You don't need this if you have ROS repos), then `sudo apt-get install libopenni2-dev`
-    2. (Other) `sudo apt-get install libopenni2-dev`
-* Build (if you have run `cd depends` previously, `cd ..` back to the libfreenect2 root directory first.)
-    ```
-    mkdir build && cd build
-    cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/freenect2
-    make
-    make install
-    ```
-    You need to specify `cmake -Dfreenect2_DIR=$HOME/freenect2/lib/cmake/freenect2` for CMake based third-party application to find libfreenect2.
-* Set up udev rules for device access: `sudo cp ../platform/linux/udev/90-kinect2.rules /etc/udev/rules.d/`, then replug the Kinect.
-* Run the test program: `./bin/Protonect`
-* Run OpenNI2 test (optional): `sudo apt-get install openni2-utils && sudo make install-openni2 && NiViewer2`. Environment variable `LIBFREENECT2_PIPELINE` can be set to `cl`, `cuda`, etc to specify the pipeline.
+Pass these to CMake as `-DOPTION=VALUE`.
+
+| Option | Default | Effect |
+|---|---|---|
+| `BUILD_SHARED_LIBS` | `ON` | Build shared (`ON`) or static (`OFF`) libraries |
+| `BUILD_EXAMPLES` | `ON` | Build the [example programs](#example-programs) |
+| `BUILD_OPENNI2_DRIVER` | `ON` | Build the OpenNI2 driver |
+| `BUILD_TESTING` | `OFF` | Build the unit test suite |
+| `ENABLE_METAL` | `ON` on Apple, else `OFF` | Metal GPU depth processing |
+| `ENABLE_OPENGL` | `ON` | OpenGL depth processing (needs OpenGL 3.1) |
+| `ENABLE_OPENCL` | `ON` | OpenCL depth processing |
+| `ENABLE_CUDA` | `ON` | CUDA depth processing |
+| `ENABLE_VAAPI` | `ON` | VA-API JPEG decoding (Intel, Linux) |
+| `ENABLE_VIDEOTOOLBOX` | `OFF` on Apple Silicon, `ON` on Intel Mac | VideoToolbox RGB decoder. It crashes on M1 and later, hence the split default; TurboJPEG is used instead. |
+| `ENABLE_TEGRAJPEG` | `ON` | Tegra hardware JPEG support |
+| `ENABLE_PROFILING` | `OFF` | Collect profiling stats (memory consuming) |
+| `BUILD_STREAMER_RECORDER` | `OFF` | Build the `streamer_recorder` tool |
+| `ENABLE_SANITIZERS` | `OFF` | ASan + UBSan on first-party targets |
+
+An `ENABLE_*` backend is silently skipped if its dependencies are not found; the
+CMake configure summary reports what was actually enabled. Development-only
+flags — warnings-as-errors, individual sanitizers, coverage, fuzzing, stdlib
+hardening — are documented in
+[Development and contributing](doc/development.md#quality-and-instrumentation-options).
+
+## Depth pipelines
+
+| Name | Platform | Requires | Notes |
+|---|---|---|---|
+| `cpu` | all | — | Always available; terminates the fallback chain |
+| `metal` | Apple | `ENABLE_METAL` | Preferred on Apple Silicon; OpenGL is deprecated by Apple |
+| `opengl` | all | OpenGL 3.1 | OpenGL ES is not supported |
+| `opencl` | all | OpenCL 1.1 | |
+| `opencl_kde` | all | OpenCL 1.1 | KDE depth unwrapping |
+| `cuda` | NVIDIA | CUDA Toolkit | |
+| `cuda_kde` | NVIDIA | CUDA Toolkit | KDE depth unwrapping |
+| `dump` | all | — | Dumps raw frames instead of decoding depth |
+
+Select one at runtime:
+
+```sh
+LIBFREENECT2_PIPELINE=metal ./Protonect
+```
+
+The older `gl` and `cl` spellings are accepted **only** as aliases through
+`LIBFREENECT2_PIPELINE`; everywhere else use the canonical names above. If the
+requested pipeline is unavailable, libfreenect2 logs a warning and falls through
+the chain `metal → opengl → cuda → opencl → cpu`, probing each for a usable
+runtime device. The opened device reports the pipeline it actually consumed.
+
+`Protonect` additionally accepts a pipeline as a positional argument using its
+own short vocabulary: `cpu`, `gl`, `cl`, `clkde`, `cuda`, `cudakde`, `metal`.
+Unlike the environment preference, a positional GPU selection is strict:
+Protonect exits before opening a sensor when that backend is not compiled or
+has no usable runtime device.
+
+To discover pipelines programmatically, `getCompiledPacketPipelines()` returns
+the canonical names built into the library and `getAvailablePacketPipelines()`
+returns those usable on the current machine. Availability probing constructs
+each pipeline and can initialize GPU runtimes, so keep it off latency-sensitive
+paths.
+
+Other environment variables — logging level and USB buffer tuning — are in the
+[runtime configuration reference](doc/configuration.md).
+
+## Example programs
+
+Built when `BUILD_EXAMPLES=ON` (the default), into `build/bin`.
+
+| Program | What it does |
+|---|---|
+| `Protonect` | The reference viewer and smoke test. Displays color, IR, depth, and registered output. `Protonect [-gpu=<id>] [gl\|cl\|clkde\|cuda\|cudakde\|metal\|cpu] [<serial>]` |
+| `KinectCapture` | Writes frames to disk: continuous capture, timestamp-paired `snapshot`, or raw stream `record`. Supports depth-correction profiles. |
+| `KinectDepthCalibration` | Fits a per-device linear depth correction profile from live or recorded data over a known-distance ROI. See [depth calibration](doc/depth_calibration.md). |
+| `KinectReconnect` | Exercises disconnect and recovery handling. `KinectReconnect [SERIAL]` |
+
+`examples/CMakeLists.txt` doubles as a standalone build system for an
+out-of-tree application linking an installed libfreenect2.
+
+## Documentation
+
+The full site, including the API reference and every guide below, is published
+at **<https://hbmartin.github.io/libfreenect2-metal/>**.
+
+**Upgrade**
+* [Migrating to libfreenect2 0.3](doc/v0.3_migration.md)
+* [v0.3 upstream issue coverage](doc/v0.3_upstream_coverage.md)
+
+**Install and fix**
+* [macOS](doc/install_macos.md) · [Linux](doc/install_linux.md) · [Windows](doc/install_windows.md)
+* [Troubleshooting](doc/troubleshooting.md)
+* [USB bandwidth and transfer tuning](doc/linux_usb.md)
+* [FAQ](doc/faq.md)
+* [Runtime configuration reference](doc/configuration.md)
+* [Kinect v1 versus Kinect v2](doc/kinect_v1_vs_v2.md)
+
+**Work with the data**
+* [Registration and coordinate mapping recipes](doc/registration.md)
+* [Depth accuracy and calibration](doc/depth_accuracy.md)
+* [Fitting and applying per-device depth correction](doc/depth_calibration.md)
+* [Frame timing and software pairing](doc/frame_timing.md)
+
+**Integrate**
+* [Recording, replay, and multiple Kinects](doc/recording_replay.md)
+* [Using the Kinect v2 as a webcam](doc/webcam.md)
+* [Using libfreenect2 from Python](doc/python.md)
+
+**Go deeper**
+* [Kinect v2 USB protocol](doc/protocol.md)
+* [Benchmarking and performance](doc/performance.md)
+
+**Maintain**
+* [Development and contributing](doc/development.md)
+* [Quality checks, sanitizers, fuzzing, and coverage](doc/quality.md)
+* [Test plan](doc/test_plan.md)
+* [Self-hosted runner setup](doc/self_hosted_runner.md)
+
+## Troubleshooting
+
+See the **[troubleshooting guide](doc/troubleshooting.md)** first; the upstream
+[troubleshooting wiki](https://github.com/OpenKinect/libfreenect2/wiki/Troubleshooting)
+still holds useful hardware-specific notes.
+
+Report bugs at <https://github.com/hbmartin/libfreenect2-metal/issues>. For USB
+issues, attach the output of the program run with `LIBUSB_DEBUG=3`, the relevant
+`dmesg` log, and hardware information from `lspci` and `lsusb -t`.
+
+## Development and contributing
+
+Issues and pull requests are welcome at
+<https://github.com/hbmartin/libfreenect2-metal>.
+
+```sh
+cmake -S . -B build-dev -G Ninja -DBUILD_TESTING=ON -DENABLE_WARNINGS_AS_ERRORS=ON
+cmake --build build-dev
+ctest --test-dir build-dev --output-on-failure
+```
+
+The repository's Python tooling requires **Python 3.12 or newer** and `uv`; it
+is not needed to build or use the library. Toolchain requirements, the CI
+matrix, sanitizer and fuzzing profiles, formatting rules, and the docs build are
+all covered in **[Development and contributing](doc/development.md)**.
+
+## Version
+
+The current version is **0.3.0** (`PROJECT_VERSION` in `CMakeLists.txt`). The
+library also reports its version, API version, and build revision at runtime;
+see [Migrating to libfreenect2 0.3](doc/v0.3_migration.md).
+
+## License
+
+libfreenect2 is available under **your choice of** either:
+
+* the Apache License, Version 2.0 (`Apache-2.0`), or
+* the GNU General Public License, Version 2.0 only (`GPL-2.0-only`).
+
+```
+SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-only
+```
+
+Full texts are in [`APACHE20`](APACHE20) and [`GPL2`](GPL2); see
+[`LICENSE`](LICENSE) for the summary. Individual files may carry additional
+attribution or redistribution notices that must be preserved. Third-party
+components remain under their own licenses, with notices alongside those
+components and in `depends/LICENSES.txt`.
+
+## Credits
+
+This fork is maintained by [Harold Martin](https://github.com/hbmartin).
+
+Upstream libfreenect2 maintainers:
+
+* Joshua Blake <joshblake@gmail.com>
+* Florian Echtler
+* Christian Kerl
+* Lingzhu Xiang (development/master branch)
+
+Contributor attributions are collected in [`CONTRIB`](CONTRIB).
+
+If you use the KDE depth unwrapping algorithm implemented in this library,
+please cite the ECCV 2016
+[paper](http://users.isy.liu.se/cvl/perfo/abstracts/jaremo16.html).
+
+The [libfreenect2 wiki](https://github.com/OpenKinect/libfreenect2/wiki) and the
+[mailing list](https://groups.google.com/forum/#!forum/openkinect) carry
+background on the K4W2 USB protocol; what remained useful from the wiki has been
+absorbed into [`doc/`](#documentation) — see
+[the protocol reference](doc/protocol.md), [performance](doc/performance.md),
+[USB notes](doc/linux_usb.md), and [troubleshooting](doc/troubleshooting.md).
+(The former openkinect.org domain, which hosted the **Kinect v1** wiki, has
+lapsed and now serves unrelated ads — do not use it.)

@@ -55,9 +55,33 @@ Limits and behavior that were previously undocumented
 | `LIBFREENECT2_VAAPI_DEVICE` | in automatic mode, use one explicit VAAPI DRM node, such as `/dev/dri/renderD128` |
 | `LIBFREENECT2_LOGGER_LEVEL` | `debug`, `info`, `warning`, `error`, or `none` |
 | `LIBFREENECT2_TJ_FAST` | `1` enables TurboJPEG fast DCT/upsampling for RGB decode |
-| `LIBFREENECT2_RGB_TRANSFERS` / `LIBFREENECT2_RGB_TRANSFER_SIZE` | tune the RGB bulk transfer pool |
-| `LIBFREENECT2_IR_TRANSFERS` / `LIBFREENECT2_IR_PACKETS` | tune the depth isochronous transfer pool |
+| `LIBFREENECT2_RGB_TRANSFERS` / `LIBFREENECT2_RGB_TRANSFER_SIZE` | override the RGB bulk transfer pool (see defaults below) |
+| `LIBFREENECT2_IR_TRANSFERS` / `LIBFREENECT2_IR_PACKETS` | override the depth isochronous transfer pool (see defaults below) |
 | `LIBUSB_DEBUG` | `3` for verbose libusb diagnostics of USB problems |
+
+### Transfer pool defaults
+
+The four transfer variables override platform-specific defaults chosen at device
+open:
+
+| Platform | `RGB_TRANSFERS` | `RGB_TRANSFER_SIZE` | `IR_TRANSFERS` | `IR_PACKETS` |
+|---|---|---|---|---|
+| Linux (and any other platform) | 20 | 0x4000 (16384) | 60 | 8 |
+| macOS | 20 | 0x4000 (16384) | 4 | 128 |
+| Windows | 3 | 1048576 (1 MiB) | 8 | 64 |
+
+The isochronous packet size is not configurable — it is read from the device's
+endpoint descriptor at open time and must be at least `0x8400` (33792) bytes.
+The library logs the resolved pool sizes at `Info` level on every open, so an
+override can be confirmed by reading the log back:
+
+```
+[Info] [Freenect2DeviceImpl] transfer pool sizes rgb: 20*16384 ir: 4*128*33792
+```
+
+Read as `rgb: <transfers>*<bytes>` and `ir: <transfers>*<packets>*<packet bytes>`.
+See @ref linux_usb for what these control, the USB bandwidth budget behind them,
+and when changing them is appropriate.
 
 ## RGB decoder selection (`PacketPipelineConfig`)
 
@@ -90,17 +114,18 @@ baseline JPEG VLD. NVIDIA nodes are skipped during automatic discovery because
 probing them has caused driver failures; an explicitly configured NVIDIA path
 is still attempted.
 
-`allow_fallback` defaults to `true`. If VAAPI cannot initialize, or if it fails
-while decoding a packet, that packet is retried once with TurboJPEG and all
-later packets stay on TurboJPEG. The failed VAAPI attempt never publishes an
-error or duplicate frame. With an explicit decoder and fallback disabled, an
-initialization or runtime failure leaves the pipeline unhealthy instead of
-claiming that a valid frame was produced.
+`allow_fallback` defaults to `true`. If VAAPI or TegraJPEG cannot initialize,
+or if either fails while decoding a packet, that packet is retried once with
+TurboJPEG and all later packets stay on TurboJPEG. The failed hardware-decoder
+attempt never publishes an error or duplicate frame. With an explicit decoder
+and fallback disabled, an initialization or runtime failure leaves the pipeline
+unhealthy instead of claiming that a valid frame was produced.
 
 For diagnostics, enable `LIBFREENECT2_LOGGER_LEVEL=info`. VAAPI reports the
 chosen DRM node and driver. Selection failures, unsupported output formats,
-and the one-time switch to TurboJPEG are logged as warnings or errors. Call
-`pipeline->good()` before opening a device when strict selection is required.
+incomplete TegraJPEG results, and the one-time switch to TurboJPEG are logged
+as warnings or errors. Call `pipeline->good()` before opening a device when
+strict selection is required.
 
 ## Color camera settings
 

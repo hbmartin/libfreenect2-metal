@@ -1628,6 +1628,24 @@ Freenect2Device* Freenect2Impl::openDevice(int idx, const PacketPipeline* pipeli
     return device;
   }
 
+  const int usb_speed = libusb_get_device_speed(dev.dev);
+  if (usb::isKnownSubSuperSpeed(usb_speed))
+  {
+    LOG_ERROR << "Kinect v2 " << PrintBusAndDevice(dev.dev) << " negotiated "
+              << usb::formatLibusbSpeed(usb_speed)
+              << ", but SuperSpeed USB 3 is required. Connect the sensor directly with a "
+                 "known-good USB 3 cable and port.";
+    delete pipeline;
+    return device;
+  }
+  if (!usb::isSuperSpeedOrHigher(usb_speed))
+  {
+    LOG_WARNING << "libusb could not report the negotiated speed for Kinect v2 "
+                << PrintBusAndDevice(dev.dev)
+                << "; continuing because the USB backend may not "
+                   "support speed reporting.";
+  }
+
   int r;
   for (int i = 0; i < 10; i++)
   {

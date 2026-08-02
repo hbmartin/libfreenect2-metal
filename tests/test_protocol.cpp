@@ -7,6 +7,7 @@
 
 #include <libfreenect2/protocol/command.h>
 #include <libfreenect2/protocol/response.h>
+#include <libfreenect2/usb/error.h>
 
 using libfreenect2::protocol::DepthCameraParamsResponse;
 using libfreenect2::protocol::FirmwareVersionResponse;
@@ -50,4 +51,32 @@ TEST(ProtocolCommand, CarriesSequenceAndResponseBounds)
   EXPECT_EQ(command.minResponseLength(), 0x200u);
   EXPECT_NE(command.data(), static_cast<const uint8_t*>(NULL));
   EXPECT_GT(command.size(), 0u);
+}
+
+TEST(UsbDiagnostics, ClassifiesAndFormatsLinkSpeeds)
+{
+  EXPECT_TRUE(libfreenect2::usb::isKnownSubSuperSpeed(LIBUSB_SPEED_LOW));
+  EXPECT_TRUE(libfreenect2::usb::isKnownSubSuperSpeed(LIBUSB_SPEED_FULL));
+  EXPECT_TRUE(libfreenect2::usb::isKnownSubSuperSpeed(LIBUSB_SPEED_HIGH));
+  EXPECT_FALSE(libfreenect2::usb::isKnownSubSuperSpeed(LIBUSB_SPEED_UNKNOWN));
+  EXPECT_FALSE(libfreenect2::usb::isKnownSubSuperSpeed(LIBUSB_SPEED_SUPER));
+
+  EXPECT_FALSE(libfreenect2::usb::isSuperSpeedOrHigher(LIBUSB_SPEED_UNKNOWN));
+  EXPECT_TRUE(libfreenect2::usb::isSuperSpeedOrHigher(LIBUSB_SPEED_SUPER));
+  EXPECT_TRUE(libfreenect2::usb::isSuperSpeedOrHigher(LIBUSB_SPEED_SUPER + 1));
+
+  EXPECT_EQ("High-Speed (480 Mb/s)", libfreenect2::usb::formatLibusbSpeed(LIBUSB_SPEED_HIGH));
+  EXPECT_EQ("SuperSpeed (5 Gb/s)", libfreenect2::usb::formatLibusbSpeed(LIBUSB_SPEED_SUPER));
+  EXPECT_EQ("unknown", libfreenect2::usb::formatLibusbSpeed(LIBUSB_SPEED_UNKNOWN));
+  EXPECT_EQ("SuperSpeed or faster", libfreenect2::usb::formatLibusbSpeed(LIBUSB_SPEED_SUPER + 1));
+}
+
+TEST(UsbDiagnostics, ExplainsBusyInterfaceClaims)
+{
+  const std::string busy = libfreenect2::usb::formatInterfaceClaimError(LIBUSB_ERROR_BUSY);
+  EXPECT_NE(std::string::npos, busy.find("another process or driver"));
+  EXPECT_NE(std::string::npos, busy.find("LIBUSB_DEBUG=3"));
+
+  const std::string access = libfreenect2::usb::formatInterfaceClaimError(LIBUSB_ERROR_ACCESS);
+  EXPECT_EQ(std::string::npos, access.find("another process or driver"));
 }

@@ -222,22 +222,35 @@ UsbControl::ResultCode UsbControl::setConfiguration()
 
 UsbControl::ResultCode UsbControl::claimInterfaces()
 {
-  UsbControl::ResultCode code = Success;
-  int r;
-
-  r = libusb_claim_interface(handle_, ControlAndRgbInterfaceId);
-  CHECK_LIBUSB_RESULT(code, r) << "failed to claim interface with ControlAndRgbInterfaceId(="
-                               << ControlAndRgbInterfaceId << ")! "
-                               << usb::formatLibusbError(r, true);
-
-  if (code == Success)
+  const int interface_ids[] = {ControlAndRgbInterfaceId, IrInterfaceId};
+  const char* interface_names[] = {"control/RGB", "IR"};
+  for (size_t i = 0; i < sizeof(interface_ids) / sizeof(interface_ids[0]); ++i)
   {
-    r = libusb_claim_interface(handle_, IrInterfaceId);
-    CHECK_LIBUSB_RESULT(code, r) << "failed to claim interface with IrInterfaceId(="
-                                 << IrInterfaceId << ")! " << usb::formatLibusbError(r, true);
-  }
+    const int interface_id = interface_ids[i];
+    const int driver_active = libusb_kernel_driver_active(handle_, interface_id);
+    if (driver_active == 1)
+    {
+      LOG_ERROR << "cannot claim Kinect " << interface_names[i] << " interface " << interface_id
+                << ": a kernel driver is active. Stop the driver or service that owns the "
+                   "interface; libfreenect2 will not detach it automatically.";
+      return Error;
+    }
+    if (driver_active < 0 && driver_active != LIBUSB_ERROR_NOT_SUPPORTED)
+    {
+      LOG_WARNING << "could not determine whether a kernel driver owns Kinect "
+                  << interface_names[i] << " interface " << interface_id << ": "
+                  << usb::formatLibusbError(driver_active);
+    }
 
-  return code;
+    const int result = libusb_claim_interface(handle_, interface_id);
+    if (result != LIBUSB_SUCCESS)
+    {
+      LOG_ERROR << "failed to claim Kinect " << interface_names[i] << " interface " << interface_id
+                << ": " << usb::formatInterfaceClaimError(result);
+      return Error;
+    }
+  }
+  return Success;
 }
 
 UsbControl::ResultCode UsbControl::releaseInterfaces()
