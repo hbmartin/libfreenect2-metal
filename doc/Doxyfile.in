@@ -138,7 +138,6 @@ USE_HTAGS              = NO
 VERBATIM_HEADERS       = NO
 
 ALPHABETICAL_INDEX     = NO
-COLS_IN_ALPHA_INDEX    = 5
 IGNORE_PREFIX          =
 GENERATE_HTML          = YES
 HTML_OUTPUT            = html
@@ -156,7 +155,6 @@ HTML_EXTRA_FILES       = @CMAKE_CURRENT_SOURCE_DIR@/doxygen-awesome/doxygen-awes
                          @CMAKE_CURRENT_SOURCE_DIR@/doxygen-awesome/doxygen-awesome-interactive-toc.js \
                          @CMAKE_CURRENT_SOURCE_DIR@/doxygen-awesome/doxygen-awesome-tabs.js
 HTML_COLORSTYLE        = LIGHT
-HTML_TIMESTAMP         = NO
 HTML_DYNAMIC_SECTIONS  = NO
 HTML_INDEX_NUM_ENTRIES = 100
 GENERATE_DOCSET        = NO
@@ -169,7 +167,6 @@ FULL_SIDEBAR           = NO
 ENUM_VALUES_PER_LINE   = 4
 EXT_LINKS_IN_WINDOW    = NO
 FORMULA_FONTSIZE       = 10
-FORMULA_TRANSPARENT    = YES
 USE_MATHJAX            = NO
 SEARCHENGINE           = YES
 
@@ -207,8 +204,6 @@ GENERATE_TAGFILE       =
 ALLEXTERNALS           = NO
 EXTERNAL_GROUPS        = YES
 EXTERNAL_PAGES         = YES
-PERL_PATH              = /usr/bin/perl
 
-CLASS_DIAGRAMS         = YES
 HIDE_UNDOC_RELATIONS   = NO
 HAVE_DOT               = NO
