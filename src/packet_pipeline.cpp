@@ -54,12 +54,10 @@ public:
   virtual void process(const RgbPacket &) {}
 };
 
-#if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT) && \
-    defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
-static RgbPacketProcessor *withVaapiRuntimeFallback(VaapiRgbPacketProcessor *processor,
-                                                    bool allow_fallback)
+#if defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
+static RgbPacketProcessor* withRuntimeFallback(RgbPacketProcessor* processor, bool allow_fallback)
 {
-  if(allow_fallback)
+  if (allow_fallback)
     return new RgbDecoderFallback(processor, new TurboJpegRgbPacketProcessor());
   return processor;
 }
@@ -118,10 +116,10 @@ static RgbPacketProcessor *getDefaultRgbPacketProcessor(const PacketPipelineConf
 #if defined(LIBFREENECT2_WITH_VT_SUPPORT)
   return new VTRgbPacketProcessor();
 #elif defined(LIBFREENECT2_WITH_VAAPI_SUPPORT)
-  VaapiRgbPacketProcessor *vaapi = new VaapiRgbPacketProcessor(config.vaapi_device);
+  VaapiRgbPacketProcessor* vaapi = new VaapiRgbPacketProcessor(config.vaapi_device);
   if (vaapi->good())
 #if defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
-    return withVaapiRuntimeFallback(vaapi, config.allow_fallback);
+    return withRuntimeFallback(vaapi, config.allow_fallback);
 #else
     return vaapi;
 #endif
@@ -129,9 +127,13 @@ static RgbPacketProcessor *getDefaultRgbPacketProcessor(const PacketPipelineConf
     delete vaapi;
   return new TurboJpegRgbPacketProcessor();
 #elif defined(LIBFREENECT2_WITH_TEGRAJPEG_SUPPORT)
-  RgbPacketProcessor *tegra = new TegraJpegRgbPacketProcessor();
+  RgbPacketProcessor* tegra = new TegraJpegRgbPacketProcessor();
   if (tegra->good())
+#if defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
+    return withRuntimeFallback(tegra, config.allow_fallback);
+#else
     return tegra;
+#endif
   else
     delete tegra;
   return new TurboJpegRgbPacketProcessor();
@@ -177,10 +179,10 @@ static RgbPacketProcessor *getConfiguredRgbPacketProcessor(const PacketPipelineC
 
   if (processor != 0 && processor->good())
   {
-#if defined(LIBFREENECT2_WITH_VAAPI_SUPPORT) && defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
-    if(resolved.rgb_decoder == PacketPipelineConfig::VAAPI)
-      return withVaapiRuntimeFallback(static_cast<VaapiRgbPacketProcessor *>(processor),
-                                      resolved.allow_fallback);
+#if defined(LIBFREENECT2_WITH_TURBOJPEG_SUPPORT)
+    if (resolved.rgb_decoder == PacketPipelineConfig::VAAPI ||
+        resolved.rgb_decoder == PacketPipelineConfig::TegraJPEG)
+      return withRuntimeFallback(processor, resolved.allow_fallback);
 #endif
     return processor;
   }

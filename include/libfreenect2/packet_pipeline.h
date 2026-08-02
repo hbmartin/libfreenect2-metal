@@ -59,7 +59,7 @@ struct LIBFREENECT2_API PacketPipelineConfig
 
   RgbDecoder rgb_decoder;
   std::string vaapi_device;
-  bool allow_fallback;
+  bool allow_fallback; ///< Permit TurboJPEG recovery from decoder initialization/runtime failure.
 };
 
 /** @defgroup pipeline Packet Pipelines

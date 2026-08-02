@@ -34,8 +34,11 @@ protected:
   virtual Allocator* getAllocator();
 
 private:
+  class DeferredFrameListener;
+
   RgbPacketProcessor* primary_;
   RgbPacketProcessor* fallback_;
+  DeferredFrameListener* primary_listener_;
   // Child decoder health is read only by the decode thread and published
   // through these atomics for parser and user threads.
   std::atomic<bool> using_fallback_;

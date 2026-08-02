@@ -114,17 +114,18 @@ baseline JPEG VLD. NVIDIA nodes are skipped during automatic discovery because
 probing them has caused driver failures; an explicitly configured NVIDIA path
 is still attempted.
 
-`allow_fallback` defaults to `true`. If VAAPI cannot initialize, or if it fails
-while decoding a packet, that packet is retried once with TurboJPEG and all
-later packets stay on TurboJPEG. The failed VAAPI attempt never publishes an
-error or duplicate frame. With an explicit decoder and fallback disabled, an
-initialization or runtime failure leaves the pipeline unhealthy instead of
-claiming that a valid frame was produced.
+`allow_fallback` defaults to `true`. If VAAPI or TegraJPEG cannot initialize,
+or if either fails while decoding a packet, that packet is retried once with
+TurboJPEG and all later packets stay on TurboJPEG. The failed hardware-decoder
+attempt never publishes an error or duplicate frame. With an explicit decoder
+and fallback disabled, an initialization or runtime failure leaves the pipeline
+unhealthy instead of claiming that a valid frame was produced.
 
 For diagnostics, enable `LIBFREENECT2_LOGGER_LEVEL=info`. VAAPI reports the
 chosen DRM node and driver. Selection failures, unsupported output formats,
-and the one-time switch to TurboJPEG are logged as warnings or errors. Call
-`pipeline->good()` before opening a device when strict selection is required.
+incomplete TegraJPEG results, and the one-time switch to TurboJPEG are logged
+as warnings or errors. Call `pipeline->good()` before opening a device when
+strict selection is required.
 
 ## Color camera settings
 

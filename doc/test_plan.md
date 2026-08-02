@@ -18,6 +18,7 @@ placement in @ref development.
 | Metal/CPU depth parity | `build-test-metal` | self-hosted macOS, real Apple GPU |
 | Depth filter backend combinations | `linux-filter-backends` | |
 | VAAPI JPEG decoding | `linux-vaapi` | |
+| TegraJPEG fallback state machine | `linux-vaapi` | Fake primary; real Tegra hardware is release-only |
 | CUDA | *compile only* | No runtime validation in CI |
 | ASan + UBSan, TSan | `sanitizers` | |
 | Stream-parser fuzzing | `fuzzers` | Bounded smoke run |
@@ -87,12 +88,22 @@ must attach results for:
 * Kinect lifecycle soak, including an attended unplug/replug cycle.
 * 60-second raw recording and replay validation (@ref recording_replay).
 * Intel or AMD VAAPI runtime fallback.
+* NVIDIA Jetson TegraJPEG runtime fallback.
 * CPU/CUDA recording parity, since CI only compiles CUDA.
 * Three-distance plus unseen-holdout depth calibration
   (@ref depth_calibration).
 
 A soak run with `reconnect_cycles: 0` does not satisfy the unplug/replug gate
 and must be identified as such.
+
+### TegraJPEG release check
+
+On a Jetson build with TegraJPEG and TurboJPEG enabled, run at least ten minutes
+of RGB capture with `LIBFREENECT2_RGB_PROCESSOR=tegrajpeg Protonect -noviewer
+-frames 18000`. If TegraJPEG reports an incomplete decoding result, require one
+fallback warning, a successful frame for that same packet, and uninterrupted
+TurboJPEG frames afterward. If the hardware failure does not occur, record the
+run as "not triggered" rather than claiming that runtime recovery was proven.
 
 ## 4. Recording results
 
