@@ -374,6 +374,9 @@ runtime device. The opened device reports the pipeline it actually consumed.
 
 `Protonect` additionally accepts a pipeline as a positional argument using its
 own short vocabulary: `cpu`, `gl`, `cl`, `clkde`, `cuda`, `cudakde`, `metal`.
+Unlike the environment preference, a positional GPU selection is strict:
+Protonect exits before opening a sensor when that backend is not compiled or
+has no usable runtime device.
 
 To discover pipelines programmatically, `getCompiledPacketPipelines()` returns
 the canonical names built into the library and `getAvailablePacketPipelines()`

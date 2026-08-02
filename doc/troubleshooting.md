@@ -204,13 +204,18 @@ device:
 * **Ask the device what it got.** The opened device reports the pipeline it
   actually consumed, so you can assert on it rather than guessing.
 
+The positional Protonect spellings are strict. For example, `Protonect cl`
+exits before USB enumeration when OpenCL was not compiled or exposes no usable
+device; it does not silently fall back. Use `LIBFREENECT2_PIPELINE=opencl` when
+fallback to another backend is acceptable.
+
 ### Per-backend checks
 
 | Backend | Check |
 |---|---|
 | Metal | macOS only. The log names the GPU it selected, e.g. `MetalDepthPacketProcessor: using device Apple M4 Pro`. |
 | OpenGL | Needs OpenGL 3.1; OpenGL ES is unsupported. Deprecated by Apple — prefer `metal` there. |
-| OpenCL | Verify the ICD stack with `clinfo` before suspecting libfreenect2. A driver that is installed but exposes no usable device is skipped, not fatal. |
+| OpenCL | Verify the ICD stack with `clinfo` before suspecting libfreenect2. An unusable explicit `Protonect cl` selection is fatal; an environment-selected OpenCL preference is skipped. |
 | CUDA | Hosted CI compiles the CUDA pipelines but does not validate them at runtime. Compare CUDA against CPU output on your own hardware. |
 | VAAPI | Intel, Ivy Bridge or newer, Linux only. Select an explicit node with `LIBFREENECT2_VAAPI_DEVICE=/dev/dri/renderD128` if autodetection picks the wrong one. |
 

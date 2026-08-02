@@ -166,7 +166,7 @@ jobs:
           -DCMAKE_CXX_STANDARD=11
           -DBUILD_SHARED_LIBS=OFF
           -DBUILD_TESTING=ON
-          -DBUILD_EXAMPLES=OFF
+          -DBUILD_EXAMPLES=ON
           -DBUILD_OPENNI2_DRIVER=OFF
           -DENABLE_OPENCL=ON
           -DENABLE_OPENGL=ON
@@ -175,8 +175,29 @@ jobs:
           -DENABLE_TEGRAJPEG=OFF
           -DENABLE_WARNINGS_AS_ERRORS=ON
 
-      - name: Build filter parity tests
-        run: cmake --build build-filter-backends -j 2 --target freenect2 unit_tests
+      - name: Build filter parity tests and Protonect
+        run: cmake --build build-filter-backends -j 2 --target freenect2 unit_tests Protonect
+
+      - name: Reject an unavailable explicit OpenCL pipeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          empty_icd_dir="$(mktemp -d)"
+          set +e
+          output="$(OCL_ICD_VENDORS="$empty_icd_dir" \
+            ./build-filter-backends/bin/Protonect cl -noviewer 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if (( status == 0 )); then
+            echo "Protonect accepted an unavailable explicit OpenCL pipeline" >&2
+            exit 1
+          fi
+          grep -F "Requested pipeline 'cl' is compiled but unavailable at runtime." <<<"$output"
+          if grep -F "enumerating devices" <<<"$output"; then
+            echo "Protonect enumerated USB devices after OpenCL selection failed" >&2
+            exit 1
+          fi
 
       - name: Test all OpenCL and OpenGL filter combinations
         run: >-
