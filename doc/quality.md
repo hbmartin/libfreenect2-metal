@@ -1,4 +1,4 @@
-# Quality checks
+# Quality checks {#quality}
 
 libfreenect2 keeps compiler diagnostics and dynamic instrumentation target-scoped. Third-party
 GoogleTest code and system headers are not subjected to the project's warning policy.
@@ -21,7 +21,8 @@ project warning set. Do not use it to land warning-producing first-party code.
 ## Python tooling
 
 The repository's Python helper and maintenance scripts require Python 3.12 or
-newer. Their Ruff policy matches `pylibfreenect3`: Ruff targets Python 3.12,
+newer; see @ref development for the full toolchain requirements. Their Ruff
+policy matches `pylibfreenect3`: Ruff targets Python 3.12,
 uses an 88-character line length, and enables the `E`, `F`, `I`, `UP`, `B`,
 `SIM`, `RUF`, and `PT` rule families. Run the required Python quality gate
 locally with:
