@@ -72,6 +72,16 @@ context may not open for the root user at all — so the result is ambiguous
 either way, and it can leave root-owned files behind. Checking the node mode
 answers the same question unambiguously.
 
+### Interface already owned
+
+At open, libfreenect2 now rejects a known USB 2 link before resetting the
+sensor and reports when a kernel driver owns either video interface. It never
+detaches that driver automatically. A `LIBUSB_ERROR_BUSY` claim failure can
+also mean that another Kinect, OpenNI, or Kinect SDK process already has the
+interface open. Stop the competing process or service, confirm the link is
+still `5000M` with `lsusb -t`, and retry. On Linux, `sudo fuser -v
+/dev/bus/usb/BBB/DDD` can identify processes holding the device node.
+
 ### Virtual machines
 
 USB 3.0 isochronous transfer rarely survives a VM's USB passthrough. Run on bare
