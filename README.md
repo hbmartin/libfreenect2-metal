@@ -3,6 +3,7 @@
 [![CI](https://github.com/hbmartin/libfreenect2-metal/actions/workflows/ci.yml/badge.svg)](https://github.com/hbmartin/libfreenect2-metal/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/docs-online-blue.svg)](https://hbmartin.github.io/libfreenect2-metal/)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20GPL--2.0-blue.svg)](#license)
+<!-- Keep the version badge and the Version section in sync with PROJECT_VERSION in CMakeLists.txt. -->
 [![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](#version)
 [![C++11](https://img.shields.io/badge/C%2B%2B-11-blue.svg)](#requirements)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](#installation)

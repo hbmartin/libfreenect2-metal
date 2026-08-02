@@ -166,6 +166,3 @@ $RECYCLE.BIN/
 
 # Mac desktop service store files
 .DS_Store
-reviews_triage/
-triage_decisions.db
-old-wiki/
