@@ -1,0 +1,11 @@
+Doxygen Awesome CSS
+===================
+
+Upstream: https://github.com/jothepro/doxygen-awesome-css
+Version: v2.4.2
+License: MIT (see LICENSE)
+
+This directory contains the unmodified base stylesheet and the four JavaScript
+extensions used by the libfreenect2 documentation: dark-mode toggle, fragment
+copy button, paragraph links, and interactive table of contents. Sidebar-only
+styles and the experimental tabs extension are intentionally not vendored.

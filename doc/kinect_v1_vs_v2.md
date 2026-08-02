@@ -1,5 +1,7 @@
 # Kinect v1 versus Kinect v2 {#kinect_v1_vs_v2}
 
+[TOC]
+
 **This library drives the Kinect for Windows v2 only.** If you have an Xbox 360
 Kinect or a Kinect for Windows v1, nothing here will work for you — use
 [libfreenect](https://github.com/OpenKinect/libfreenect) instead.

@@ -1,5 +1,7 @@
 # Frequently asked questions {#faq}
 
+[TOC]
+
 Answers to recurring API questions from the upstream tracker.
 
 ## Why are the images mirrored, and how do I un-mirror them? ([#172](https://github.com/OpenKinect/libfreenect2/issues/172))

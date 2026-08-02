@@ -1,6 +1,8 @@
 # Recording, replay, and multiple Kinects {#recording_replay}
 
-## Version 1 recording directories
+[TOC]
+
+## Version 1 and 2 recording directories
 
 Recording and replay were requested for years
 ([#438](https://github.com/OpenKinect/libfreenect2/issues/438),
@@ -17,11 +19,19 @@ recording/
   recording.complete
 ```
 
-`manifest.json` has format version 1. It records the device serial and
+`manifest.json` version 1 records the device serial and
 firmware, JPEG and Kinect-v2-raw stream encodings, color and IR camera
 parameters, the safe relative path to the P0 tables, and the clock semantics.
 Device timestamps are the wrapping Kinect clock in 0.125 ms ticks. Arrival
 offsets are monotonic host microseconds relative to writer construction.
+
+Version 0.4 writers always publish manifest version 2. It preserves all version
+1 fields and adds an optional safe relative path to
+`calibration/profile.json`. The attached canonical profile contains conventional
+camera models, a rigid depth-to-color transform, optional depth correction,
+quality measurements, and provenance. Readers accept both versions. Version 2
+replay rejects a missing, malformed, unsafe, or serial-mismatched referenced
+profile instead of silently ignoring it.
 
 `frames.ndjson` is an append-only journal. Every newline-terminated object has
 a global index, stream, relative path, byte count, device timestamp, sequence,
@@ -60,10 +70,16 @@ explicit bound:
 ```text
 KinectCapture record OUTPUT_DIRECTORY --depth-frames 1800
 KinectCapture record OUTPUT_DIRECTORY --duration-seconds 60
+KinectCapture record OUTPUT_DIRECTORY --depth-frames 1800 \
+  --calibration-profile profile.json
 ```
 
 The output directory must not already exist. An interrupt leaves it incomplete
 and available for explicit salvage inspection.
+
+Programmatic writers call `setCalibrationProfile()` after `setCalibration()`.
+Replay devices return an attached profile through `getCalibrationProfile()`;
+live devices and version 1 recordings return false.
 
 ### Raw packet representation
 

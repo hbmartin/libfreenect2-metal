@@ -1,5 +1,7 @@
 # Registration and coordinate mapping recipes {#registration}
 
+[TOC]
+
 The `Registration` class answers every "how do I map between color, depth,
 and 3D coordinates" question. This page collects the recipes behind the most
 frequent upstream reports:
@@ -17,7 +19,10 @@ frequent upstream reports:
 ```cpp
 libfreenect2::Registration registration(dev->getIrCameraParams(),
                                         dev->getColorCameraParams());
-libfreenect2::Frame undistorted(512, 424, 4), registered(512, 424, 4);
+libfreenect2::Frame undistorted(512, 424, 4, nullptr,
+                               libfreenect2::Frame::Float);
+libfreenect2::Frame registered(512, 424, 4, nullptr,
+                              libfreenect2::Frame::BGRX);
 libfreenect2::Frame bigdepth(1920, 1082, 4);       // optional
 int color_depth_map[512 * 424];                    // optional
 
@@ -104,3 +109,17 @@ Distortion (`k1 k2 k3 p1 p2`) applies to the raw IR image only (see
 internally by `apply()`; they are not a conventional extrinsic matrix. If
 you need a true extrinsic calibration between the cameras, calibrate
 externally.
+
+## Conventional projective registration
+
+Version 0.4 also provides `CalibrationProfile` and `ProjectiveRegistration` for
+ordinary color/IR intrinsics plus a rigid depth-to-color transform. It performs
+forward source-pixel projection into a caller-selected target camera, supports
+deterministic nearest and four-neighbor rasterization, and writes float depth in
+millimeters with zero for missing pixels. It does not reinterpret the factory
+`shift_d`, `shift_m`, or polynomial coefficients.
+
+Use `Registration` for the Kinect factory model and `ProjectiveRegistration`
+for a conventional profile; neither is a drop-in numerical replacement for the
+other. See @ref calibration_profiles for the profile schema, offline tool, and
+runtime example.

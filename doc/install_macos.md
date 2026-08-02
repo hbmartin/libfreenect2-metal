@@ -1,5 +1,7 @@
 # Installing on macOS {#install_macos}
 
+[TOC]
+
 This is the reference install path for macOS, including Apple Silicon. For a
 condensed version see the [README](https://github.com/hbmartin/libfreenect2-metal#readme).
 
@@ -29,7 +31,7 @@ cd libfreenect2-metal
 ```
 
 Cloning `OpenKinect/libfreenect2` instead gets you upstream, which has no Metal
-pipeline and none of the 0.3 APIs described in the guides.
+pipeline and none of the 0.4 APIs described in the guides.
 
 ## Dependencies
 

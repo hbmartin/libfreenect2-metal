@@ -1,5 +1,7 @@
 # Frame timing and software pairing {#frame_timing}
 
+[TOC]
+
 Kinect v2 frames expose two clocks with different purposes:
 
 * `Frame::timestamp` is the device timestamp in 0.125 ms ticks. It is useful

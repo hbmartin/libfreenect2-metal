@@ -1,5 +1,7 @@
 # Installing on Linux {#install_linux}
 
+[TOC]
+
 This is the reference install path for Linux. For a condensed version see the
 [README](https://github.com/hbmartin/libfreenect2-metal#readme).
 
@@ -43,7 +45,7 @@ cd libfreenect2-metal
 ```
 
 Cloning `OpenKinect/libfreenect2` instead gets you upstream, which has none of
-the 0.3 APIs described in the guides.
+the 0.4 APIs described in the guides.
 
 ## Required dependencies
 

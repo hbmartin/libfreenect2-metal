@@ -1,5 +1,7 @@
 # Depth accuracy and calibration {#depth_accuracy}
 
+[TOC]
+
 This page collects what is known about the accuracy of the depth values
 libfreenect2 produces, and what you can do about it. It consolidates
 long-standing upstream reports:

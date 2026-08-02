@@ -1,5 +1,7 @@
 # Quality checks {#quality}
 
+[TOC]
+
 libfreenect2 keeps compiler diagnostics and dynamic instrumentation target-scoped. Third-party
 GoogleTest code and system headers are not subjected to the project's warning policy.
 
@@ -104,7 +106,7 @@ The workflow publishes the complete `llvm-cov` text and LCOV reports as artifact
 The required CI job runs `.clang-tidy` over every first-party translation unit in CMake's compile
 database. It enables Clang Static Analyzer, bug-prone, concurrency, performance, and portability
 checks. CodeQL's `security-extended` query suite runs independently. The scheduled deep-analysis
-workflow also runs Clang `scan-build` over a C++11 configuration.
+workflow also runs Clang `scan-build` over a C++17 configuration.
 
 For a local run:
 

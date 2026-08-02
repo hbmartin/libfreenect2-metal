@@ -1,5 +1,7 @@
 # Kinect v2 USB protocol {#protocol}
 
+[TOC]
+
 A reference for the wire protocol libfreenect2 speaks to the Kinect for Windows
 v2. It is written for people modifying the driver, debugging a capture, or
 porting the protocol elsewhere — not for application authors, who should use
