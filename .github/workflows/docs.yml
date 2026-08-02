@@ -20,6 +20,7 @@ on:
       - 'include/**'
       - 'examples/**'
       - 'README.md'
+      - 'CMakeLists.txt'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 

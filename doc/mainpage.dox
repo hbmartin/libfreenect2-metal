@@ -20,10 +20,10 @@ Where to start
   @ref install_windows, and @ref troubleshooting when something goes wrong. The
   [README](https://github.com/hbmartin/libfreenect2-metal#readme) has the
   condensed version.
-- **Solving a specific problem?** Browse the @subpage guides &mdash;
+- **Solving a specific problem?** Browse the @ref guides &mdash;
   task-oriented recipes for registration, depth accuracy, recording, Python,
   and more.
-- **Looking up a class?** The [Modules](modules.html) page organizes the API
+- **Looking up a class?** The [Topics](topics.html) page organizes the API
   by functionality; [Classes](annotated.html) lists every type.
 
 Start with libfreenect2::Freenect2 to enumerate and open devices,
@@ -58,10 +58,19 @@ recording and replaying raw streams and running @ref recording_replay
 "multiple Kinects", @ref python "Python bindings", and dumping raw frames via
 the `dump` pipeline.
 
+Documentation
+=============
+
+The complete guide catalog is included here so installation, troubleshooting,
+integration, and maintainer material is visible without expanding the
+navigation sidebar. The standalone @ref guides page presents the same catalog.
+
+@copydetails guides
+
 Getting Started
 ===============
 
-To read the API documentation, start with the [Modules](modules.html) page
+To read the API documentation, start with the [Topics](topics.html) page
 which nicely organizes classes according to their functionalities.
 
 Example programs can be found in the source distribution under the `examples`
