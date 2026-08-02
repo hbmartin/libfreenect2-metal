@@ -152,21 +152,26 @@ the [registration recipes](doc/registration.md), and
 
 ### Hardware
 
-* A **USB 3.0 controller**. USB 2 is not supported. Intel and NEC host
-  controllers are known to work; ASMedia controllers are known not to work.
+* A **USB 3.0 controller**, one per sensor. USB 2 is not supported. Intel and
+  NEC host controllers are widely reported to work; ASMedia controllers are
+  widely reported not to.
 * Virtual machines likely do not work, because USB 3.0 isochronous transfer is
   delicate.
-* The sensor's dedicated AC adapter.
+* The sensor's dedicated AC adapter — the USB connection alone will not power it.
 
-For multiple Kinects, see [Multiple Kinects](doc/install_linux.md#multiple-kinects).
+Why one controller per sensor, and how to confirm the link negotiated
+SuperSpeed: [USB bandwidth and transfer tuning](doc/linux_usb.md).
 
-### Operating systems
+### Platform support
 
-| Platform | Notes |
+| Tier | Platforms |
 |---|---|
-| Linux | Debian/Ubuntu are the tested path. Kernel 3.16+, as new as possible. libusb ≥ 1.0.20. |
-| macOS | Intel and Apple Silicon (native arm64, `metal` pipeline). |
-| Windows | Windows 8 or newer. Windows 7 works but is buggy. |
+| **Tested** | Ubuntu 24.04 (GCC/Clang × shared/static, sanitizers, fuzzers, coverage); macOS on Apple Silicon (Metal, C++11, Metal/CPU parity on real hardware) |
+| **Expected to work** | Ubuntu 22.04 LTS and newer, Debian 12 and newer, other current distributions with libusb ≥ 1.0.20 and kernel ≥ 5.15; macOS on Intel; Windows 10 and newer |
+| **Unsupported** | Ubuntu 20.04 and older, Debian 11 and older, Windows 8 and older, any USB 2 host, virtual machines, Jetson TK1/TX1 |
+
+Older platforms are not blocked by the build system, but they are untested and
+some optional-backend packages no longer exist for them.
 
 ### Toolchain
 
@@ -184,7 +189,6 @@ and AppleClang; newer standards work.
 | VAAPI JPEG decoding | Intel Ivy Bridge or newer, Linux only |
 | VideoToolbox JPEG decoding | macOS only (off by default on Apple Silicon) |
 | OpenNI2 integration | OpenNI2 2.2.0.33 |
-| Jetson TK1 | Linux4Tegra 21.3 or later. Check [Jetson TK1 issues](https://github.com/OpenKinect/libfreenect2/wiki/Troubleshooting#jetson-tk1-issues) first. Jetson TX1 is not supported. |
 
 ## Installation
 
@@ -246,7 +250,8 @@ sudo cp platform/linux/udev/90-kinect2.rules /etc/udev/rules.d/
 ./build/bin/Protonect
 ```
 
-Optional backends (OpenCL, CUDA, VAAPI, OpenNI2) and Ubuntu 14.04 instructions:
+Minimum supported release is Ubuntu 22.04 LTS. Optional backends (OpenCL, CUDA,
+VAAPI, OpenNI2), support tiers, and multi-sensor setup:
 [Linux install guide](doc/install_linux.md).
 
 </details>
@@ -401,6 +406,7 @@ at **<https://hbmartin.github.io/libfreenect2-metal/>**.
 **Install and fix**
 * [macOS](doc/install_macos.md) · [Linux](doc/install_linux.md) · [Windows](doc/install_windows.md)
 * [Troubleshooting](doc/troubleshooting.md)
+* [USB bandwidth and transfer tuning](doc/linux_usb.md)
 * [FAQ](doc/faq.md)
 * [Runtime configuration reference](doc/configuration.md)
 
@@ -418,6 +424,7 @@ at **<https://hbmartin.github.io/libfreenect2-metal/>**.
 **Maintain**
 * [Development and contributing](doc/development.md)
 * [Quality checks, sanitizers, fuzzing, and coverage](doc/quality.md)
+* [Test plan](doc/test_plan.md)
 * [Self-hosted runner setup](doc/self_hosted_runner.md)
 
 ## Troubleshooting

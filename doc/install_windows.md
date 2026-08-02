@@ -4,8 +4,8 @@ This is the reference install path for Windows with Visual Studio. For a
 condensed version see the
 [README](https://github.com/hbmartin/libfreenect2-metal#readme).
 
-If you only need a binary and are not modifying libfreenect2, see
-[vcpkg](#vcpkg) at the bottom — it is far less work.
+If you only need a binary and are not modifying libfreenect2, see the **vcpkg**
+section at the bottom of this page — it is far less work.
 
 ## Requirements
 

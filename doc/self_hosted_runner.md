@@ -1,16 +1,20 @@
 # Self-hosted macOS CI runner setup {#self_hosted_runner}
 
-The CI workflow (`.github/workflows/ci.yml`) runs on a **self-hosted macOS
-runner** rather than a GitHub-hosted one, because two of its jobs need a real
-Apple GPU:
+Most of the CI workflow (`.github/workflows/ci.yml`) runs on GitHub-hosted
+`ubuntu-24.04`. Exactly one job needs a real Apple GPU and therefore a
+**self-hosted macOS runner**:
 
-- **build-test** builds with Metal enabled and runs the full test suite,
+- **build-test-metal** builds with Metal enabled at C++11 with
+  warnings-as-errors and hardened libc++, then runs the full test suite
   including the Metal-vs-CPU depth parity test on the GPU.
-- **sanitizers** rebuilds the hardware-free tests under ASan + UBSan.
-- **format** / **static-analysis** run `clang-format` / `clang-tidy` (advisory).
 
-This guide sets up a machine to serve that workflow. No Kinect hardware is
-required — every test is hardware-free; only a Metal-capable GPU is used.
+Every other job — `python-quality`, `linux-builds`, `linux-filter-backends`,
+`linux-vaapi`, `sanitizers`, `fuzzers`, `coverage`, `format`, `semgrep`, and
+`static-analysis` — runs on GitHub-hosted Linux and needs nothing from this
+machine.
+
+This guide sets up a machine to serve that one job. No Kinect hardware is
+required — every test in it is hardware-free; only a Metal-capable GPU is used.
 
 The separate, manually dispatched `Kinect hardware soak` workflow targets a
 runner that also has the `kinect` label and a physically connected Kinect v2.
@@ -74,16 +78,18 @@ Use the Homebrew prefix that matches the machine: `/opt/homebrew` on Apple
 Silicon, `/usr/local` on Intel. Do not run the shell/CMake under Rosetta on
 Apple Silicon (see the macOS notes in the top-level `README.md`).
 
-### Advisory-job tools (optional but recommended)
+### Lint tools (optional)
+
+The `format` and `static-analysis` jobs run on GitHub-hosted Linux and install
+their own tooling, so this machine does not need either. Install them only if
+you want to reproduce those checks locally before pushing:
 
 ```bash
 brew install clang-format llvm   # llvm provides clang-tidy
 ```
 
-The `format` and `static-analysis` jobs are advisory (`continue-on-error`) and
-**skip gracefully with a notice** if these are absent — installing them just
-turns the checks on. The workflow finds `clang-tidy` on `PATH` or falls back to
-`/opt/homebrew/opt/llvm/bin/clang-tidy`.
+Note that `format` is advisory (`continue-on-error: true`) but
+`static-analysis` is a hard gate — a clang-tidy failure fails CI.
 
 ## 3. Register the runner with GitHub
 
@@ -135,23 +141,23 @@ Either push a branch and watch the CI jobs, or reproduce them locally on the
 runner:
 
 ```bash
-# build-test job
+# build-test-metal job — the one this machine actually serves
 cmake -B build -DBUILD_TESTING=ON -DENABLE_METAL=ON -DBUILD_EXAMPLES=ON
 cmake --build build -j
 ctest --test-dir build --output-on-failure
 
-# sanitizers job
-cmake -B build-asan -DBUILD_TESTING=ON -DENABLE_SANITIZERS=ON -DENABLE_METAL=OFF -DBUILD_EXAMPLES=OFF
-cmake --build build-asan -j
-ctest --test-dir build-asan -LE gpu --output-on-failure
-
 # Confirm the Metal parity test actually RAN (not skipped):
 build/bin/unit_tests --gtest_filter='MetalCpuParity.*'
 # Expect: "using device <your GPU>" and [  PASSED  ], not [  SKIPPED  ].
+
+# Optional: the sanitizers job runs on GitHub-hosted Linux, but reproduces here
+cmake -B build-asan -DBUILD_TESTING=ON -DENABLE_SANITIZERS=ON -DENABLE_METAL=OFF -DBUILD_EXAMPLES=OFF
+cmake --build build-asan -j
+ctest --test-dir build-asan -LE gpu --output-on-failure
 ```
 
-A healthy runner produces a green `build-test` (with the parity cases running
-on the GPU) and a clean `sanitizers` run.
+A healthy runner produces a green `build-test-metal` with the parity cases
+running on the GPU.
 
 ## 6. Maintenance & security notes
 

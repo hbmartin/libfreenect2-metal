@@ -3,16 +3,28 @@
 This is the reference install path for Linux. For a condensed version see the
 [README](https://github.com/hbmartin/libfreenect2-metal#readme).
 
-Instructions target current Debian and Ubuntu. Other distributions work; adapt
-the package names. See [Legacy distributions](#legacy-distributions) below if
-you are stuck on Ubuntu 14.04.
+**Minimum supported release: Ubuntu 22.04 LTS (Jammy Jellyfish)** or the
+equivalent Debian. Package names below are for Jammy and newer; adapt them for
+other distributions.
+
+## Support tiers
+
+| Tier | Platforms |
+|---|---|
+| **Tested** | Ubuntu 24.04 (CI: GCC and Clang, shared and static, filter backends, VAAPI, sanitizers, fuzzers, coverage) |
+| **Expected to work** | Ubuntu 22.04 LTS and newer; Debian 12 and newer; other current distributions with libusb ≥ 1.0.20 and kernel ≥ 5.15 |
+| **Unsupported** | Ubuntu 20.04 and older, Debian 11 and older, any USB 2 host, virtual machines, 32-bit ARM Jetson TK1/TX1 |
+
+Older releases are not blocked by the build system, but they are not tested and
+their optional-backend packages (notably Beignet, which was removed from Ubuntu
+after 18.04) no longer exist.
 
 ## Requirements
 
 * A USB 3.0 controller. USB 2 is not supported. Intel and NEC host controllers
-  are known to work; ASMedia controllers are known not to work.
-* Kernel 3.16 or newer; as new as possible is better.
-* libusb 1.0.20 or newer.
+  are widely reported to work; ASMedia controllers are widely reported not to.
+* Kernel 5.15 or newer (the Ubuntu 22.04 default).
+* libusb 1.0.20 or newer (Ubuntu 22.04 ships 1.0.25).
 
 Virtual machines usually do not work, because USB 3.0 isochronous transfer is
 delicate.
@@ -39,9 +51,6 @@ the 0.3 APIs described in the guides.
 sudo apt-get install libusb-1.0-0-dev libturbojpeg0-dev
 ```
 
-On Ubuntu 14.04 to 16.04 the TurboJPEG packages are named
-`libturbojpeg libjpeg-turbo8-dev` instead.
-
 ## Optional dependencies
 
 ### OpenGL (example viewer and the `opengl` pipeline)
@@ -50,23 +59,31 @@ On Ubuntu 14.04 to 16.04 the TurboJPEG packages are named
 sudo apt-get install libglfw3-dev
 ```
 
-OpenGL 3.1 is required. On platforms that lack it (for example the Odroid XU4)
-configure with `-DENABLE_OPENGL=OFF`. OpenGL ES is not supported.
+OpenGL 3.1 is required. On platforms that lack it, configure with
+`-DENABLE_OPENGL=OFF`. OpenGL ES is not supported.
 
 ### OpenCL
 
-* **Intel GPU:** `sudo apt-get install beignet-dev`. On older kernels
-  `# echo 0 >/sys/module/i915/parameters/enable_cmd_parser` is needed. See the
-  [Beignet known issues](https://www.freedesktop.org/wiki/Software/Beignet/).
-* **AMD GPU:** install the latest AMD Catalyst drivers from
-  <https://support.amd.com>, then `sudo apt-get install opencl-headers`.
-* **Mali GPU (e.g. Odroid XU4):** as root,
-  ```sh
-  mkdir -p /etc/OpenCL/vendors
-  echo /usr/lib/arm-linux-gnueabihf/mali-egl/libmali.so >/etc/OpenCL/vendors/mali.icd
-  apt-get install opencl-headers
-  ```
-* **Verify:** install `clinfo` to confirm the OpenCL stack is set up correctly.
+Install the ICD loader and development headers, then a vendor runtime:
+
+```sh
+sudo apt-get install ocl-icd-opencl-dev clinfo
+```
+
+| Vendor | Package |
+|---|---|
+| Intel (Gen8+) | `intel-opencl-icd` — the NEO compute runtime. Beignet, the pre-18.04 Intel stack, no longer exists in Ubuntu. |
+| AMD | `mesa-opencl-icd` for the open stack, or AMD's ROCm packages. The Catalyst driver referenced by older guides is discontinued. |
+| NVIDIA | Provided by the proprietary driver package |
+
+Verify the stack independently of libfreenect2 before suspecting the driver:
+
+```sh
+clinfo | head
+```
+
+If `clinfo` reports no platforms, libfreenect2 will skip the OpenCL pipelines —
+that is a driver problem, not a libfreenect2 one.
 
 ### CUDA (NVIDIA only)
 
@@ -88,15 +105,11 @@ otherwise defaults to `all-major`, so configuration does not need to query a
 local GPU.
 
 Hosted CI compiles both CUDA pipelines with CUDA 12.3 but does not claim runtime
-validation. Compare CUDA and CPU output on real hardware before a release.
+validation. Compare CUDA and CPU output on real hardware before a release; see
+@ref test_plan.
 
-Notes:
-
-* **Jetson TK1:** CUDA is preloaded. Requires Linux4Tegra 21.3 or later; check
-  the [Jetson TK1 issues](https://github.com/OpenKinect/libfreenect2/wiki/Troubleshooting#jetson-tk1-issues)
-  before installing. Jetson TX1 is not yet supported.
-* **NVIDIA/Intel dual GPUs:** after installing CUDA, use `sudo prime-select intel`
-  to keep the Intel GPU for the desktop.
+On a system with both NVIDIA and Intel GPUs, keeping the Intel GPU for the
+desktop avoids contention with the depth pipeline.
 
 ### VAAPI JPEG decoding (Intel only)
 
@@ -106,8 +119,8 @@ Requires Ivy Bridge or newer.
 sudo apt-get install libva-dev libjpeg-dev
 ```
 
-Linux kernels 4.1 to 4.3 have a performance regression. Use 4.0 and earlier or
-4.4 and later. (Ubuntu kernel 4.2.0-28.33~14.04.1 has the fix backported.)
+If autodetection picks the wrong render node, select one explicitly with
+`LIBFREENECT2_VAAPI_DEVICE=/dev/dri/renderD128`.
 
 ### OpenNI2
 
@@ -141,12 +154,15 @@ Without this, the device is only accessible as root.
 sudo cp platform/linux/udev/90-kinect2.rules /etc/udev/rules.d/
 ```
 
-Then unplug and replug the Kinect.
+Then unplug and replug the Kinect. The rule sets `MODE="0666"` on vendor `045e`,
+products `02c4`, `02d8`, and `02d9`. To confirm it applied, check the node mode
+rather than running the viewer under `sudo` — see @ref troubleshooting.
 
 ## Run
 
 ```sh
 ./build/bin/Protonect
+./build/bin/Protonect -noviewer -frames 30   # headless
 ```
 
 ## Multiple Kinects
@@ -154,12 +170,18 @@ Then unplug and replug the Kinect.
 Up to 5 devices have been reported working on a high-end PC using multiple
 separate PCI Express USB3 expansion cards with NEC controller chips.
 
-* [Increase the USBFS memory buffer](https://github.com/OpenKinect/libfreenect2/wiki/Troubleshooting#multiple-kinects-try-increasing-usbfs-buffer-size).
-  More devices need a larger buffer.
+* **One sensor per USB3 host controller.** This is the binding constraint.
 * Do not plug an expansion card into a PCIe x1 slot — one lane does not have
   enough bandwidth. Use x8 or x16.
+* Raise the usbfs memory limit, further for each additional device:
+  ```sh
+  cat /sys/module/usbcore/parameters/usbfs_memory_mb
+  echo 1000 | sudo tee /sys/module/usbcore/parameters/usbfs_memory_mb
+  ```
+  See @ref linux_usb to persist this across reboots.
 
-See @ref recording_replay for the software side of running several devices.
+See @ref recording_replay for opening and pairing several devices in software,
+and @ref linux_usb for why the one-per-controller rule exists.
 
 ## Testing OpenNI2 (optional)
 
@@ -172,30 +194,9 @@ NiViewer2
 Set `LIBFREENECT2_PIPELINE` to select a pipeline, for example
 `LIBFREENECT2_PIPELINE=opencl NiViewer2`.
 
-## Legacy distributions
-
-Ubuntu 12.04 is too old to support. Debian jessie may also be too old.
-
-Ubuntu 14.04 needs upgraded packages from the bundled download script. Run this
-from the repository root, and `cd ..` back afterwards:
-
-```sh
-cd depends && ./download_debs_trusty.sh
-```
-
-Then, in place of the corresponding steps above:
-
-| Component | Ubuntu 14.04 step |
-|---|---|
-| libusb | `sudo dpkg -i debs/libusb*deb` |
-| OpenGL | `sudo dpkg -i debs/libglfw3*deb; sudo apt-get install -f` |
-| OpenCL (Intel) | `sudo apt-add-repository ppa:floe/beignet; sudo apt-get update; sudo apt-get install beignet-dev; sudo dpkg -i debs/ocl-icd*deb` |
-| CUDA | Download `cuda-repo-ubuntu1404...*.deb` ("deb (network)") from the NVIDIA website and follow their instructions, including `apt-get install cuda`, which installs the NVIDIA graphics driver. |
-| VAAPI | `sudo dpkg -i debs/{libva,i965}*deb; sudo apt-get install -f` |
-| OpenNI2 | `sudo apt-add-repository ppa:deb-rob/ros-trusty && sudo apt-get update` (skip if you have ROS repos), then `sudo apt-get install libopenni2-dev` |
-
 ## Next steps
 
 * @ref troubleshooting &mdash; when the device does not enumerate or streaming stalls.
+* @ref linux_usb &mdash; USB bandwidth budget, transfer tuning, autosuspend.
 * @ref development &mdash; running the test suite, sanitizers, and Python tooling.
 * @ref configuration &mdash; environment variables and runtime configuration.

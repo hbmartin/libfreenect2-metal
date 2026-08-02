@@ -143,9 +143,8 @@ per device. The constraints are hardware:
   own controller, so plugging each Kinect into a different physical port
   (not a hub) typically works; check `system_profiler SPUSBDataType` to
   confirm the topology.
-* On Linux, also raise the usbfs memory limit (see the
-  [troubleshooting wiki](https://github.com/OpenKinect/libfreenect2/wiki/Troubleshooting#multiple-kinects-try-increasing-usbfs-buffer-size));
-  this limit does not exist on macOS.
+* On Linux, also raise the usbfs memory limit (see @ref linux_usb); this limit
+  does not exist on macOS.
 * IR interference between overlapping Kinect v2 views is minor (each unit's
   time-of-flight modulation tolerates others surprisingly well), but
   depth noise does increase where illuminators overlap strongly.

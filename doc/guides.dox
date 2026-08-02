@@ -27,6 +27,8 @@ questions from the upstream issue tracker into a single, self-contained page.
   timestamp thresholds, and the limits of hardware synchronization.
 - @subpage configuration &mdash; the `Config` struct, environment variables,
   and color-camera controls.
+- @subpage linux_usb &mdash; USB bandwidth budget, transfer-pool defaults and
+  tuning, usbfs limits, and autosuspend.
 
 @par Work with the data
 - @subpage registration &mdash; map between color, depth, and 3-D coordinates;
@@ -47,6 +49,8 @@ questions from the upstream issue tracker into a single, self-contained page.
 @par Maintain
 - @subpage development &mdash; toolchain requirements, Python tooling, test
   suite, quality options, formatting, docs build, CI matrix, and contributing.
+- @subpage test_plan &mdash; automated coverage matrix, hardware smoke
+  checklist, lifecycle tests, and release evidence.
 - @subpage self_hosted_runner &mdash; set up the self-hosted macOS GitHub
   Actions runner that powers CI (build, tests, sanitizers, Metal parity).
 

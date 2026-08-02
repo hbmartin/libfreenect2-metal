@@ -96,6 +96,7 @@ INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/mainpage.dox \
                          @CMAKE_CURRENT_SOURCE_DIR@/install_linux.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/install_windows.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/troubleshooting.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/linux_usb.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/faq.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/frame_timing.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/configuration.md \
@@ -105,6 +106,7 @@ INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/mainpage.dox \
                          @CMAKE_CURRENT_SOURCE_DIR@/recording_replay.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/development.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/quality.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/test_plan.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/self_hosted_runner.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/webcam.md \
                          @CMAKE_CURRENT_SOURCE_DIR@/python.md
