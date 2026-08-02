@@ -100,7 +100,8 @@ public:
 };
 /// [logger]
 
-#if defined(LIBFREENECT2_WITH_OPENCL_SUPPORT) || defined(LIBFREENECT2_WITH_CUDA_SUPPORT)
+#if defined(LIBFREENECT2_WITH_OPENGL_SUPPORT) || defined(LIBFREENECT2_WITH_OPENCL_SUPPORT) || \
+    defined(LIBFREENECT2_WITH_CUDA_SUPPORT) || defined(LIBFREENECT2_WITH_METAL_SUPPORT)
 namespace
 {
 bool selectExplicitPipeline(std::unique_ptr<libfreenect2::PacketPipeline>& selected,
@@ -224,10 +225,13 @@ int main(int argc, char *argv[])
     else if(arg == "gl")
     {
 #ifdef LIBFREENECT2_WITH_OPENGL_SUPPORT
-      if(!pipeline)
-        pipeline.reset(new libfreenect2::OpenGLPacketPipeline());
+      if (!pipeline &&
+          !selectExplicitPipeline(pipeline, new libfreenect2::OpenGLPacketPipeline(), "gl",
+                                  "Verify OpenGL 3.1 support and an active display, or select cpu."))
+        return -1;
 #else
-      std::cout << "OpenGL pipeline is not supported!" << std::endl;
+      std::cerr << "Requested pipeline 'gl' is not compiled into Protonect." << std::endl;
+      return -1;
 #endif
     }
     else if(arg == "cl")
@@ -283,10 +287,13 @@ int main(int argc, char *argv[])
     else if(arg == "metal")
     {
 #ifdef LIBFREENECT2_WITH_METAL_SUPPORT
-      if(!pipeline)
-        pipeline.reset(new libfreenect2::MetalPacketPipeline(deviceId));
+      if (!pipeline &&
+          !selectExplicitPipeline(pipeline, new libfreenect2::MetalPacketPipeline(deviceId), "metal",
+                                  "Verify a Metal-capable GPU is available, or select cpu."))
+        return -1;
 #else
-      std::cout << "Metal pipeline is not supported!" << std::endl;
+      std::cerr << "Requested pipeline 'metal' is not compiled into Protonect." << std::endl;
+      return -1;
 #endif
     }
     else if(arg.find_first_not_of("0123456789") == std::string::npos) //check if parameter could be a serial number
