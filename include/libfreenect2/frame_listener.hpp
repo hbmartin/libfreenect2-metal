@@ -86,6 +86,15 @@ class LIBFREENECT2_API Frame
    */
   Frame(size_t width_arg, size_t height_arg, size_t bytes_per_pixel_arg,
         unsigned char *data_arg = NULL);
+
+  /** Construct a frame with an explicit pixel format.
+   *
+   * This overload is intended for callers wrapping externally owned image
+   * buffers. Consumers such as Registration validate #format and will reject
+   * the legacy constructor's default #Invalid value.
+   */
+  Frame(size_t width_arg, size_t height_arg, size_t bytes_per_pixel_arg, unsigned char* data_arg,
+        Format format_arg);
   virtual ~Frame();
 
   protected:

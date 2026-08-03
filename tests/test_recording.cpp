@@ -284,6 +284,32 @@ ManifestV1 sampleManifest()
   return manifest;
 }
 
+CalibrationProfile sampleProjectiveProfile()
+{
+  ProjectiveCameraModel color;
+  color.width = 1920;
+  color.height = 1080;
+  color.fx = 1050.0;
+  color.fy = 1050.0;
+  color.cx = 959.5;
+  color.cy = 539.5;
+
+  ProjectiveCameraModel ir;
+  ir.width = 512;
+  ir.height = 424;
+  ir.fx = 365.0;
+  ir.fy = 365.0;
+  ir.cx = 255.5;
+  ir.cy = 211.5;
+
+  CalibrationProfile profile;
+  profile.setDeviceIdentity("123456789", "4.0.3912.0");
+  profile.setColorCamera(color);
+  profile.setIrCamera(ir);
+  profile.setDepthToColor(RigidTransform());
+  return profile;
+}
+
 TEST(RecordingManifest, RoundTripsVersionOne)
 {
   const ManifestV1 expected = sampleManifest();
@@ -300,6 +326,26 @@ TEST(RecordingManifest, RoundTripsVersionOne)
   EXPECT_FLOAT_EQ(actual.color.fx, expected.color.fx);
   EXPECT_FLOAT_EQ(actual.ir.fx, expected.ir.fx);
   EXPECT_EQ(actual.p0_path, "calibration/p0.bin");
+}
+
+TEST(RecordingManifest, RoundTripsVersionTwoWithOptionalProfile)
+{
+  ManifestV1 expected = sampleManifest();
+  expected.version = 2;
+  expected.profile_path = "calibration/profile.json";
+  std::string text;
+  std::string error;
+  ASSERT_TRUE(serializeManifestV2(expected, text, &error)) << error;
+
+  ManifestV1 actual;
+  ASSERT_TRUE(parseManifest(text, actual, &error)) << error;
+  EXPECT_EQ(2u, actual.version);
+  EXPECT_EQ(expected.profile_path, actual.profile_path);
+  EXPECT_FALSE(parseManifestV1(text, actual, &error));
+
+  expected.profile_path = "../profile.json";
+  EXPECT_FALSE(serializeManifestV2(expected, text, &error));
+  EXPECT_NE(error.find("unsafe"), std::string::npos);
 }
 
 TEST(RecordingManifest, RejectsUnsupportedVersionsAndUnsafeCalibrationPaths)
@@ -514,8 +560,9 @@ TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)
   ASSERT_TRUE(readFile(joinPath(directory, "manifest.json"), manifest_text, &error)) << error;
   ManifestV1 manifest;
   ASSERT_TRUE(
-      parseManifestV1(std::string(manifest_text.begin(), manifest_text.end()), manifest, &error))
+      parseManifest(std::string(manifest_text.begin(), manifest_text.end()), manifest, &error))
       << error;
+  EXPECT_EQ(2u, manifest.version);
   EXPECT_EQ("123456789", manifest.serial);
   size_t complete_size = 0;
   EXPECT_TRUE(regularFileSize(joinPath(directory, "recording.complete"), complete_size));
@@ -556,6 +603,41 @@ TEST(RecordingWriter, PersistsRawDepthAndP0Calibration)
   EXPECT_TRUE(regularFileSize(joinPath(directory, "recording.complete"), complete_size));
   EXPECT_GT(complete_size, 0u);
   EXPECT_TRUE(writer.close());
+}
+
+TEST(RecordingWriter, AttachesAndReplaysCanonicalCalibrationProfile)
+{
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
+  RecordingWriter writer(directory, 2);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibration("123456789", "4.0.3912.0", sampleCalibrationData()))
+      << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibrationProfile(sampleProjectiveProfile())) << writer.getLastError();
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  RecordingMetadata metadata;
+  std::string error;
+  ASSERT_TRUE(loadRecordingMetadata(directory, false, metadata, &error)) << error;
+  EXPECT_EQ(2u, metadata.manifest.version);
+  EXPECT_EQ("calibration/profile.json", metadata.manifest.profile_path);
+  ASSERT_TRUE(metadata.has_profile);
+  EXPECT_EQ("123456789", metadata.profile.serial());
+
+  Freenect2Replay replay;
+  Freenect2Device* device = replay.openRecording(directory, new DumpPacketPipeline());
+  ASSERT_NE(device, nullptr);
+  CalibrationProfile replay_profile;
+  ASSERT_TRUE(device->getCalibrationProfile(replay_profile));
+  EXPECT_EQ("123456789", replay_profile.serial());
+  EXPECT_TRUE(device->close());
+
+  ASSERT_TRUE(writeFileAtomically(joinPath(directory, "calibration/profile.json"),
+                                  std::string("{not-json\n"), &error))
+      << error;
+  RecordingMetadata invalid;
+  EXPECT_FALSE(loadRecordingMetadata(directory, false, invalid, &error));
+  EXPECT_NE(error.find("profile"), std::string::npos);
 }
 
 TEST(RecordingWriter, LeavesAnIncompleteRecordingWithoutCalibration)
@@ -672,6 +754,11 @@ TEST(RecordingReplay, ReplaysJournaledColorWithRecordedMetadata)
   EXPECT_GE(actual->arrival_timestamp_us, delivery_start);
   EXPECT_FLOAT_EQ(1.25f, actual->exposure);
   EXPECT_EQ(4u, actual->bytes_per_pixel);
+  const DeviceRuntimeStatistics runtime = device->getRuntimeStatistics();
+  EXPECT_EQ(1u, runtime.color.decoded_frames);
+  EXPECT_EQ(6u, runtime.color.last_sequence);
+  EXPECT_EQ(345u, runtime.color.last_device_timestamp);
+  EXPECT_EQ(1u, runtime.successful_starts);
   listener.release(frames);
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
@@ -859,15 +946,18 @@ TEST(RecordingReplay, PreservesGlobalJournalOrderInFastMode)
 
   Frame color(1, 1, 4);
   color.format = Frame::Raw;
+  color.sequence = 1;
   color.arrival_timestamp_us = monotonicTimeMicroseconds();
   std::memset(color.data, 0x11, 4);
   EXPECT_FALSE(writer.onNewFrame(Frame::Color, &color));
   const size_t depth_size = 10 * (512 * 424 * 11 / 8);
   Frame depth(1, 1, depth_size);
   depth.format = Frame::Raw;
+  depth.sequence = 7;
   depth.arrival_timestamp_us = monotonicTimeMicroseconds();
   std::memset(depth.data, 0x22, depth_size);
   EXPECT_FALSE(writer.onNewFrame(Frame::Depth, &depth));
+  color.sequence = 4;
   EXPECT_FALSE(writer.onNewFrame(Frame::Color, &color));
   ASSERT_TRUE(writer.close()) << writer.getLastError();
 
@@ -885,6 +975,11 @@ TEST(RecordingReplay, PreservesGlobalJournalOrderInFastMode)
   EXPECT_EQ(Frame::Color, types[0]);
   EXPECT_EQ(Frame::Depth, types[1]);
   EXPECT_EQ(Frame::Color, types[2]);
+  const DeviceRuntimeStatistics runtime = device->getRuntimeStatistics();
+  EXPECT_EQ(2u, runtime.color.decoded_frames);
+  EXPECT_EQ(2u, runtime.color.sequence_gaps);
+  EXPECT_EQ(4u, runtime.color.last_sequence);
+  EXPECT_EQ(1u, runtime.depth.decoded_frames);
   EXPECT_TRUE(device->stop());
   EXPECT_TRUE(device->close());
 }

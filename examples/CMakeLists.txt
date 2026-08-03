@@ -97,7 +97,7 @@ IF(COMMAND libfreenect2_apply_quality)
   libfreenect2_apply_quality(KinectCapture PRIVATE)
 ENDIF()
 
-TARGET_COMPILE_FEATURES(KinectCapture PRIVATE cxx_std_11)
+TARGET_COMPILE_FEATURES(KinectCapture PRIVATE cxx_std_17)
 
 TARGET_LINK_LIBRARIES(KinectCapture
   PRIVATE ${freenect2_LIBRARIES}
@@ -110,7 +110,7 @@ IF(COMMAND libfreenect2_apply_quality)
   libfreenect2_apply_quality(KinectReconnect PRIVATE)
 ENDIF()
 
-TARGET_COMPILE_FEATURES(KinectReconnect PRIVATE cxx_std_11)
+TARGET_COMPILE_FEATURES(KinectReconnect PRIVATE cxx_std_17)
 
 TARGET_LINK_LIBRARIES(KinectReconnect
   PRIVATE ${freenect2_LIBRARIES}
@@ -123,7 +123,7 @@ IF(COMMAND libfreenect2_apply_quality)
   libfreenect2_apply_quality(KinectDepthCalibration PRIVATE)
 ENDIF()
 
-TARGET_COMPILE_FEATURES(KinectDepthCalibration PRIVATE cxx_std_11)
+TARGET_COMPILE_FEATURES(KinectDepthCalibration PRIVATE cxx_std_17)
 
 TARGET_LINK_LIBRARIES(KinectDepthCalibration
   PRIVATE ${freenect2_LIBRARIES}

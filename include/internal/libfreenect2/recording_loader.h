@@ -9,6 +9,7 @@
 #define LIBFREENECT2_RECORDING_LOADER_H_
 
 #include <libfreenect2/libfreenect2.hpp>
+#include <libfreenect2/calibration_profile.h>
 #include <libfreenect2/recording_journal.h>
 #include <libfreenect2/recording_manifest.h>
 
@@ -25,6 +26,10 @@ struct RecordingMetadata
   std::string directory;
   ManifestV1 manifest;
   CalibrationData calibration;
+  bool has_profile;
+  CalibrationProfile profile;
+
+  RecordingMetadata() : has_profile(false) {}
 };
 
 struct RecordingData : RecordingMetadata

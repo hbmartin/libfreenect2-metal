@@ -9,6 +9,7 @@
 #define LIBFREENECT2_RECORDING_H_
 
 #include <libfreenect2/libfreenect2.hpp>
+#include <libfreenect2/calibration_profile.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -55,6 +56,12 @@ public:
   /** Publish the calibration required to decode raw depth frames. */
   bool setCalibration(const std::string& serial, const std::string& firmware,
                       const CalibrationData& calibration);
+
+  /** Attach a validated user calibration under calibration/profile.json.
+   * Factory calibration must be set first. Serial mismatches are rejected
+   * unless explicitly allowed.
+   */
+  bool setCalibrationProfile(const CalibrationProfile& profile, bool allow_serial_mismatch = false);
 
   /** Flush queued frames and close the recording. Idempotent. */
   bool close();

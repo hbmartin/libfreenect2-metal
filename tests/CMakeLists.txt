@@ -6,9 +6,8 @@
 
 INCLUDE(FetchContent)
 
-# GoogleTest 1.15 requires C++14. Keep this scoped to the test subdirectory so
-# the library itself continues to verify its public C++11 minimum.
-SET(CMAKE_CXX_STANDARD 14)
+# The public 0.4 API requires C++17; compile tests with the same language mode.
+SET(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # GoogleTest. Pinned tag; fetched at configure time (the self-hosted runner has
@@ -26,6 +25,8 @@ FetchContent_MakeAvailable(googletest)
 ADD_EXECUTABLE(unit_tests
   support/synthetic.cpp
   test_registration.cpp
+  test_projective_registration.cpp
+  test_calibration_profile.cpp
   test_vision.cpp
   test_depth_stream_parser.cpp
   test_depth_calibration.cpp
@@ -44,7 +45,7 @@ ADD_EXECUTABLE(unit_tests
 TARGET_INCLUDE_DIRECTORIES(unit_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
-TARGET_COMPILE_FEATURES(unit_tests PRIVATE cxx_std_14)
+TARGET_COMPILE_FEATURES(unit_tests PRIVATE cxx_std_17)
 TARGET_LINK_LIBRARIES(unit_tests PRIVATE freenect2_testlib gtest gtest_main)
 
 # The quality options on freenect2_testlib are transitive, so sanitizer and
@@ -65,6 +66,16 @@ gtest_discover_tests(unit_tests
   DISCOVERY_TIMEOUT 60
   PROPERTIES LABELS "unit"
 )
+
+IF(TARGET KinectCameraCalibration)
+  ADD_TEST(NAME calibration_cli_inspect
+    COMMAND KinectCameraCalibration inspect
+            --job "${MY_DIR}/tests/data/calibration_job_empty.json")
+  SET_TESTS_PROPERTIES(calibration_cli_inspect PROPERTIES
+    LABELS "unit"
+    PASS_REGULAR_EXPRESSION
+      "sha256=ad08e6e0bbbb28afb8c417800cad4681b9c159322a3bd2d7e8ed0421ee962f6f")
+ENDIF()
 
 IF(ENABLE_FUZZING)
   libfreenect2_add_fuzzer(fuzz_rgb_stream_parser fuzz/fuzz_rgb_stream_parser.cpp)

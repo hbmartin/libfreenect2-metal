@@ -1,0 +1,16 @@
+{
+  "schema": "libfreenect2.calibration-job",
+  "version": 1,
+  "recordings": {
+    "color": [],
+    "ir": [],
+    "stereo": [],
+    "depth": []
+  },
+  "board": {
+    "type": "chessboard",
+    "columns": 9,
+    "rows": 6,
+    "square_size_mm": 30.0
+  }
+}

@@ -4,8 +4,8 @@
 [![Documentation](https://img.shields.io/badge/docs-online-blue.svg)](https://hbmartin.github.io/libfreenect2-metal/)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20GPL--2.0-blue.svg)](#license)
 <!-- Keep the version badge and the Version section in sync with PROJECT_VERSION in CMakeLists.txt. -->
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](#version)
-[![C++11](https://img.shields.io/badge/C%2B%2B-11-blue.svg)](#requirements)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](#version)
+[![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](#requirements)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](#installation)
 
 Open source cross-platform driver for the **Kinect for Windows v2** (K4W2)
@@ -20,7 +20,7 @@ Apple Silicon with a Metal GPU pipeline.
 > This is [hbmartin/libfreenect2-metal](https://github.com/hbmartin/libfreenect2-metal),
 > an actively maintained fork of
 > [OpenKinect/libfreenect2](https://github.com/OpenKinect/libfreenect2).
-> Clone **this** repository — upstream has no Metal pipeline and none of the 0.3
+> Clone **this** repository — upstream has no Metal pipeline and none of the 0.4
 > APIs described below. See [What's different in this fork](#whats-different-in-this-fork).
 
 Note: this driver does nothing for Kinect for Windows v1 or Kinect for Xbox 360
@@ -48,10 +48,10 @@ See [Kinect v1 versus Kinect v2](doc/kinect_v1_vs_v2.md).
 * **Metal depth pipeline** for Apple Silicon, enabled by default on Apple
   platforms and preferred over the deprecated OpenGL path. CI runs a
   Metal-versus-CPU parity test on real hardware.
-* **The 0.3 API**: runtime version, API, and build-revision queries; public
-  packet-pipeline discovery; and a device that reports the pipeline it actually
-  consumed. See [Migrating to libfreenect2 0.3](doc/v0.3_migration.md).
-* **`libfreenect2/vision.h`** — a C++11 interface for validated caller-buffer
+* **The 0.4 API**: conventional calibration profiles and projective
+  registration, runtime health snapshots, typed caller-owned frames, and
+  recording manifest v2. See [Migrating to libfreenect2 0.4](doc/v0.4_migration.md).
+* **`libfreenect2/vision.h`** — a C++17 interface for validated caller-buffer
   color conversion, forward and reverse registration maps, coherent depth
   selection, and batched metric XYZ lifting.
 * **Recording and replay**: capture raw streams to disk and replay them through
@@ -113,7 +113,10 @@ int main()
 
   libfreenect2::Registration registration(dev->getIrCameraParams(),
                                           dev->getColorCameraParams());
-  libfreenect2::Frame undistorted(512, 424, 4), registered(512, 424, 4);
+  libfreenect2::Frame undistorted(512, 424, 4, nullptr,
+                                 libfreenect2::Frame::Float);
+  libfreenect2::Frame registered(512, 424, 4, nullptr,
+                                libfreenect2::Frame::BGRX);
 
   libfreenect2::FrameMap frames;
   for (int i = 0; i < 100; ++i)
@@ -173,7 +176,7 @@ SuperSpeed: [USB bandwidth and transfer tuning](doc/linux_usb.md).
 
 | Tier | Platforms |
 |---|---|
-| **Tested** | Ubuntu 24.04 (GCC/Clang × shared/static, sanitizers, fuzzers, coverage); macOS on Apple Silicon (Metal, C++11, Metal/CPU parity on real hardware) |
+| **Tested** | Ubuntu 22.04/24.04 (GCC/Clang × shared/static, sanitizers, fuzzers, coverage); macOS on Apple Silicon (Metal, C++17, Metal/CPU parity on real hardware) |
 | **Expected to work** | Ubuntu 22.04 LTS and newer, Debian 12 and newer, other current distributions with libusb ≥ 1.0.20 and kernel ≥ 5.15; macOS on Intel; Windows 10 and newer |
 | **Unsupported** | Ubuntu 20.04 and older, Debian 11 and older, Windows 8 and older, any USB 2 host, virtual machines, Jetson TK1/TX1 |
 
@@ -182,8 +185,8 @@ some optional-backend packages no longer exist for them.
 
 ### Toolchain
 
-CMake 3.16 or newer, and a C++11 compiler. CI builds at C++11 with GCC, Clang,
-and AppleClang; newer standards work.
+CMake 3.16 or newer, and a C++17 compiler. CI builds at C++17 with GCC, Clang,
+and AppleClang.
 
 ### Optional features
 
@@ -196,6 +199,7 @@ and AppleClang; newer standards work.
 | VAAPI JPEG decoding | Intel Ivy Bridge or newer, Linux only |
 | VideoToolbox JPEG decoding | macOS only (off by default on Apple Silicon) |
 | OpenNI2 integration | OpenNI2 2.2.0.33 |
+| Offline conventional calibration | OpenCV 4.5 or newer; opt in with `BUILD_CALIBRATION_TOOLS=ON` |
 
 ## Installation
 
@@ -296,7 +300,7 @@ vcpkg install libfreenect2
 ```
 
 Note that the vcpkg port tracks **upstream** `OpenKinect/libfreenect2`, not this
-fork, so it has no Metal pipeline or 0.3 APIs.
+fork, so it has no Metal pipeline or 0.4 APIs.
 
 </details>
 
@@ -333,6 +337,7 @@ Pass these to CMake as `-DOPTION=VALUE`.
 | `BUILD_EXAMPLES` | `ON` | Build the [example programs](#example-programs) |
 | `BUILD_OPENNI2_DRIVER` | `ON` | Build the OpenNI2 driver |
 | `BUILD_TESTING` | `OFF` | Build the unit test suite |
+| `BUILD_CALIBRATION_TOOLS` | `OFF` | Build the headless OpenCV calibration/YAML conversion tool |
 | `ENABLE_METAL` | `ON` on Apple, else `OFF` | Metal GPU depth processing |
 | `ENABLE_OPENGL` | `ON` | OpenGL depth processing (needs OpenGL 3.1) |
 | `ENABLE_OPENCL` | `ON` | OpenCL depth processing |
@@ -397,7 +402,8 @@ Built when `BUILD_EXAMPLES=ON` (the default), into `build/bin`.
 | Program | What it does |
 |---|---|
 | `Protonect` | The reference viewer and smoke test. Displays color, IR, depth, and registered output. `Protonect [-gpu=<id>] [gl\|cl\|clkde\|cuda\|cudakde\|metal\|cpu] [<serial>]` |
-| `KinectCapture` | Writes frames to disk: continuous capture, timestamp-paired `snapshot`, or raw stream `record`. Supports depth-correction profiles. |
+| `KinectCapture` | Writes frames to disk: continuous capture, timestamp-paired `snapshot`, or raw stream `record`. Supports canonical calibration and depth-correction profiles. |
+| `KinectCameraCalibration` | Optional headless, recording-driven conventional camera calibration and legacy YAML conversion tool. See [calibration profiles](doc/calibration_profiles.md). |
 | `KinectDepthCalibration` | Fits a per-device linear depth correction profile from live or recorded data over a known-distance ROI. See [depth calibration](doc/depth_calibration.md). |
 | `KinectReconnect` | Exercises disconnect and recovery handling. `KinectReconnect [SERIAL]` |
 
@@ -410,6 +416,7 @@ The full site, including the API reference and every guide below, is published
 at **<https://hbmartin.github.io/libfreenect2-metal/>**.
 
 **Upgrade**
+* [Migrating to libfreenect2 0.4](https://hbmartin.github.io/libfreenect2-metal/v0_4_migration.html)
 * [Migrating to libfreenect2 0.3](https://hbmartin.github.io/libfreenect2-metal/v0_3_migration.html)
 * [v0.3 upstream issue coverage](https://hbmartin.github.io/libfreenect2-metal/v0_3_upstream_coverage.html)
 
@@ -422,6 +429,7 @@ at **<https://hbmartin.github.io/libfreenect2-metal/>**.
 * [Kinect v1 versus Kinect v2](https://hbmartin.github.io/libfreenect2-metal/kinect_v1_vs_v2.html)
 
 **Work with the data**
+* [Conventional camera calibration profiles](https://hbmartin.github.io/libfreenect2-metal/calibration_profiles.html)
 * [Registration and coordinate mapping recipes](https://hbmartin.github.io/libfreenect2-metal/registration.html)
 * [Depth accuracy and calibration](https://hbmartin.github.io/libfreenect2-metal/depth_accuracy.html)
 * [Fitting and applying per-device depth correction](https://hbmartin.github.io/libfreenect2-metal/depth_calibration.html)
@@ -470,9 +478,9 @@ all covered in **[Development and contributing](doc/development.md)**.
 
 ## Version
 
-The current version is **0.3.0** (`PROJECT_VERSION` in `CMakeLists.txt`). The
+The current version is **0.4.0** (`PROJECT_VERSION` in `CMakeLists.txt`). The
 library also reports its version, API version, and build revision at runtime;
-see [Migrating to libfreenect2 0.3](doc/v0.3_migration.md).
+see [Migrating to libfreenect2 0.4](doc/v0.4_migration.md).
 
 ## License
 

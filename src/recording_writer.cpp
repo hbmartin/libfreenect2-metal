@@ -61,8 +61,10 @@ public:
   RecordingWriterImpl(const std::string& directory, size_t queue_capacity)
       : directory_(directory), queue_capacity_(queue_capacity), worker_(0), accepting_(false),
         stopping_(false), start_time_us_(monotonicTimeMicroseconds()), next_index_(0),
-        calibration_set_(false), calibration_in_progress_(false), closed_(false)
+        calibration_set_(false), calibration_in_progress_(false), profile_set_(false),
+        closed_(false)
   {
+    manifest_.version = 2;
     if (directory_.empty())
     {
       last_error_ = "recording directory is empty";
@@ -213,6 +215,49 @@ public:
     return true;
   }
 
+  bool setCalibrationProfile(const CalibrationProfile& profile, bool allow_serial_mismatch)
+  {
+    libfreenect2::lock_guard close_guard(close_mutex_);
+    std::string serial;
+    std::string firmware;
+    {
+      libfreenect2::lock_guard guard(mutex_);
+      if (!accepting_)
+      {
+        if (last_error_.empty())
+          last_error_ = "recording writer is not open";
+        return false;
+      }
+      if (!calibration_set_)
+      {
+        last_error_ = "factory calibration must be published before a user profile";
+        return false;
+      }
+      if (profile_set_)
+      {
+        last_error_ = "recording calibration profile was already published";
+        return false;
+      }
+      serial = manifest_.serial;
+      firmware = manifest_.firmware;
+    }
+
+    std::string warning;
+    std::string error;
+    if (!profile.matchesDevice(serial, firmware, allow_serial_mismatch, &warning, &error) ||
+        !profile.save(recording::joinPath(directory_, "calibration/profile.json"), &error))
+    {
+      libfreenect2::lock_guard guard(mutex_);
+      last_error_ = error;
+      return false;
+    }
+
+    libfreenect2::lock_guard guard(mutex_);
+    manifest_.profile_path = "calibration/profile.json";
+    profile_set_ = true;
+    return true;
+  }
+
   bool close()
   {
     libfreenect2::lock_guard close_guard(close_mutex_);
@@ -245,7 +290,7 @@ public:
     }
 
     std::string manifest_text;
-    if (can_publish && !recording::serializeManifestV1(manifest_, manifest_text, &error))
+    if (can_publish && !recording::serializeManifestV2(manifest_, manifest_text, &error))
       can_publish = false;
     if (can_publish && !recording::writeFileAtomically(
                            recording::joinPath(directory_, "manifest.json"), manifest_text, &error))
@@ -344,6 +389,7 @@ private:
   recording::ManifestV1 manifest_;
   bool calibration_set_;
   bool calibration_in_progress_;
+  bool profile_set_;
   bool closed_;
   recording::FrameJournal journal_;
   RecordingWriter::Stats stats_;
@@ -375,6 +421,12 @@ bool RecordingWriter::setCalibration(const std::string& serial, const std::strin
                                      const CalibrationData& calibration)
 {
   return impl_->setCalibration(serial, firmware, calibration);
+}
+
+bool RecordingWriter::setCalibrationProfile(const CalibrationProfile& profile,
+                                            bool allow_serial_mismatch)
+{
+  return impl_->setCalibrationProfile(profile, allow_serial_mismatch);
 }
 
 bool RecordingWriter::close()
