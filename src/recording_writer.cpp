@@ -64,7 +64,6 @@ public:
         calibration_set_(false), calibration_in_progress_(false), profile_set_(false),
         closed_(false)
   {
-    manifest_.version = 2;
     if (directory_.empty())
     {
       last_error_ = "recording directory is empty";
@@ -289,9 +288,17 @@ public:
       can_publish = last_error_.empty();
     }
 
+    // Manifest v2 only adds the optional calibration profile, so publish v1
+    // whenever no profile is attached to keep 0.3 readers compatible.
     std::string manifest_text;
-    if (can_publish && !recording::serializeManifestV2(manifest_, manifest_text, &error))
-      can_publish = false;
+    if (can_publish)
+    {
+      manifest_.version = manifest_.profile_path.empty() ? 1 : 2;
+      if (!(manifest_.version == 2
+                ? recording::serializeManifestV2(manifest_, manifest_text, &error)
+                : recording::serializeManifestV1(manifest_, manifest_text, &error)))
+        can_publish = false;
+    }
     if (can_publish && !recording::writeFileAtomically(
                            recording::joinPath(directory_, "manifest.json"), manifest_text, &error))
       can_publish = false;

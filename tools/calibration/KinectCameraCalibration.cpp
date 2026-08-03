@@ -10,9 +10,12 @@
 #include <libfreenect2/packet_pipeline.h>
 
 #include <nlohmann/json.hpp>
-#include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
+// OpenCV 5 split calib3d into geometry/stereo/calib but ships calib3d.hpp as
+// a compatibility header that includes all three; chessboard detection also
+// needs objdetect there.
+#include <opencv2/calib3d.hpp>
 #if CV_VERSION_MAJOR >= 5
 #include <opencv2/objdetect.hpp>
 #endif
@@ -485,7 +488,10 @@ bool detectRecording(const fs::path& path, DetectionRole role, const Job& job, J
   if (device == nullptr)
     return fail("failed to open recording: '" + path.string() + "'", error);
   if (!updateIdentity(*device, serial, firmware, error))
+  {
+    device->close();
     return false;
+  }
 
   const bool needs_color = role == DetectionRole::Color || role == DetectionRole::Stereo;
   const bool needs_ir = role != DetectionRole::Color;
@@ -503,7 +509,10 @@ bool detectRecording(const fs::path& path, DetectionRole role, const Job& job, J
   if (needs_ir || needs_depth)
     device->setIrAndDepthFrameListener(&listener);
   if (!device->startStreams(needs_color, needs_ir || needs_depth))
+  {
+    device->close();
     return fail("failed to start replay: '" + path.string() + "'", error);
+  }
 
   std::vector<cv::Point2f> previous_color;
   std::vector<cv::Point2f> previous_ir;

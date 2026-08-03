@@ -83,8 +83,11 @@ bool loadRecordingMetadata(const std::string& directory, bool salvage_incomplete
         *error = "recording calibration profile is invalid: " + local_error;
       return false;
     }
+    // A mismatched serial can only be recorded through the writer's explicit
+    // allow_serial_mismatch opt-in, so honor that decision here instead of
+    // rejecting the whole recording. Structurally invalid profiles still fail.
     std::string warning;
-    if (!loaded.profile.matchesDevice(loaded.manifest.serial, loaded.manifest.firmware, false,
+    if (!loaded.profile.matchesDevice(loaded.manifest.serial, loaded.manifest.firmware, true,
                                       &warning, &local_error))
     {
       if (error != 0)

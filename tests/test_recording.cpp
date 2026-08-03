@@ -562,7 +562,9 @@ TEST(RecordingWriter, PersistsRawJpegBeforeAppendingItsJournalEntry)
   ASSERT_TRUE(
       parseManifest(std::string(manifest_text.begin(), manifest_text.end()), manifest, &error))
       << error;
-  EXPECT_EQ(2u, manifest.version);
+  // Without an attached profile the writer publishes v1 so 0.3 readers can
+  // still consume the recording.
+  EXPECT_EQ(1u, manifest.version);
   EXPECT_EQ("123456789", manifest.serial);
   size_t complete_size = 0;
   EXPECT_TRUE(regularFileSize(joinPath(directory, "recording.complete"), complete_size));
@@ -638,6 +640,47 @@ TEST(RecordingWriter, AttachesAndReplaysCanonicalCalibrationProfile)
   RecordingMetadata invalid;
   EXPECT_FALSE(loadRecordingMetadata(directory, false, invalid, &error));
   EXPECT_NE(error.find("profile"), std::string::npos);
+}
+
+TEST(RecordingWriter, ReplaysProfilesRecordedWithAnAllowedSerialMismatch)
+{
+  {
+    // Without the explicit opt-in a mismatched profile is rejected, and the
+    // failure is sticky: the recording refuses to publish rather than
+    // silently dropping the requested attachment.
+    ScopedRecordingDirectory rejected_directory;
+    RecordingWriter rejected(rejected_directory.path(), 2);
+    ASSERT_TRUE(rejected.isOpen()) << rejected.getLastError();
+    ASSERT_TRUE(rejected.setCalibration("other-device", "4.0.3912.0", sampleCalibrationData()))
+        << rejected.getLastError();
+    EXPECT_FALSE(rejected.setCalibrationProfile(sampleProjectiveProfile()));
+    EXPECT_FALSE(rejected.close());
+  }
+
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
+  RecordingWriter writer(directory, 2);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibration("other-device", "4.0.3912.0", sampleCalibrationData()))
+      << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibrationProfile(sampleProjectiveProfile(), true))
+      << writer.getLastError();
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  RecordingMetadata metadata;
+  std::string error;
+  ASSERT_TRUE(loadRecordingMetadata(directory, false, metadata, &error)) << error;
+  ASSERT_TRUE(metadata.has_profile);
+  EXPECT_EQ("123456789", metadata.profile.serial());
+  EXPECT_EQ("other-device", metadata.manifest.serial);
+
+  Freenect2Replay replay;
+  Freenect2Device* device = replay.openRecording(directory, new DumpPacketPipeline());
+  ASSERT_NE(device, nullptr);
+  CalibrationProfile replay_profile;
+  ASSERT_TRUE(device->getCalibrationProfile(replay_profile));
+  EXPECT_EQ("123456789", replay_profile.serial());
+  EXPECT_TRUE(device->close());
 }
 
 TEST(RecordingWriter, LeavesAnIncompleteRecordingWithoutCalibration)

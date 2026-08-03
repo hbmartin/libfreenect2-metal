@@ -138,6 +138,22 @@ TEST(CalibrationProfile, CopyAssignsIntoAMovedFromObject)
   EXPECT_TRUE(destination.isValid());
 }
 
+TEST(CalibrationProfile, CopiesFromAMovedFromObjectAsDefaultConstructed)
+{
+  lf::CalibrationProfile source = sampleProfile();
+  const lf::CalibrationProfile moved = std::move(source);
+  EXPECT_EQ(moved.serial(), "123456");
+
+  const lf::CalibrationProfile copied(source);
+  EXPECT_TRUE(copied.serial().empty());
+  EXPECT_FALSE(copied.isValid());
+
+  lf::CalibrationProfile assigned = sampleProfile();
+  assigned = source;
+  EXPECT_TRUE(assigned.serial().empty());
+  EXPECT_FALSE(assigned.isValid());
+}
+
 TEST(CalibrationProfile, IgnoresUnknownFieldsAndRejectsOversizedIntegers)
 {
   const std::filesystem::path path = temporaryProfilePath();

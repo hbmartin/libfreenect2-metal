@@ -25,13 +25,15 @@ parameters, the safe relative path to the P0 tables, and the clock semantics.
 Device timestamps are the wrapping Kinect clock in 0.125 ms ticks. Arrival
 offsets are monotonic host microseconds relative to writer construction.
 
-Version 0.4 writers always publish manifest version 2. It preserves all version
-1 fields and adds an optional safe relative path to
-`calibration/profile.json`. The attached canonical profile contains conventional
-camera models, a rigid depth-to-color transform, optional depth correction,
-quality measurements, and provenance. Readers accept both versions. Version 2
-replay rejects a missing, malformed, unsafe, or serial-mismatched referenced
-profile instead of silently ignoring it.
+Version 0.4 writers publish manifest version 2 when a canonical profile is
+attached and version 1 otherwise. Version 2 preserves all version 1 fields and
+adds an optional safe relative path to `calibration/profile.json`. The attached
+canonical profile contains conventional camera models, a rigid depth-to-color
+transform, optional depth correction, quality measurements, and provenance.
+Readers accept both versions. Version 2 replay rejects a missing, malformed, or
+unsafe referenced profile instead of silently ignoring it; a serial-mismatched
+profile is accepted because embedding one requires the writer's explicit
+`allow_serial_mismatch` opt-in.
 
 `frames.ndjson` is an append-only journal. Every newline-terminated object has
 a global index, stream, relative path, byte count, device timestamp, sequence,

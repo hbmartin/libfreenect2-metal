@@ -158,8 +158,13 @@ public:
     const size_t output_count = static_cast<size_t>(target.width) * target.height;
     float* output = reinterpret_cast<float*>(registered.data);
     std::fill(output, output + output_count, 0.0f);
-    std::vector<float> selected_distance(output_count, std::numeric_limits<float>::infinity());
-    std::vector<size_t> selected_source(output_count, std::numeric_limits<size_t>::max());
+    // Per-thread tie-break scratch: reused across calls so a steady-state
+    // consumer pays no allocation per frame, and concurrent applies on
+    // different threads never share state.
+    thread_local std::vector<float> selected_distance;
+    thread_local std::vector<size_t> selected_source;
+    selected_distance.assign(output_count, std::numeric_limits<float>::infinity());
+    selected_source.assign(output_count, std::numeric_limits<size_t>::max());
 
     const auto store = [&](int column, int row, float z_mm, float distance, size_t source_index)
     {
