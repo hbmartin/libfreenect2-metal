@@ -66,7 +66,7 @@ Frame::Frame(size_t width_arg, size_t height_arg, size_t bytes_per_pixel_arg,
 }
 
 Frame::Frame(size_t width_arg, size_t height_arg, size_t bytes_per_pixel_arg,
-             unsigned char *data_arg, Format format_arg)
+             unsigned char* data_arg, Format format_arg)
     : Frame(width_arg, height_arg, bytes_per_pixel_arg, data_arg)
 {
   format = format_arg;

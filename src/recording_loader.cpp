@@ -76,8 +76,8 @@ bool loadRecordingMetadata(const std::string& directory, bool salvage_incomplete
 
   if (!loaded.manifest.profile_path.empty())
   {
-    if (!CalibrationProfile::load(joinPath(directory, loaded.manifest.profile_path),
-                                  loaded.profile, &local_error))
+    if (!CalibrationProfile::load(joinPath(directory, loaded.manifest.profile_path), loaded.profile,
+                                  &local_error))
     {
       if (error != 0)
         *error = "recording calibration profile is invalid: " + local_error;

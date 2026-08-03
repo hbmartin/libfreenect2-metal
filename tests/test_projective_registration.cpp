@@ -50,8 +50,8 @@ TEST(ProjectiveRegistration, IdentityProjectionSupportsBothRasterizers)
   lf::Frame depth(4, 4, sizeof(float), nullptr, lf::Frame::Float);
   std::fill_n(reinterpret_cast<float*>(depth.data), 16, 1000.0f);
 
-  for (lf::RegistrationRasterization mode : {lf::RegistrationRasterization::Nearest,
-                                              lf::RegistrationRasterization::FourNeighborSplat})
+  for (lf::RegistrationRasterization mode :
+       {lf::RegistrationRasterization::Nearest, lf::RegistrationRasterization::FourNeighborSplat})
   {
     lf::ProjectiveRegistrationOptions options;
     options.rasterization = mode;
@@ -78,7 +78,7 @@ TEST(ProjectiveRegistration, AppliesDepthCorrectionOnlyWhenRequested)
   lf::ProjectiveRegistrationOptions raw_options;
   raw_options.rasterization = lf::RegistrationRasterization::Nearest;
   auto raw = lf::ProjectiveRegistration::create(profileWithCorrection(true), camera(), raw_options,
-                                                  &error);
+                                                &error);
   ASSERT_NE(raw, nullptr) << error;
   lf::Frame raw_output(4, 4, sizeof(float), nullptr, lf::Frame::Float);
   ASSERT_TRUE(raw->apply(depth, raw_output, &error)) << error;
@@ -87,7 +87,7 @@ TEST(ProjectiveRegistration, AppliesDepthCorrectionOnlyWhenRequested)
   lf::ProjectiveRegistrationOptions corrected_options = raw_options;
   corrected_options.apply_depth_correction = true;
   auto corrected = lf::ProjectiveRegistration::create(profileWithCorrection(true), camera(),
-                                                        corrected_options, &error);
+                                                      corrected_options, &error);
   ASSERT_NE(corrected, nullptr) << error;
   lf::Frame corrected_output(4, 4, sizeof(float), nullptr, lf::Frame::Float);
   ASSERT_TRUE(corrected->apply(depth, corrected_output, &error)) << error;
@@ -160,9 +160,8 @@ TEST(ProjectiveRegistration, RejectsUntypedExternalDepth)
   lf::Frame output(4, 4, sizeof(float), nullptr, lf::Frame::Float);
   std::fill_n(reinterpret_cast<float*>(output.data), 16, 42.0f);
   std::string error;
-  auto registration = lf::ProjectiveRegistration::create(profileWithCorrection(false), camera(),
-                                                           lf::ProjectiveRegistrationOptions(),
-                                                           &error);
+  auto registration = lf::ProjectiveRegistration::create(
+      profileWithCorrection(false), camera(), lf::ProjectiveRegistrationOptions(), &error);
   ASSERT_NE(registration, nullptr) << error;
   EXPECT_FALSE(registration->apply(depth, output, &error));
   EXPECT_FLOAT_EQ(reinterpret_cast<float*>(output.data)[0], 42.0f);

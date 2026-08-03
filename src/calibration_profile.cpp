@@ -133,8 +133,7 @@ ProjectiveCameraModel cameraFromJson(const Json& value)
 
 Json transformToJson(const RigidTransform& transform)
 {
-  return {{"rotation_row_major", transform.rotation},
-          {"translation_m", transform.translation_m}};
+  return {{"rotation_row_major", transform.rotation}, {"translation_m", transform.translation_m}};
 }
 
 RigidTransform transformFromJson(const Json& value)
@@ -154,11 +153,11 @@ RigidTransform transformFromJson(const Json& value)
 
 Json correctionToJson(const DepthCorrectionProfile& correction)
 {
-  return {{"model", correction.model == DepthCorrectionProfile::OffsetOnly ? "offset_only"
-                                                                           : "linear"},
-          {"scale", correction.scale},
-          {"offset_mm", correction.offset_mm},
-          {"rmse_mm", correction.rmse_mm}};
+  return {
+      {"model", correction.model == DepthCorrectionProfile::OffsetOnly ? "offset_only" : "linear"},
+      {"scale", correction.scale},
+      {"offset_mm", correction.offset_mm},
+      {"rmse_mm", correction.rmse_mm}};
 }
 
 DepthCorrectionProfile correctionFromJson(const Json& value, const std::string& serial,
@@ -239,7 +238,7 @@ bool ProjectiveCameraModel::isValid(std::string* error) const
 }
 
 ProjectiveCameraModel ProjectiveCameraModel::scaledTo(uint32_t scaled_width,
-                                                       uint32_t scaled_height) const
+                                                      uint32_t scaled_height) const
 {
   ProjectiveCameraModel scaled = *this;
   if (width == 0 || height == 0)
@@ -267,8 +266,8 @@ ProjectiveCameraModel ProjectiveCameraModel::rectified() const
   return result;
 }
 
-RigidTransform::RigidTransform() : rotation{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0},
-                                   translation_m{0.0, 0.0, 0.0}
+RigidTransform::RigidTransform()
+    : rotation{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0}, translation_m{0.0, 0.0, 0.0}
 {
 }
 
@@ -297,10 +296,9 @@ bool RigidTransform::isValid(std::string* error) const
         return fail("rotation is not orthonormal", error);
     }
   }
-  const double determinant =
-      rotation[0] * (rotation[4] * rotation[8] - rotation[5] * rotation[7]) -
-      rotation[1] * (rotation[3] * rotation[8] - rotation[5] * rotation[6]) +
-      rotation[2] * (rotation[3] * rotation[7] - rotation[4] * rotation[6]);
+  const double determinant = rotation[0] * (rotation[4] * rotation[8] - rotation[5] * rotation[7]) -
+                             rotation[1] * (rotation[3] * rotation[8] - rotation[5] * rotation[6]) +
+                             rotation[2] * (rotation[3] * rotation[7] - rotation[4] * rotation[6]);
   if (std::fabs(determinant - 1.0) > 1e-4)
     return fail("rotation determinant is not one", error);
   if (error != nullptr)
@@ -317,8 +315,8 @@ CalibrationQualityMetrics::CalibrationQualityMetrics()
 bool CalibrationQualityMetrics::isValid(std::string* error) const
 {
   if (!finite(color_rms_px) || color_rms_px < 0.0 || !finite(ir_rms_px) || ir_rms_px < 0.0 ||
-      !finite(held_out_stereo_rms_px) || held_out_stereo_rms_px < 0.0 ||
-      !finite(depth_rmse_mm) || depth_rmse_mm < 0.0)
+      !finite(held_out_stereo_rms_px) || held_out_stereo_rms_px < 0.0 || !finite(depth_rmse_mm) ||
+      depth_rmse_mm < 0.0)
     return fail("calibration quality metrics must be finite and non-negative", error);
   if (error != nullptr)
     error->clear();
@@ -363,27 +361,51 @@ CalibrationProfile& CalibrationProfile::operator=(const CalibrationProfile& othe
 CalibrationProfile& CalibrationProfile::operator=(CalibrationProfile&& other) noexcept = default;
 CalibrationProfile::~CalibrationProfile() = default;
 
-uint32_t CalibrationProfile::schemaVersion() const { return impl_->schema_version; }
-const std::string& CalibrationProfile::serial() const { return impl_->serial; }
-const std::string& CalibrationProfile::firmware() const { return impl_->firmware; }
+uint32_t CalibrationProfile::schemaVersion() const
+{
+  return impl_->schema_version;
+}
+const std::string& CalibrationProfile::serial() const
+{
+  return impl_->serial;
+}
+const std::string& CalibrationProfile::firmware() const
+{
+  return impl_->firmware;
+}
 void CalibrationProfile::setDeviceIdentity(const std::string& serial, const std::string& firmware)
 {
   impl_->serial = serial;
   impl_->firmware = firmware;
 }
-const ProjectiveCameraModel& CalibrationProfile::colorCamera() const { return impl_->color; }
-const ProjectiveCameraModel& CalibrationProfile::irCamera() const { return impl_->ir; }
-const RigidTransform& CalibrationProfile::depthToColor() const { return impl_->depth_to_color; }
+const ProjectiveCameraModel& CalibrationProfile::colorCamera() const
+{
+  return impl_->color;
+}
+const ProjectiveCameraModel& CalibrationProfile::irCamera() const
+{
+  return impl_->ir;
+}
+const RigidTransform& CalibrationProfile::depthToColor() const
+{
+  return impl_->depth_to_color;
+}
 void CalibrationProfile::setColorCamera(const ProjectiveCameraModel& camera)
 {
   impl_->color = camera;
 }
-void CalibrationProfile::setIrCamera(const ProjectiveCameraModel& camera) { impl_->ir = camera; }
+void CalibrationProfile::setIrCamera(const ProjectiveCameraModel& camera)
+{
+  impl_->ir = camera;
+}
 void CalibrationProfile::setDepthToColor(const RigidTransform& transform)
 {
   impl_->depth_to_color = transform;
 }
-bool CalibrationProfile::hasDepthCorrection() const { return impl_->has_depth_correction; }
+bool CalibrationProfile::hasDepthCorrection() const
+{
+  return impl_->has_depth_correction;
+}
 const DepthCorrectionProfile& CalibrationProfile::depthCorrection() const
 {
   return impl_->depth_correction;
@@ -393,8 +415,14 @@ void CalibrationProfile::setDepthCorrection(const DepthCorrectionProfile& correc
   impl_->depth_correction = correction;
   impl_->has_depth_correction = true;
 }
-void CalibrationProfile::clearDepthCorrection() { impl_->has_depth_correction = false; }
-bool CalibrationProfile::hasQualityMetrics() const { return impl_->has_quality; }
+void CalibrationProfile::clearDepthCorrection()
+{
+  impl_->has_depth_correction = false;
+}
+bool CalibrationProfile::hasQualityMetrics() const
+{
+  return impl_->has_quality;
+}
 const CalibrationQualityMetrics& CalibrationProfile::qualityMetrics() const
 {
   return impl_->quality;
@@ -404,10 +432,22 @@ void CalibrationProfile::setQualityMetrics(const CalibrationQualityMetrics& qual
   impl_->quality = quality;
   impl_->has_quality = true;
 }
-void CalibrationProfile::clearQualityMetrics() { impl_->has_quality = false; }
-const std::string& CalibrationProfile::createdUtc() const { return impl_->created_utc; }
-const std::string& CalibrationProfile::toolVersion() const { return impl_->tool_version; }
-const std::string& CalibrationProfile::jobSha256() const { return impl_->job_sha256; }
+void CalibrationProfile::clearQualityMetrics()
+{
+  impl_->has_quality = false;
+}
+const std::string& CalibrationProfile::createdUtc() const
+{
+  return impl_->created_utc;
+}
+const std::string& CalibrationProfile::toolVersion() const
+{
+  return impl_->tool_version;
+}
+const std::string& CalibrationProfile::jobSha256() const
+{
+  return impl_->job_sha256;
+}
 void CalibrationProfile::setProvenance(const std::string& created_utc,
                                        const std::string& tool_version,
                                        const std::string& job_sha256)
@@ -430,8 +470,7 @@ bool CalibrationProfile::isValid(std::string* error) const
   {
     if (!impl_->depth_correction.isValid())
       return fail("calibration profile contains an invalid depth correction", error);
-    if (!impl_->depth_correction.serial.empty() &&
-        impl_->depth_correction.serial != impl_->serial)
+    if (!impl_->depth_correction.serial.empty() && impl_->depth_correction.serial != impl_->serial)
       return fail("depth correction serial does not match the calibration profile", error);
   }
   if (impl_->has_quality && !impl_->quality.isValid(error))
@@ -489,8 +528,8 @@ bool CalibrationProfile::save(const std::string& path, std::string* error) const
     if (impl_->has_quality)
       root["quality"] = qualityToJson(impl_->quality);
     root["provenance"] = {{"created_utc", impl_->created_utc},
-                           {"tool_version", impl_->tool_version},
-                           {"job_sha256", impl_->job_sha256}};
+                          {"tool_version", impl_->tool_version},
+                          {"job_sha256", impl_->job_sha256}};
     return recording::writeFileAtomically(path, root.dump(2) + "\n", error);
   }
   catch (const std::exception& exception)

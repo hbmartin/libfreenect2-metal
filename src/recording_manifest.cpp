@@ -176,8 +176,7 @@ bool validateManifest(const ManifestV1& manifest, uint32_t version, std::string*
       *error = "recording manifest contains an unsafe P0 path";
     return false;
   }
-  if (version == 2 && !manifest.profile_path.empty() &&
-      !isSafeRelativePath(manifest.profile_path))
+  if (version == 2 && !manifest.profile_path.empty() && !isSafeRelativePath(manifest.profile_path))
   {
     if (error != 0)
       *error = "recording manifest contains an unsafe calibration profile path";
@@ -196,8 +195,7 @@ bool validateManifest(const ManifestV1& manifest, uint32_t version, std::string*
 
 ManifestV1::ManifestV1()
     : version(1), color_encoding("jpeg"), depth_encoding("kinect-v2-raw"),
-      p0_path("calibration/p0.bin"),
-      device_clock(kDeviceClock), arrival_clock(kArrivalClock)
+      p0_path("calibration/p0.bin"), device_clock(kDeviceClock), arrival_clock(kArrivalClock)
 {
   std::memset(&color, 0, sizeof(color));
   std::memset(&ir, 0, sizeof(ir));

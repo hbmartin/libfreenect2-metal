@@ -139,20 +139,18 @@ uint32_t rotateRight(uint32_t value, uint32_t count)
 std::string sha256(const std::string& text)
 {
   static const std::array<uint32_t, 64> constants = {
-      0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u,
-      0x923f82a4u, 0xab1c5ed5u, 0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u,
-      0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u, 0xe49b69c1u, 0xefbe4786u,
-      0x0fc19dc6u, 0x240ca1ccu, 0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
-      0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u, 0xc6e00bf3u, 0xd5a79147u,
-      0x06ca6351u, 0x14292967u, 0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u,
-      0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u, 0xa2bfe8a1u, 0xa81a664bu,
-      0xc24b8b70u, 0xc76c51a3u, 0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
-      0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au,
-      0x5b9cca4fu, 0x682e6ff3u, 0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u,
-      0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u};
-  std::array<uint32_t, 8> digest = {0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u,
-                                    0xa54ff53au, 0x510e527fu, 0x9b05688cu,
-                                    0x1f83d9abu, 0x5be0cd19u};
+      0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u,
+      0xab1c5ed5u, 0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u, 0x72be5d74u, 0x80deb1feu,
+      0x9bdc06a7u, 0xc19bf174u, 0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu, 0x2de92c6fu,
+      0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau, 0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u,
+      0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u, 0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu,
+      0x53380d13u, 0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u, 0xa2bfe8a1u, 0xa81a664bu,
+      0xc24b8b70u, 0xc76c51a3u, 0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u, 0x19a4c116u,
+      0x1e376c08u, 0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+      0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u, 0x90befffau, 0xa4506cebu, 0xbef9a3f7u,
+      0xc67178f2u};
+  std::array<uint32_t, 8> digest = {0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
+                                    0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u};
   std::vector<unsigned char> bytes(text.begin(), text.end());
   const uint64_t bit_length = static_cast<uint64_t>(bytes.size()) * 8u;
   bytes.push_back(0x80u);
@@ -174,10 +172,10 @@ std::string sha256(const std::string& text)
     }
     for (size_t index = 16; index < words.size(); ++index)
     {
-      const uint32_t s0 = rotateRight(words[index - 15], 7u) ^
-                          rotateRight(words[index - 15], 18u) ^ (words[index - 15] >> 3u);
-      const uint32_t s1 = rotateRight(words[index - 2], 17u) ^
-                          rotateRight(words[index - 2], 19u) ^ (words[index - 2] >> 10u);
+      const uint32_t s0 = rotateRight(words[index - 15], 7u) ^ rotateRight(words[index - 15], 18u) ^
+                          (words[index - 15] >> 3u);
+      const uint32_t s1 = rotateRight(words[index - 2], 17u) ^ rotateRight(words[index - 2], 19u) ^
+                          (words[index - 2] >> 10u);
       words[index] = words[index - 16] + s0 + words[index - 7] + s1;
     }
     uint32_t a = digest[0], b = digest[1], c = digest[2], d = digest[3];
@@ -276,8 +274,8 @@ bool loadJob(const fs::path& path, Job& job, Json& source, std::string* error)
     if (loaded.columns < 2 || loaded.rows < 2 || !std::isfinite(loaded.square_size_mm) ||
         loaded.square_size_mm <= 0.0 || loaded.gates.minimum_views == 0)
       return fail("calibration board or quality settings are invalid", error);
-    for (const std::vector<fs::path>* role : {&loaded.color, &loaded.ir, &loaded.stereo,
-                                              &loaded.depth})
+    for (const std::vector<fs::path>* role :
+         {&loaded.color, &loaded.ir, &loaded.stereo, &loaded.depth})
     {
       for (const fs::path& recording : *role)
       {
@@ -521,8 +519,8 @@ bool detectRecording(const fs::path& path, DetectionRole role, const Job& job, J
     }
     std::vector<cv::Point2f> color_points;
     std::vector<cv::Point2f> ir_points;
-    const bool found_color = !needs_color ||
-                             detectBoard(grayColor(*frames[lf::Frame::Color]), job, color_points);
+    const bool found_color =
+        !needs_color || detectBoard(grayColor(*frames[lf::Frame::Color]), job, color_points);
     const bool found_ir = !needs_ir || detectBoard(grayIr(*frames[lf::Frame::Ir]), job, ir_points);
     bool accept = found_color && found_ir;
     if (accept && needs_color)
@@ -555,11 +553,10 @@ bool detectRecording(const fs::path& path, DetectionRole role, const Job& job, J
         view["depth_mad_mm"] = depth.mad_mm;
         view["valid_depth_pixels"] = depth.valid_pixels;
       }
-      const char* key = role == DetectionRole::Color
-                            ? "color_views"
-                            : role == DetectionRole::Ir
-                                  ? "ir_views"
-                                  : role == DetectionRole::Stereo ? "stereo_views" : "depth_views";
+      const char* key = role == DetectionRole::Color    ? "color_views"
+                        : role == DetectionRole::Ir     ? "ir_views"
+                        : role == DetectionRole::Stereo ? "stereo_views"
+                                                        : "depth_views";
       state[key].push_back(view);
       ++accepted;
     }
@@ -601,7 +598,7 @@ bool detectAll(const Job& job, const Json& job_source, Json& state, std::string*
 }
 
 std::vector<std::vector<cv::Point2f>> collectPoints(const Json& direct, const Json& stereo,
-                                                     const Json& depth, const char* key)
+                                                    const Json& depth, const char* key)
 {
   std::vector<std::vector<cv::Point2f>> result;
   for (const Json* group : {&direct, &stereo, &depth})
@@ -672,8 +669,7 @@ double viewReprojectionRms(const std::vector<cv::Point3f>& object,
 double stereoHoldoutRms(const std::vector<cv::Point3f>& board, const Json& stereo_views,
                         const cv::Mat& ir_camera, const cv::Mat& ir_distortion,
                         const cv::Mat& color_camera, const cv::Mat& color_distortion,
-                        const cv::Mat& ir_to_color_rotation,
-                        const cv::Mat& ir_to_color_translation)
+                        const cv::Mat& ir_to_color_rotation, const cv::Mat& ir_to_color_translation)
 {
   double squared = 0.0;
   size_t count = 0;
@@ -700,16 +696,16 @@ double stereoHoldoutRms(const std::vector<cv::Point3f>& board, const Json& stere
       object.at<double>(0) = point.x;
       object.at<double>(1) = point.y;
       object.at<double>(2) = point.z;
-      const cv::Mat transformed = ir_to_color_rotation * (board_rotation * object +
-                                                           board_translation) +
-                                  ir_to_color_translation;
+      const cv::Mat transformed =
+          ir_to_color_rotation * (board_rotation * object + board_translation) +
+          ir_to_color_translation;
       color_space.emplace_back(static_cast<float>(transformed.at<double>(0)),
                                static_cast<float>(transformed.at<double>(1)),
                                static_cast<float>(transformed.at<double>(2)));
     }
     std::vector<cv::Point2f> projected;
-    cv::projectPoints(color_space, cv::Vec3d(0.0, 0.0, 0.0), cv::Vec3d(0.0, 0.0, 0.0),
-                      color_camera, color_distortion, projected);
+    cv::projectPoints(color_space, cv::Vec3d(0.0, 0.0, 0.0), cv::Vec3d(0.0, 0.0, 0.0), color_camera,
+                      color_distortion, projected);
     for (size_t point = 0; point < projected.size(); ++point)
     {
       const cv::Point2f delta = projected[point] - color_points[point];
@@ -777,7 +773,7 @@ bool calibrateIntrinsics(const std::vector<cv::Point3f>& board,
 }
 
 lf::ProjectiveCameraModel modelFromCv(const cv::Size& size, const cv::Mat& camera,
-                                     const cv::Mat& distortion, bool rational)
+                                      const cv::Mat& distortion, bool rational)
 {
   lf::ProjectiveCameraModel model;
   model.width = static_cast<uint32_t>(size.width);
@@ -821,8 +817,8 @@ lf::ProjectiveCameraModel modelFromState(const Json& value)
   model.cx = value.at("cx").get<double>();
   model.cy = value.at("cy").get<double>();
   model.distortion_model = value.at("distortion_model") == "rational_8"
-                                 ? lf::DistortionModel::Rational8
-                                 : lf::DistortionModel::BrownConrady5;
+                               ? lf::DistortionModel::Rational8
+                               : lf::DistortionModel::BrownConrady5;
   for (size_t index = 0; index < value.at("distortion").size(); ++index)
     model.distortion[index] = value.at("distortion")[index].get<double>();
   return model;
@@ -836,8 +832,8 @@ double depthRmse(const lf::DepthCorrectionProfile& profile,
   double squared = 0.0;
   for (const auto& sample : samples)
   {
-    const double residual = profile.scale * sample.measured_median_mm + profile.offset_mm -
-                            sample.known_distance_mm;
+    const double residual =
+        profile.scale * sample.measured_median_mm + profile.offset_mm - sample.known_distance_mm;
     squared += residual * residual;
   }
   return std::sqrt(squared / samples.size());
@@ -888,8 +884,8 @@ bool solveCalibration(const Job& job, Json& state, std::string* error)
     const std::vector<cv::Point3f> board = boardPoints(job);
     const Json& stereo_json = state.at("stereo_views");
     const Json& depth_json = state.at("depth_views");
-    const auto color_points = collectPoints(state.at("color_views"), stereo_json, Json::array(),
-                                            "color_points");
+    const auto color_points =
+        collectPoints(state.at("color_views"), stereo_json, Json::array(), "color_points");
     const auto ir_points =
         collectPoints(state.at("ir_views"), stereo_json, depth_json, "ir_points");
     if (color_points.empty() || ir_points.empty() || stereo_json.empty())
@@ -901,9 +897,9 @@ bool solveCalibration(const Job& job, Json& state, std::string* error)
                               state.contains("color_views") && !state.at("color_views").empty()
                                   ? state.at("color_views")[0].at("color_size")[1].get<int>()
                                   : stereo_json[0].at("color_size")[1].get<int>());
-    const Json& first_ir = !state.at("ir_views").empty() ? state.at("ir_views")[0]
-                                                         : (!stereo_json.empty() ? stereo_json[0]
-                                                                                 : depth_json[0]);
+    const Json& first_ir = !state.at("ir_views").empty()
+                               ? state.at("ir_views")[0]
+                               : (!stereo_json.empty() ? stereo_json[0] : depth_json[0]);
     const cv::Size ir_size(first_ir.at("ir_size")[0].get<int>(),
                            first_ir.at("ir_size")[1].get<int>());
     const bool rational = job.distortion_model == lf::DistortionModel::Rational8;
@@ -915,8 +911,8 @@ bool solveCalibration(const Job& job, Json& state, std::string* error)
     double ir_rms = 0.0;
     if (!calibrateIntrinsics(board, color_points, color_size, rational, color_camera,
                              color_distortion, color_rms, error) ||
-        !calibrateIntrinsics(board, ir_points, ir_size, rational, ir_camera, ir_distortion,
-                             ir_rms, error))
+        !calibrateIntrinsics(board, ir_points, ir_size, rational, ir_camera, ir_distortion, ir_rms,
+                             error))
       return false;
 
     std::vector<std::vector<cv::Point3f>> stereo_objects;
@@ -947,8 +943,8 @@ bool solveCalibration(const Job& job, Json& state, std::string* error)
     profile.setIrCamera(modelFromCv(ir_size, ir_camera, ir_distortion, rational));
     lf::RigidTransform transform;
     for (size_t index = 0; index < 9; ++index)
-      transform.rotation[index] = rotation.at<double>(static_cast<int>(index / 3),
-                                                      static_cast<int>(index % 3));
+      transform.rotation[index] =
+          rotation.at<double>(static_cast<int>(index / 3), static_cast<int>(index % 3));
     for (size_t index = 0; index < 3; ++index)
       transform.translation_m[index] = translation.at<double>(static_cast<int>(index)) / 1000.0;
     profile.setDepthToColor(transform);
@@ -993,10 +989,9 @@ bool solveCalibration(const Job& job, Json& state, std::string* error)
                               linear.model == lf::DepthCorrectionProfile::Linear;
       const auto& validation = depth_holdout.empty() ? depth_training : depth_holdout;
       const double offset_rmse = depthRmse(offset, validation);
-      const double linear_rmse = has_linear ? depthRmse(linear, validation)
-                                            : std::numeric_limits<double>::infinity();
-      lf::DepthCorrectionProfile selected =
-          linear_rmse <= offset_rmse * 0.8 ? linear : offset;
+      const double linear_rmse =
+          has_linear ? depthRmse(linear, validation) : std::numeric_limits<double>::infinity();
+      lf::DepthCorrectionProfile selected = linear_rmse <= offset_rmse * 0.8 ? linear : offset;
       selected.serial = profile.serial();
       selected.firmware = profile.firmware();
       selected.rmse_mm = linear_rmse <= offset_rmse * 0.8 ? linear_rmse : offset_rmse;
@@ -1011,9 +1006,9 @@ bool solveCalibration(const Job& job, Json& state, std::string* error)
     quality.depth_views = static_cast<uint32_t>(depth_training.size() + depth_holdout.size());
     quality.color_rms_px = color_rms;
     quality.ir_rms_px = ir_rms;
-    const double stereo_holdout = stereoHoldoutRms(
-        board, stereo_json, ir_camera, ir_distortion, color_camera, color_distortion, rotation,
-        translation);
+    const double stereo_holdout =
+        stereoHoldoutRms(board, stereo_json, ir_camera, ir_distortion, color_camera,
+                         color_distortion, rotation, translation);
     quality.held_out_stereo_rms_px = std::max(
         stereo_rms,
         std::max(std::isfinite(stereo_holdout) ? stereo_holdout : stereo_rms,
@@ -1037,13 +1032,13 @@ bool solveCalibration(const Job& job, Json& state, std::string* error)
           {"offset_mm", profile.depthCorrection().offset_mm},
           {"rmse_mm", profile.depthCorrection().rmse_mm}};
     solution["quality"] = {{"color_views", quality.color_views},
-                            {"ir_views", quality.ir_views},
-                            {"stereo_views", quality.stereo_views},
-                            {"depth_views", quality.depth_views},
-                            {"color_rms_px", quality.color_rms_px},
-                            {"ir_rms_px", quality.ir_rms_px},
-                            {"held_out_stereo_rms_px", quality.held_out_stereo_rms_px},
-                            {"depth_rmse_mm", quality.depth_rmse_mm}};
+                           {"ir_views", quality.ir_views},
+                           {"stereo_views", quality.stereo_views},
+                           {"depth_views", quality.depth_views},
+                           {"color_rms_px", quality.color_rms_px},
+                           {"ir_rms_px", quality.ir_rms_px},
+                           {"held_out_stereo_rms_px", quality.held_out_stereo_rms_px},
+                           {"depth_rmse_mm", quality.depth_rmse_mm}};
     solution["created_utc"] = profile.createdUtc();
     state["solution"] = solution;
     return true;
@@ -1081,7 +1076,7 @@ bool profileFromState(const Json& state, lf::CalibrationProfile& profile, std::s
       correction.serial = loaded.serial();
       correction.firmware = loaded.firmware();
       correction.model = value.at("model") == "linear" ? lf::DepthCorrectionProfile::Linear
-                                                        : lf::DepthCorrectionProfile::OffsetOnly;
+                                                       : lf::DepthCorrectionProfile::OffsetOnly;
       correction.scale = value.at("scale").get<double>();
       correction.offset_mm = value.at("offset_mm").get<double>();
       correction.rmse_mm = value.at("rmse_mm").get<double>();
@@ -1115,8 +1110,7 @@ bool qualityPasses(const Job& job, const lf::CalibrationProfile& profile, std::s
 {
   const auto& quality = profile.qualityMetrics();
   std::ostringstream failures;
-  if (quality.color_views < job.gates.minimum_views ||
-      quality.ir_views < job.gates.minimum_views ||
+  if (quality.color_views < job.gates.minimum_views || quality.ir_views < job.gates.minimum_views ||
       quality.stereo_views < job.gates.minimum_views ||
       quality.depth_views < job.gates.minimum_views)
     failures << "fewer than " << job.gates.minimum_views << " usable views in one or more roles; ";
@@ -1125,8 +1119,7 @@ bool qualityPasses(const Job& job, const lf::CalibrationProfile& profile, std::s
     failures << "intrinsic RMS exceeds " << job.gates.maximum_intrinsic_rms_px << " px; ";
   if (quality.held_out_stereo_rms_px > job.gates.maximum_stereo_rms_px)
     failures << "held-out/stereo RMS exceeds " << job.gates.maximum_stereo_rms_px << " px; ";
-  if (!profile.hasDepthCorrection() ||
-      quality.depth_rmse_mm > job.gates.maximum_depth_rmse_mm)
+  if (!profile.hasDepthCorrection() || quality.depth_rmse_mm > job.gates.maximum_depth_rmse_mm)
     failures << "depth RMSE exceeds " << job.gates.maximum_depth_rmse_mm << " mm; ";
   if (!failures.str().empty())
     return fail(failures.str(), error);
@@ -1211,13 +1204,13 @@ bool importYaml(const Arguments& arguments, std::string* error)
   const bool ir_rational = ir_distortion.total() >= 8;
   lf::CalibrationProfile profile;
   profile.setDeviceIdentity(serial_it->second, firmware);
-  profile.setColorCamera(modelFromCv(cv::Size(1920, 1080), color_camera, color_distortion,
-                                     color_rational));
+  profile.setColorCamera(
+      modelFromCv(cv::Size(1920, 1080), color_camera, color_distortion, color_rational));
   profile.setIrCamera(modelFromCv(cv::Size(512, 424), ir_camera, ir_distortion, ir_rational));
   lf::RigidTransform transform;
   for (size_t index = 0; index < 9; ++index)
-    transform.rotation[index] = rotation.at<double>(static_cast<int>(index / 3),
-                                                    static_cast<int>(index % 3));
+    transform.rotation[index] =
+        rotation.at<double>(static_cast<int>(index / 3), static_cast<int>(index % 3));
   for (size_t index = 0; index < 3; ++index)
     transform.translation_m[index] = translation.at<double>(static_cast<int>(index));
   profile.setDepthToColor(transform);
@@ -1242,11 +1235,11 @@ bool exportYaml(const Arguments& arguments, std::string* error)
   fs::create_directories(output, filesystem_error);
   if (filesystem_error)
     return fail("failed to create YAML output directory: " + filesystem_error.message(), error);
-  if (profile.hasDepthCorrection() &&
-      std::fabs(profile.depthCorrection().scale - 1.0) > 1e-12)
+  if (profile.hasDepthCorrection() && std::fabs(profile.depthCorrection().scale - 1.0) > 1e-12)
     return fail("legacy YAML cannot represent a linear depth scale", error);
 
-  const auto write_camera = [&](const fs::path& path, const lf::ProjectiveCameraModel& model) {
+  const auto write_camera = [&](const fs::path& path, const lf::ProjectiveCameraModel& model)
+  {
     cv::FileStorage file(path.string(), cv::FileStorage::WRITE);
     if (!file.isOpened())
       return false;
@@ -1336,8 +1329,8 @@ int main(int argc, char** argv)
       throw std::runtime_error(error);
     if (arguments.command == "inspect")
     {
-      std::cout << "job valid: board=" << job.columns << 'x' << job.rows << " square="
-                << job.square_size_mm << "mm recordings color=" << job.color.size()
+      std::cout << "job valid: board=" << job.columns << 'x' << job.rows
+                << " square=" << job.square_size_mm << "mm recordings color=" << job.color.size()
                 << " ir=" << job.ir.size() << " stereo=" << job.stereo.size()
                 << " depth=" << job.depth.size() << " sha256=" << jobFingerprint(job_source)
                 << '\n';

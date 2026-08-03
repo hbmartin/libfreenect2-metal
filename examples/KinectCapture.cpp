@@ -645,9 +645,8 @@ int main(int argc, char** argv)
     scaled_profile.setColorCamera(target);
     std::string error;
     std::unique_ptr<libfreenect2::ProjectiveRegistration> projective_registration =
-        libfreenect2::ProjectiveRegistration::create(scaled_profile, target,
-                                                     libfreenect2::ProjectiveRegistrationOptions(),
-                                                     &error);
+        libfreenect2::ProjectiveRegistration::create(
+            scaled_profile, target, libfreenect2::ProjectiveRegistrationOptions(), &error);
     projective_depth = std::make_unique<libfreenect2::Frame>(
         target.width, target.height, sizeof(float), nullptr, libfreenect2::Frame::Float);
     if (!projective_registration ||
@@ -719,8 +718,7 @@ int main(int argc, char** argv)
   {
     metadata << ",\n"
              << "  \"calibration_profile\": {\"path\": \"" << calibration_profile_path
-             << "\", \"serial_match\": "
-             << (calibration_profile_device_match ? "true" : "false")
+             << "\", \"serial_match\": " << (calibration_profile_device_match ? "true" : "false")
              << ", \"registered_depth_pixels\": " << projective_stats.valid << "}";
   }
   if (timestamp_aligned)

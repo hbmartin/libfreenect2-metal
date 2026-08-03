@@ -61,8 +61,7 @@ public:
    * Factory calibration must be set first. Serial mismatches are rejected
    * unless explicitly allowed.
    */
-  bool setCalibrationProfile(const CalibrationProfile& profile,
-                             bool allow_serial_mismatch = false);
+  bool setCalibrationProfile(const CalibrationProfile& profile, bool allow_serial_mismatch = false);
 
   /** Flush queued frames and close the recording. Idempotent. */
   bool close();

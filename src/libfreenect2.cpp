@@ -288,10 +288,7 @@ public:
   {
   }
 
-  void setTarget(FrameListener* target)
-  {
-    target_.store(target, std::memory_order_release);
-  }
+  void setTarget(FrameListener* target) { target_.store(target, std::memory_order_release); }
 
   virtual bool onNewFrame(Frame::Type type, Frame* frame)
   {

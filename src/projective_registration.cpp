@@ -44,11 +44,10 @@ void distort(const ProjectiveCameraModel& camera, double x, double y, double& di
   const double p1 = camera.distortion[2];
   const double p2 = camera.distortion[3];
   const double k3 = camera.distortion[4];
-  const double denominator = camera.distortion_model == DistortionModel::Rational8
-                                 ? 1.0 + camera.distortion[5] * r2 +
-                                             camera.distortion[6] * r4 +
-                                             camera.distortion[7] * r6
-                                 : 1.0;
+  const double denominator =
+      camera.distortion_model == DistortionModel::Rational8
+          ? 1.0 + camera.distortion[5] * r2 + camera.distortion[6] * r4 + camera.distortion[7] * r6
+          : 1.0;
   const double radial = (1.0 + k1 * r2 + k2 * r4 + k3 * r6) / denominator;
   distorted_x = x * radial + 2.0 * p1 * x * y + p2 * (r2 + 2.0 * x * x);
   distorted_y = y * radial + p1 * (r2 + 2.0 * y * y) + 2.0 * p2 * x * y;
@@ -162,19 +161,19 @@ public:
     std::vector<float> selected_distance(output_count, std::numeric_limits<float>::infinity());
     std::vector<size_t> selected_source(output_count, std::numeric_limits<size_t>::max());
 
-    const auto store = [&](int column, int row, float z_mm, float distance, size_t source_index) {
+    const auto store = [&](int column, int row, float z_mm, float distance, size_t source_index)
+    {
       if (column < 0 || row < 0 || column >= static_cast<int>(target.width) ||
           row >= static_cast<int>(target.height))
         return;
-      const size_t output_index = static_cast<size_t>(row) * target.width +
-                                  static_cast<size_t>(column);
+      const size_t output_index =
+          static_cast<size_t>(row) * target.width + static_cast<size_t>(column);
       const float existing = output[output_index];
       const bool nearer = existing == 0.0f || z_mm < existing - 1e-4f;
       const bool equal_depth = existing != 0.0f && std::fabs(z_mm - existing) <= 1e-4f;
-      const bool preferable = equal_depth &&
-                              (distance < selected_distance[output_index] ||
-                               (distance == selected_distance[output_index] &&
-                                source_index < selected_source[output_index]));
+      const bool preferable = equal_depth && (distance < selected_distance[output_index] ||
+                                              (distance == selected_distance[output_index] &&
+                                               source_index < selected_source[output_index]));
       if (nearer || preferable)
       {
         output[output_index] = z_mm;
@@ -200,10 +199,9 @@ public:
       double projected[3];
       for (size_t row = 0; row < 3; ++row)
       {
-        projected[row] = transform.rotation[row * 3] * point[0] +
-                         transform.rotation[row * 3 + 1] * point[1] +
-                         transform.rotation[row * 3 + 2] * point[2] +
-                         transform.translation_m[row] * 1000.0;
+        projected[row] =
+            transform.rotation[row * 3] * point[0] + transform.rotation[row * 3 + 1] * point[1] +
+            transform.rotation[row * 3 + 2] * point[2] + transform.translation_m[row] * 1000.0;
       }
       if (!std::isfinite(projected[2]) || projected[2] <= 0.0)
         continue;
@@ -269,7 +267,10 @@ ProjectiveRegistration::ProjectiveRegistration(std::unique_ptr<ProjectiveRegistr
 
 ProjectiveRegistration::~ProjectiveRegistration() = default;
 
-const ProjectiveCameraModel& ProjectiveRegistration::targetCamera() const { return impl_->target; }
+const ProjectiveCameraModel& ProjectiveRegistration::targetCamera() const
+{
+  return impl_->target;
+}
 const ProjectiveRegistrationOptions& ProjectiveRegistration::options() const
 {
   return impl_->options;

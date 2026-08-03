@@ -536,7 +536,8 @@ jobs:
           # git clang-format --diff may exit 1 when formatting differs. Capture
           # that status without allowing unrelated execution failures to pass.
           set +e
-          format_diff=$(git clang-format --diff "$base" HEAD)
+          format_diff=$(git clang-format --diff \
+            --extensions c,cc,cpp,cxx,h,hpp "$base" HEAD)
           format_status=$?
           set -e
           if [[ "$format_diff" == *"diff --git"* ]]; then
