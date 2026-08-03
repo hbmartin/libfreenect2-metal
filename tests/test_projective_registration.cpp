@@ -94,6 +94,28 @@ TEST(ProjectiveRegistration, AppliesDepthCorrectionOnlyWhenRequested)
   EXPECT_FLOAT_EQ(reinterpret_cast<float*>(corrected_output.data)[0], 1100.0f);
 }
 
+TEST(ProjectiveRegistration, RegistersIntoTargetsLargerThanTheRetainedScratchBound)
+{
+  // 2049x2048 exceeds the per-thread retained-scratch bound, exercising the
+  // release path; results must match the reusable-scratch path.
+  lf::ProjectiveCameraModel target = camera(2049, 2048);
+  lf::CalibrationProfile profile = profileWithCorrection(false);
+  profile.setColorCamera(target);
+
+  std::string error;
+  auto registration = lf::ProjectiveRegistration::create(
+      profile, target, lf::ProjectiveRegistrationOptions(), &error);
+  ASSERT_NE(registration, nullptr) << error;
+
+  lf::Frame depth(4, 4, sizeof(float), nullptr, lf::Frame::Float);
+  std::fill_n(reinterpret_cast<float*>(depth.data), 16, 1000.0f);
+  lf::Frame output(2049, 2048, sizeof(float), nullptr, lf::Frame::Float);
+  ASSERT_TRUE(registration->apply(depth, output, &error)) << error;
+  const float* pixels = reinterpret_cast<const float*>(output.data);
+  EXPECT_FLOAT_EQ(pixels[0], 1000.0f);
+  EXPECT_FLOAT_EQ(pixels[2049 + 1], 1000.0f);
+}
+
 TEST(ProjectiveRegistration, ProjectsFromSourcePixelsIntoDifferentTargetIntrinsics)
 {
   lf::ProjectiveCameraModel source = camera(4, 4);

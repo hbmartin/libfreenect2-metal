@@ -160,7 +160,11 @@ public:
     std::fill(output, output + output_count, 0.0f);
     // Per-thread tie-break scratch: reused across calls so a steady-state
     // consumer pays no allocation per frame, and concurrent applies on
-    // different threads never share state.
+    // different threads never share state. Retained capacity is bounded by
+    // kRetainedScratchElements (covers the 1920x1080 Kinect color raster with
+    // headroom, about 50 MB per thread); larger targets release their scratch
+    // after the call instead of pinning it until thread exit.
+    constexpr size_t kRetainedScratchElements = size_t(1) << 22;
     thread_local std::vector<float> selected_distance;
     thread_local std::vector<size_t> selected_source;
     selected_distance.assign(output_count, std::numeric_limits<float>::infinity());
@@ -244,6 +248,11 @@ public:
           }
         }
       }
+    }
+    if (output_count > kRetainedScratchElements)
+    {
+      selected_distance = std::vector<float>();
+      selected_source = std::vector<size_t>();
     }
     if (error != nullptr)
       error->clear();

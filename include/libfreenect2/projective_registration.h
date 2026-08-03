@@ -60,8 +60,10 @@ public:
    *
    * Output pixels contain target-camera Z in millimeters. Missing pixels are
    * zero. Calls are thread-safe when the caller supplies distinct outputs.
-   * Each calling thread retains scratch buffers sized to the target raster
-   * between calls, so steady-state use performs no per-frame allocation.
+   * Each calling thread reuses scratch buffers sized to the target raster,
+   * so steady-state use performs no per-frame allocation; retained capacity
+   * is bounded, and targets much larger than the Kinect color raster release
+   * their scratch after each call instead.
    */
   bool apply(const Frame& depth, Frame& registered_depth, std::string* error = nullptr) const;
 
