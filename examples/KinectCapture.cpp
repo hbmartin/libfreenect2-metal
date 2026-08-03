@@ -269,6 +269,11 @@ int main(int argc, char** argv)
       else if (option == "--calibration-profile" && argument + 1 < argc)
       {
         calibration_profile_path = argv[++argument];
+        if (calibration_profile_path.empty())
+        {
+          printUsage();
+          return 2;
+        }
       }
       else if (option == "--allow-device-mismatch")
       {

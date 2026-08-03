@@ -342,8 +342,11 @@ public:
 };
 
 CalibrationProfile::CalibrationProfile() : impl_(std::make_unique<CalibrationProfileImpl>()) {}
+// A moved-from profile has a null impl_; copying from one yields a
+// default-constructed profile instead of dereferencing null.
 CalibrationProfile::CalibrationProfile(const CalibrationProfile& other)
-    : impl_(std::make_unique<CalibrationProfileImpl>(*other.impl_))
+    : impl_(other.impl_ ? std::make_unique<CalibrationProfileImpl>(*other.impl_)
+                        : std::make_unique<CalibrationProfileImpl>())
 {
 }
 CalibrationProfile::CalibrationProfile(CalibrationProfile&& other) noexcept = default;
@@ -351,7 +354,9 @@ CalibrationProfile& CalibrationProfile::operator=(const CalibrationProfile& othe
 {
   if (this != &other)
   {
-    if (impl_)
+    if (!other.impl_)
+      impl_ = std::make_unique<CalibrationProfileImpl>();
+    else if (impl_)
       *impl_ = *other.impl_;
     else
       impl_ = std::make_unique<CalibrationProfileImpl>(*other.impl_);

@@ -1033,8 +1033,11 @@ void Freenect2DeviceImpl::setColorFrameListener(libfreenect2::FrameListener* rgb
 {
   // TODO: should only be possible, if not started
   color_statistics_listener_.setTarget(rgb_frame_listener);
+  // A null listener must reach the processor as null so it can skip decode
+  // work entirely, rather than decoding into the statistics interposer.
   if (pipeline_->getRgbPacketProcessor() != 0)
-    pipeline_->getRgbPacketProcessor()->setFrameListener(&color_statistics_listener_);
+    pipeline_->getRgbPacketProcessor()->setFrameListener(
+        rgb_frame_listener != 0 ? &color_statistics_listener_ : 0);
 }
 
 void Freenect2DeviceImpl::setIrAndDepthFrameListener(libfreenect2::FrameListener* ir_frame_listener)
@@ -1042,7 +1045,8 @@ void Freenect2DeviceImpl::setIrAndDepthFrameListener(libfreenect2::FrameListener
   // TODO: should only be possible, if not started
   depth_statistics_listener_.setTarget(ir_frame_listener);
   if (pipeline_->getDepthPacketProcessor() != 0)
-    pipeline_->getDepthPacketProcessor()->setFrameListener(&depth_statistics_listener_);
+    pipeline_->getDepthPacketProcessor()->setFrameListener(
+        ir_frame_listener != 0 ? &depth_statistics_listener_ : 0);
 }
 
 void Freenect2DeviceImpl::setColorAutoExposure(float exposure_compensation)
@@ -2042,10 +2046,12 @@ void Freenect2ReplayDevice::setConfiguration(const Freenect2Device::Config& conf
 void Freenect2ReplayDevice::setColorFrameListener(FrameListener* listener)
 {
   color_statistics_listener_.setTarget(listener);
+  // Keep the processor's null-listener decode skip: interpose statistics only
+  // while a real consumer is attached.
   RgbPacketProcessor* proc = pipeline_->getRgbPacketProcessor();
   if (proc != NULL)
   {
-    proc->setFrameListener(&color_statistics_listener_);
+    proc->setFrameListener(listener != NULL ? &color_statistics_listener_ : NULL);
   }
 }
 
@@ -2055,7 +2061,7 @@ void Freenect2ReplayDevice::setIrAndDepthFrameListener(FrameListener* listener)
   DepthPacketProcessor* proc = pipeline_->getDepthPacketProcessor();
   if (proc != NULL)
   {
-    proc->setFrameListener(&depth_statistics_listener_);
+    proc->setFrameListener(listener != NULL ? &depth_statistics_listener_ : NULL);
   }
 }
 

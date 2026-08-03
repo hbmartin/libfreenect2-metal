@@ -741,8 +741,8 @@ ADD_SUBDIRECTORY(${MY_DIR}/doc)
 SET(HAVE_CalibrationTools disabled)
 IF(BUILD_CALIBRATION_TOOLS)
   # Discover the common components first so the installed version is known;
-  # OpenCV 5 renamed calib3d to calib and moved chessboard detection to
-  # objdetect.
+  # OpenCV 5 split calib3d into geometry/stereo/calib (with calib3d.hpp kept
+  # as a compatibility header) and moved chessboard detection to objdetect.
   FIND_PACKAGE(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
   IF(OpenCV_VERSION VERSION_LESS 4.5)
     MESSAGE(FATAL_ERROR "Calibration tools require OpenCV 4.5 or newer (found ${OpenCV_VERSION})")
@@ -750,7 +750,7 @@ IF(BUILD_CALIBRATION_TOOLS)
   IF(OpenCV_VERSION VERSION_LESS 5.0)
     FIND_PACKAGE(OpenCV REQUIRED COMPONENTS core calib3d imgproc imgcodecs)
   ELSE()
-    FIND_PACKAGE(OpenCV REQUIRED COMPONENTS core calib imgproc imgcodecs objdetect)
+    FIND_PACKAGE(OpenCV REQUIRED COMPONENTS core calib geometry stereo imgproc imgcodecs objdetect)
   ENDIF()
   SET(HAVE_CalibrationTools yes)
   ADD_SUBDIRECTORY(${MY_DIR}/tools/calibration)

@@ -114,9 +114,9 @@ int main()
   libfreenect2::Registration registration(dev->getIrCameraParams(),
                                           dev->getColorCameraParams());
   libfreenect2::Frame undistorted(512, 424, 4, nullptr,
-                                 libfreenect2::Frame::Float);
+                                  libfreenect2::Frame::Float);
   libfreenect2::Frame registered(512, 424, 4, nullptr,
-                                libfreenect2::Frame::BGRX);
+                                 libfreenect2::Frame::BGRX);
 
   libfreenect2::FrameMap frames;
   for (int i = 0; i < 100; ++i)

@@ -120,9 +120,11 @@ quality measurements and should be validated against held-out observations.
 
 ## Recording attachment
 
-All new `RecordingWriter` outputs use manifest version 2. After publishing
-factory calibration, call `setCalibrationProfile()` to store the canonical file
-at `calibration/profile.json`. `KinectCapture record` exposes this as
-`--calibration-profile`. Replay validates the referenced file and its device
-identity before opening; `getCalibrationProfile()` returns a copy. Readers
-remain compatible with manifest version 1 recordings.
+`RecordingWriter` outputs use manifest version 2 when a profile is attached
+and version 1 otherwise. After publishing factory calibration, call
+`setCalibrationProfile()` to store the canonical file at
+`calibration/profile.json`. `KinectCapture record` exposes this as
+`--calibration-profile`. Replay validates the referenced file before opening
+and accepts a serial mismatch (possible only through the writer's explicit
+`allow_serial_mismatch` opt-in); `getCalibrationProfile()` returns a copy.
+Readers remain compatible with manifest version 1 recordings.

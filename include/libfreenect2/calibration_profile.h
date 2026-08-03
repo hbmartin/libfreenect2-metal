@@ -80,7 +80,12 @@ struct LIBFREENECT2_API CalibrationQualityMetrics
 
 class CalibrationProfileImpl;
 
-/** Versioned user calibration for conventional depth-to-color geometry. */
+/** Versioned user calibration for conventional depth-to-color geometry.
+ *
+ * A moved-from profile may only be assigned to, copied from, or destroyed;
+ * copying from one yields a default-constructed profile. Other member
+ * functions require an object that has not been moved from.
+ */
 class LIBFREENECT2_API CalibrationProfile
 {
 public:
