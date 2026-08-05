@@ -7,6 +7,7 @@
 
 #include <libfreenect2/recording.h>
 
+#include <libfreenect2/logging.h>
 #include <libfreenect2/recording_journal.h>
 #include <libfreenect2/recording_manifest.h>
 #include <libfreenect2/recording_utils.h>
@@ -251,8 +252,12 @@ public:
       return false;
     }
 
+    if (!warning.empty())
+      LOG_WARNING << "recording calibration profile: " << warning;
+
     libfreenect2::lock_guard guard(mutex_);
     manifest_.profile_path = "calibration/profile.json";
+    manifest_.profile_allows_serial_mismatch = allow_serial_mismatch;
     profile_set_ = true;
     return true;
   }

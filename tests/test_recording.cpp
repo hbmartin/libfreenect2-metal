@@ -12,16 +12,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <condition_variable>
+#include <filesystem>
 #include <limits>
 #include <mutex>
 #include <sstream>
+#include <system_error>
 #include <thread>
-
-#if defined(_WIN32)
-#include <direct.h>
-#else
-#include <unistd.h>
-#endif
 
 #include <libfreenect2/recording.h>
 #include <libfreenect2/frame_listener_impl.h>
@@ -62,38 +58,13 @@ std::string uniqueRecordingDirectory()
   return joinPath(root, path.str());
 }
 
+// Removes the tree wholesale rather than enumerating the files the recording
+// format happens to write today; an inventory here silently leaks the whole
+// directory the moment a new file is added.
 void removeTestRecording(const std::string& directory)
 {
-  std::vector<unsigned char> journal_bytes;
-  std::string ignored_error;
-  if (readFile(joinPath(directory, "frames.ndjson"), journal_bytes, &ignored_error))
-  {
-    std::istringstream journal(std::string(journal_bytes.begin(), journal_bytes.end()));
-    std::string line;
-    while (std::getline(journal, line))
-    {
-      JournalEntry entry;
-      if (parseJournalEntry(line, entry, 0))
-        std::remove(joinPath(directory, entry.path).c_str());
-    }
-  }
-  std::remove(joinPath(directory, "recording.complete").c_str());
-  std::remove(joinPath(directory, "manifest.json").c_str());
-  std::remove(joinPath(directory, "calibration/p0.bin").c_str());
-  std::remove(joinPath(directory, "frames.ndjson").c_str());
-#if defined(_WIN32)
-  _rmdir(joinPath(directory, "frames/color").c_str());
-  _rmdir(joinPath(directory, "frames/depth").c_str());
-  _rmdir(joinPath(directory, "frames").c_str());
-  _rmdir(joinPath(directory, "calibration").c_str());
-  _rmdir(directory.c_str());
-#else
-  rmdir(joinPath(directory, "frames/color").c_str());
-  rmdir(joinPath(directory, "frames/depth").c_str());
-  rmdir(joinPath(directory, "frames").c_str());
-  rmdir(joinPath(directory, "calibration").c_str());
-  rmdir(directory.c_str());
-#endif
+  std::error_code ignored;
+  std::filesystem::remove_all(std::filesystem::path(directory), ignored);
 }
 
 class ScopedRecordingDirectory
@@ -341,8 +312,20 @@ TEST(RecordingManifest, RoundTripsVersionTwoWithOptionalProfile)
   ASSERT_TRUE(parseManifest(text, actual, &error)) << error;
   EXPECT_EQ(2u, actual.version);
   EXPECT_EQ(expected.profile_path, actual.profile_path);
+  EXPECT_FALSE(actual.profile_allows_serial_mismatch);
   EXPECT_FALSE(parseManifestV1(text, actual, &error));
 
+  expected.profile_allows_serial_mismatch = true;
+  ASSERT_TRUE(serializeManifestV2(expected, text, &error)) << error;
+  ASSERT_TRUE(parseManifest(text, actual, &error)) << error;
+  EXPECT_TRUE(actual.profile_allows_serial_mismatch);
+
+  // The opt-in is meaningless without a profile to authorize.
+  expected.profile_path.clear();
+  EXPECT_FALSE(serializeManifestV2(expected, text, &error));
+  EXPECT_NE(error.find("without a profile"), std::string::npos);
+
+  expected.profile_allows_serial_mismatch = false;
   expected.profile_path = "../profile.json";
   EXPECT_FALSE(serializeManifestV2(expected, text, &error));
   EXPECT_NE(error.find("unsafe"), std::string::npos);
@@ -681,6 +664,53 @@ TEST(RecordingWriter, ReplaysProfilesRecordedWithAnAllowedSerialMismatch)
   ASSERT_TRUE(device->getCalibrationProfile(replay_profile));
   EXPECT_EQ("123456789", replay_profile.serial());
   EXPECT_TRUE(device->close());
+}
+
+TEST(RecordingLoader, RejectsAMismatchedProfileWithoutTheRecordedOptIn)
+{
+  ScopedRecordingDirectory scoped_directory;
+  const std::string& directory = scoped_directory.path();
+  RecordingWriter writer(directory, 2);
+  ASSERT_TRUE(writer.isOpen()) << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibration("other-device", "4.0.3912.0", sampleCalibrationData()))
+      << writer.getLastError();
+  ASSERT_TRUE(writer.setCalibrationProfile(sampleProjectiveProfile(), true))
+      << writer.getLastError();
+  ASSERT_TRUE(writer.close()) << writer.getLastError();
+
+  const std::string manifest_path = joinPath(directory, "manifest.json");
+  std::vector<unsigned char> manifest_bytes;
+  std::string error;
+  ASSERT_TRUE(readFile(manifest_path, manifest_bytes, &error)) << error;
+  const std::string original(manifest_bytes.begin(), manifest_bytes.end());
+  const std::string field = "\"profile_allows_serial_mismatch\": true";
+  const std::string::size_type field_begin = original.find(field);
+  ASSERT_NE(std::string::npos, field_begin);
+
+  // The recorded opt-in is revoked: replay must not apply another device's
+  // geometry just because a profile happens to sit in the directory.
+  std::string revoked = original;
+  revoked.replace(field_begin, field.size(), "\"profile_allows_serial_mismatch\": false");
+  ASSERT_TRUE(writeFileAtomically(manifest_path, revoked, &error)) << error;
+  RecordingMetadata metadata;
+  EXPECT_FALSE(loadRecordingMetadata(directory, false, metadata, &error));
+  EXPECT_NE(error.find("serial"), std::string::npos);
+
+  // A hand-assembled version 2 recording omits the field entirely.
+  std::string absent = original;
+  const std::string::size_type comma = absent.rfind(',', field_begin);
+  ASSERT_NE(std::string::npos, comma);
+  absent.erase(comma, field_begin + field.size() - comma);
+  ASSERT_TRUE(writeFileAtomically(manifest_path, absent, &error)) << error;
+  EXPECT_FALSE(loadRecordingMetadata(directory, false, metadata, &error));
+  EXPECT_NE(error.find("serial"), std::string::npos);
+
+  Freenect2Replay replay;
+  EXPECT_EQ(nullptr, replay.openRecording(directory, new DumpPacketPipeline()));
+
+  // Restoring what the writer recorded makes the recording load again.
+  ASSERT_TRUE(writeFileAtomically(manifest_path, original, &error)) << error;
+  EXPECT_TRUE(loadRecordingMetadata(directory, false, metadata, &error)) << error;
 }
 
 TEST(RecordingWriter, LeavesAnIncompleteRecordingWithoutCalibration)

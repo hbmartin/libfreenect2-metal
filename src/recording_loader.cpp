@@ -7,6 +7,7 @@
 
 #include <libfreenect2/recording_loader.h>
 
+#include <libfreenect2/logging.h>
 #include <libfreenect2/protocol/response.h>
 #include <libfreenect2/recording_utils.h>
 
@@ -83,17 +84,22 @@ bool loadRecordingMetadata(const std::string& directory, bool salvage_incomplete
         *error = "recording calibration profile is invalid: " + local_error;
       return false;
     }
-    // A mismatched serial can only be recorded through the writer's explicit
-    // allow_serial_mismatch opt-in, so honor that decision here instead of
-    // rejecting the whole recording. Structurally invalid profiles still fail.
+    // Honor the opt-in the writer recorded rather than assuming one. A profile
+    // whose serial differs without the manifest saying so was not produced by
+    // this writer, so replaying it would silently apply another device's
+    // geometry. Note this is provenance, not authorization: the manifest is
+    // unsigned, so it only catches mistakes, not deliberate tampering.
     std::string warning;
-    if (!loaded.profile.matchesDevice(loaded.manifest.serial, loaded.manifest.firmware, true,
-                                      &warning, &local_error))
+    if (!loaded.profile.matchesDevice(loaded.manifest.serial, loaded.manifest.firmware,
+                                      loaded.manifest.profile_allows_serial_mismatch, &warning,
+                                      &local_error))
     {
       if (error != 0)
         *error = "recording calibration profile identity is invalid: " + local_error;
       return false;
     }
+    if (!warning.empty())
+      LOG_WARNING << "recording '" << directory << "' calibration profile: " << warning;
     loaded.has_profile = true;
   }
 

@@ -182,6 +182,12 @@ bool validateManifest(const ManifestV1& manifest, uint32_t version, std::string*
       *error = "recording manifest contains an unsafe calibration profile path";
     return false;
   }
+  if (manifest.profile_allows_serial_mismatch && (version != 2 || manifest.profile_path.empty()))
+  {
+    if (error != 0)
+      *error = "recording manifest allows a profile serial mismatch without a profile";
+    return false;
+  }
   if (manifest.device_clock != kDeviceClock || manifest.arrival_clock != kArrivalClock)
   {
     if (error != 0)
@@ -195,7 +201,8 @@ bool validateManifest(const ManifestV1& manifest, uint32_t version, std::string*
 
 ManifestV1::ManifestV1()
     : version(1), color_encoding("jpeg"), depth_encoding("kinect-v2-raw"),
-      p0_path("calibration/p0.bin"), device_clock(kDeviceClock), arrival_clock(kArrivalClock)
+      p0_path("calibration/p0.bin"), profile_allows_serial_mismatch(false),
+      device_clock(kDeviceClock), arrival_clock(kArrivalClock)
 {
   std::memset(&color, 0, sizeof(color));
   std::memset(&ir, 0, sizeof(ir));
@@ -244,7 +251,13 @@ bool serializeManifestV2(const ManifestV1& manifest, std::string& text, std::str
                            {"ir", irToJson(manifest.ir)},
                            {"p0", manifest.p0_path}};
     if (!manifest.profile_path.empty())
+    {
       root["calibration"]["profile"] = manifest.profile_path;
+      // Always written, so a reader can distinguish an intentional cross-device
+      // profile from one that was dropped into the directory by hand.
+      root["calibration"]["profile_allows_serial_mismatch"] =
+          manifest.profile_allows_serial_mismatch;
+    }
     root["clocks"] = {{"device", manifest.device_clock}, {"arrival", manifest.arrival_clock}};
     text = root.dump(2) + "\n";
     return true;
@@ -287,7 +300,20 @@ bool parseManifest(const std::string& text, ManifestV1& manifest, std::string* e
     irFromJson(root.at("calibration").at("ir"), parsed.ir);
     parsed.p0_path = root.at("calibration").at("p0").get<std::string>();
     if (version == 2 && root.at("calibration").contains("profile"))
+    {
       parsed.profile_path = root.at("calibration").at("profile").get<std::string>();
+      if (root.at("calibration").contains("profile_allows_serial_mismatch"))
+      {
+        const Json& allowed = root.at("calibration").at("profile_allows_serial_mismatch");
+        if (!allowed.is_boolean())
+        {
+          if (error != 0)
+            *error = "recording manifest profile_allows_serial_mismatch must be a boolean";
+          return false;
+        }
+        parsed.profile_allows_serial_mismatch = allowed.get<bool>();
+      }
+    }
     parsed.device_clock = root.at("clocks").at("device").get<std::string>();
     parsed.arrival_clock = root.at("clocks").at("arrival").get<std::string>();
     if (!validateManifest(parsed, parsed.version, error))

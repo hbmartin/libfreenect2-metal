@@ -30,6 +30,7 @@ struct ManifestV1
   Freenect2Device::IrCameraParams ir;
   std::string p0_path;
   std::string profile_path;
+  bool profile_allows_serial_mismatch;
   std::string device_clock;
   std::string arrival_clock;
 };
