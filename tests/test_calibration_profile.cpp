@@ -144,11 +144,16 @@ TEST(CalibrationProfile, CopiesFromAMovedFromObjectAsDefaultConstructed)
   const lf::CalibrationProfile moved = std::move(source);
   EXPECT_EQ(moved.serial(), "123456");
 
+  // Reading a moved-from profile is the contract under test: the copy paths
+  // branch on a null impl_ and yield a default-constructed profile. The checks
+  // flag any use of a moved-from object and cannot see that branch.
+  // NOLINTNEXTLINE(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
   const lf::CalibrationProfile copied(source);
   EXPECT_TRUE(copied.serial().empty());
   EXPECT_FALSE(copied.isValid());
 
   lf::CalibrationProfile assigned = sampleProfile();
+  // NOLINTNEXTLINE(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
   assigned = source;
   EXPECT_TRUE(assigned.serial().empty());
   EXPECT_FALSE(assigned.isValid());

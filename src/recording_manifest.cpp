@@ -176,6 +176,14 @@ bool validateManifest(const ManifestV1& manifest, uint32_t version, std::string*
       *error = "recording manifest contains an unsafe P0 path";
     return false;
   }
+  // Versions below 2 cannot encode a profile, so accepting one here would drop
+  // it from the serialized manifest and leave the saved profile unreferenced.
+  if (version < 2 && !manifest.profile_path.empty())
+  {
+    if (error != 0)
+      *error = "recording manifest version 2 or later is required for a calibration profile";
+    return false;
+  }
   if (version == 2 && !manifest.profile_path.empty() && !isSafeRelativePath(manifest.profile_path))
   {
     if (error != 0)

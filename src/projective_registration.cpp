@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <exception>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -162,13 +163,30 @@ public:
     // consumer pays no allocation per frame, and concurrent applies on
     // different threads never share state. Retained capacity is bounded by
     // kRetainedScratchElements (covers the 1920x1080 Kinect color raster with
-    // headroom, about 50 MB per thread); larger targets release their scratch
-    // after the call instead of pinning it until thread exit.
+    // headroom, about 50 MB per thread); larger targets borrow function-local
+    // vectors instead, so their scratch is released on every exit path rather
+    // than pinned until thread exit.
     constexpr size_t kRetainedScratchElements = size_t(1) << 22;
-    thread_local std::vector<float> selected_distance;
-    thread_local std::vector<size_t> selected_source;
-    selected_distance.assign(output_count, std::numeric_limits<float>::infinity());
-    selected_source.assign(output_count, std::numeric_limits<size_t>::max());
+    thread_local std::vector<float> retained_distance;
+    thread_local std::vector<size_t> retained_source;
+    std::vector<float> oversized_distance;
+    std::vector<size_t> oversized_source;
+    const bool retain = output_count <= kRetainedScratchElements;
+    std::vector<float>& selected_distance = retain ? retained_distance : oversized_distance;
+    std::vector<size_t>& selected_source = retain ? retained_source : oversized_source;
+    try
+    {
+      selected_distance.assign(output_count, std::numeric_limits<float>::infinity());
+      selected_source.assign(output_count, std::numeric_limits<size_t>::max());
+    }
+    catch (const std::exception& exception)
+    {
+      // Reported like every other failure here: this returns false with an
+      // error rather than unwinding out of a bool-returning API.
+      return fail(std::string("projective registration could not allocate tie-break scratch: ") +
+                      exception.what(),
+                  error);
+    }
 
     const auto store = [&](int column, int row, float z_mm, float distance, size_t source_index)
     {
@@ -248,11 +266,6 @@ public:
           }
         }
       }
-    }
-    if (output_count > kRetainedScratchElements)
-    {
-      selected_distance = std::vector<float>();
-      selected_source = std::vector<size_t>();
     }
     if (error != nullptr)
       error->clear();

@@ -299,6 +299,21 @@ TEST(RecordingManifest, RoundTripsVersionOne)
   EXPECT_EQ(actual.p0_path, "calibration/p0.bin");
 }
 
+TEST(RecordingManifest, RejectsAProfileInVersionOne)
+{
+  // Version 1 has nowhere to put the profile, so serializing it must fail
+  // rather than silently publish a manifest that ignores the saved profile.
+  ManifestV1 expected = sampleManifest();
+  expected.profile_path = "calibration/profile.json";
+  std::string text;
+  std::string error;
+  EXPECT_FALSE(serializeManifestV1(expected, text, &error));
+  EXPECT_NE(error.find("version 2 or later"), std::string::npos);
+
+  expected.profile_allows_serial_mismatch = true;
+  EXPECT_FALSE(serializeManifestV1(expected, text, &error));
+}
+
 TEST(RecordingManifest, RoundTripsVersionTwoWithOptionalProfile)
 {
   ManifestV1 expected = sampleManifest();
