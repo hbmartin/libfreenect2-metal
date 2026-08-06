@@ -125,6 +125,9 @@ and version 1 otherwise. After publishing factory calibration, call
 `setCalibrationProfile()` to store the canonical file at
 `calibration/profile.json`. `KinectCapture record` exposes this as
 `--calibration-profile`. Replay validates the referenced file before opening
-and accepts a serial mismatch (possible only through the writer's explicit
-`allow_serial_mismatch` opt-in); `getCalibrationProfile()` returns a copy.
+and accepts a serial mismatch when the manifest records the
+`allow_serial_mismatch` opt-in that `setCalibrationProfile()` writes. The
+manifest is not signed, so an edited recording can carry the flag; treat it as
+a record of the writer's intent, not proof of it. `getCalibrationProfile()`
+returns a copy.
 Readers remain compatible with manifest version 1 recordings.
