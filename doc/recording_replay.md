@@ -27,13 +27,19 @@ offsets are monotonic host microseconds relative to writer construction.
 
 Version 0.4 writers publish manifest version 2 when a canonical profile is
 attached and version 1 otherwise. Version 2 preserves all version 1 fields and
-adds an optional safe relative path to `calibration/profile.json`. The attached
-canonical profile contains conventional camera models, a rigid depth-to-color
-transform, optional depth correction, quality measurements, and provenance.
-Readers accept both versions. Version 2 replay rejects a missing, malformed, or
-unsafe referenced profile instead of silently ignoring it; a serial-mismatched
-profile is accepted because embedding one requires the writer's explicit
-`allow_serial_mismatch` opt-in.
+adds an optional safe relative path to `calibration/profile.json` plus the
+`profile_allows_serial_mismatch` boolean recording whether the writer's
+`allow_serial_mismatch` opt-in was used. The attached canonical profile contains
+conventional camera models, a rigid depth-to-color transform, optional depth
+correction, quality measurements, and provenance. Readers accept both versions.
+Version 2 replay rejects a missing, malformed, or unsafe referenced profile
+instead of silently ignoring it. A serial-mismatched profile loads only when the
+manifest records the opt-in; without it the recording is rejected rather than
+replayed with another device's geometry. Recordings written before that field
+existed are rejected on mismatch and must be rewritten. The field is provenance,
+not authorization: the manifest is unsigned, so it distinguishes a deliberate
+cross-device profile from one copied in by mistake, not from one edited by an
+adversary.
 
 `frames.ndjson` is an append-only journal. Every newline-terminated object has
 a global index, stream, relative path, byte count, device timestamp, sequence,
