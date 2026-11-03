@@ -232,10 +232,17 @@ UsbControl::ResultCode UsbControl::claimInterfaces()
 #ifdef __APPLE__
     // Darwin may transiently report a service attached while re-enumeration
     // completes. Wait briefly for readiness without detaching any driver.
-    for (unsigned attempt = 0; driver_active == 1 && attempt < 10; ++attempt)
+    unsigned attempts = 0;
+    for (; driver_active == 1 && attempts < 10; ++attempts)
     {
       libfreenect2::this_thread::sleep_for(libfreenect2::chrono::milliseconds(50));
       driver_active = libusb_kernel_driver_active(handle_, interface_id);
+    }
+    if (attempts > 0)
+    {
+      LOG_DEBUG << "Kinect " << interface_names[i] << " interface " << interface_id
+                << ": readiness retries=" << attempts << " (50 ms each), driver_active="
+                << driver_active;
     }
 #endif
     if (driver_active == 1)

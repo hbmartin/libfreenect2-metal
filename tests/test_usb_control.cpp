@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <libfreenect2/logger.h>
 #include <libfreenect2/protocol/usb_control.h>
 
 namespace
@@ -145,6 +146,75 @@ TEST_F(UsbInterfaceClaim, PreservesIrClaimFailure)
 }
 
 #ifdef __APPLE__
+namespace
+{
+
+class ReadinessLogger : public libfreenect2::Logger
+{
+public:
+  ReadinessLogger() { level_ = Debug; }
+
+  void log(Level level, const std::string& message) override
+  {
+    if (level == Debug)
+      messages.push_back(message);
+  }
+
+  std::vector<std::string> messages;
+};
+
+class UsbReadinessLogging : public UsbInterfaceClaim
+{
+protected:
+  void SetUp() override
+  {
+    UsbInterfaceClaim::SetUp();
+    logger = new ReadinessLogger();
+    libfreenect2::setGlobalLogger(logger);
+  }
+
+  void TearDown() override
+  {
+    libfreenect2::setGlobalLogger(libfreenect2::createConsoleLoggerWithDefaultLevel());
+  }
+
+  ReadinessLogger* logger = nullptr;
+};
+
+} // namespace
+
+TEST_F(UsbReadinessLogging, UnownedInterfacesNeedNoReadinessLog)
+{
+  EXPECT_EQ(control.claimInterfaces(), UsbControl::Success);
+  EXPECT_TRUE(logger->messages.empty());
+}
+
+TEST_F(UsbReadinessLogging, ReportsRetriesForEachTransientlyOwnedInterface)
+{
+  interfaces[0].ownership = {1, 1, 0};
+  interfaces[1].ownership = {1, 0};
+
+  EXPECT_EQ(control.claimInterfaces(), UsbControl::Success);
+  ASSERT_EQ(logger->messages.size(), 2u);
+  EXPECT_NE(logger->messages[0].find("interface 0"), std::string::npos);
+  EXPECT_NE(logger->messages[0].find("retries=2"), std::string::npos);
+  EXPECT_NE(logger->messages[0].find("driver_active=0"), std::string::npos);
+  EXPECT_NE(logger->messages[1].find("interface 1"), std::string::npos);
+  EXPECT_NE(logger->messages[1].find("retries=1"), std::string::npos);
+  EXPECT_NE(logger->messages[1].find("driver_active=0"), std::string::npos);
+}
+
+TEST_F(UsbReadinessLogging, ReportsExhaustedRetriesBeforeRefusingOwnership)
+{
+  interfaces[0].ownership = {1};
+
+  EXPECT_EQ(control.claimInterfaces(), UsbControl::Error);
+  ASSERT_EQ(logger->messages.size(), 1u);
+  EXPECT_NE(logger->messages[0].find("interface 0"), std::string::npos);
+  EXPECT_NE(logger->messages[0].find("retries=10"), std::string::npos);
+  EXPECT_NE(logger->messages[0].find("driver_active=1"), std::string::npos);
+}
+
 TEST_F(UsbInterfaceClaim, WaitsForTransientOwnershipOnBothInterfaces)
 {
   interfaces[0].ownership = {1, 1, 0};

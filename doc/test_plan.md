@@ -89,6 +89,8 @@ interface becomes claimable. The ownership check retries at 50 ms intervals,
 up to ten retries per interface (a nominal 500 ms wait, subject to scheduling).
 It still rejects persistent ownership and propagates claim failures without
 detaching a driver. The identity of the transient service was not captured.
+With `LIBFREENECT2_LOGGER_LEVEL=debug`, each interface that needed retries logs
+its retry count and final ownership query result. Immediate readiness stays quiet.
 
 Close no longer sends the legacy macOS shutdown command or waits four seconds
 for the deliberate sensor reboot. After USB transfer cancellation, stop drains
