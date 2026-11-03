@@ -84,6 +84,10 @@ interface open. Stop the competing process or service, confirm the link is
 still `5000M` with `lsusb -t`, and retry. On Linux, `sudo fuser -v
 /dev/bus/usb/BBB/DDD` can identify processes holding the device node.
 
+On macOS, transient ownership reports after reset are retried for a nominal
+500 ms per interface before refusal. Persistent ownership and real claim errors
+remain failures. See @ref macos_usb_lifecycle for validation scope.
+
 ### Virtual machines
 
 USB 3.0 isochronous transfer rarely survives a VM's USB passthrough. Run on bare
@@ -332,11 +336,11 @@ Depth accuracy problems are usually calibration, not a driver fault.
 * To fit and apply a per-device linear correction, see @ref depth_calibration.
 * For mapping between color, depth, and 3-D coordinates, see @ref registration.
 
-## Known-harmless messages
+## Teardown and logging
 
 ### `closed with shutdown errors` on macOS
 
-Every clean shutdown on macOS currently logs:
+Earlier macOS builds could log this after streaming:
 
 ```
 [Info] [Freenect2DeviceImpl] releasing usb interfaces...
@@ -345,11 +349,15 @@ Every clean shutdown on macOS currently logs:
 [Info] [Freenect2DeviceImpl] closed with shutdown errors
 ```
 
-This occurs during teardown, after streaming has finished, because the device has
-already dropped off the bus by the time the interface is released. It is
-reproducible on every run and does not indicate lost or corrupted frames —
-captures complete normally. It is safe to ignore unless it appears *before*
-`stopped`.
+The legacy close sequence deliberately rebooted the sensor, then waited four
+seconds before releasing its interfaces. In the tested setup, the device had
+already left the bus when release ran. Close now omits that reboot and drains
+processing before listener detachment. Repeated closes succeeded on the two
+tested hubs; see @ref macos_usb_lifecycle for the environment and limitations.
+
+Do not suppress a remaining shutdown error. Record whether it occurred during
+capture, stop or close, along with the complete log and USB topology. Successful
+frame delivery alone does not establish successful resource cleanup.
 
 ### Log spam
 

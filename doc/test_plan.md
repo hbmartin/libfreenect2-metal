@@ -67,8 +67,8 @@ Check for each run:
 * Capture writes `rgb.ppm`, `depth_mm.pgm`, `infrared.pgm`, `registered.ppm`,
   and `metadata.json`, and `valid_depth_pixels` in the metadata is plausible for
   the scene.
-* No errors appear *before* `stopped`. See
-  @ref troubleshooting for messages that are known-harmless at teardown.
+* No errors appear during capture, stop or close. Record teardown failures too;
+  see @ref macos_usb_lifecycle for the earlier macOS shutdown workaround.
 
 ### Lifecycle
 
@@ -81,6 +81,70 @@ Check for each run:
 The `Kinect hardware soak` workflow automates the repeated-lifecycle and
 reconnect cases on a runner with the `kinect` label; see @ref quality and
 @ref self_hosted_runner.
+
+### macOS USB lifecycle validation {#macos_usb_lifecycle}
+
+After USB reset, macOS can briefly report an attached service before an
+interface becomes claimable. The ownership check retries at 50 ms intervals,
+up to ten retries per interface (a nominal 500 ms wait, subject to scheduling).
+It still rejects persistent ownership and propagates claim failures without
+detaching a driver. The identity of the transient service was not captured.
+
+Close no longer sends the legacy macOS shutdown command or waits four seconds
+for the deliberate sensor reboot. After USB transfer cancellation, stop drains
+queued and active RGB/depth work; close also drains before clearing listeners,
+including cleanup after failed start. The drain applies on all platforms,
+while ownership retries and removal of the reboot workaround concern macOS.
+
+#### Hardware-independent regression tests
+
+`usb_control_tests` compiles the real USB control source with only the libusb
+ownership query and interface claim functions substituted. It covers transient
+and persistent ownership, readiness on the last retry, both interfaces,
+unsupported queries and actual claim failures. macOS-only retry expectations
+are conditional; other platforms check immediate refusal of ownership.
+
+The processing tests hold the real asynchronous worker at startup, during
+processing and during buffer release. They check that drain cannot finish
+early, that buffers are returned for rejected packets, and that repeated drain
+allows reuse. An empty pipeline is also covered. These tests do not emulate a
+complete device lifecycle or establish physical USB behavior.
+
+For a CPU-only test build without a Metal shader compiler:
+
+```sh
+cmake -S . -B build-usb-tests -G Ninja \
+  -DBUILD_TESTING=ON -DBUILD_EXAMPLES=OFF -DBUILD_OPENNI2_DRIVER=OFF \
+  -DENABLE_METAL=OFF -DENABLE_OPENGL=OFF -DENABLE_OPENCL=OFF \
+  -DENABLE_CUDA=OFF -DENABLE_VAAPI=OFF -DENABLE_TEGRAJPEG=OFF
+cmake --build build-usb-tests --target unit_tests usb_control_tests
+ctest --test-dir build-usb-tests -L unit --output-on-failure --timeout 30
+```
+
+This excludes GPU validation. Fork pull requests do not run the persistent
+self-hosted Metal job; hosted results alone cannot establish Metal behavior.
+
+#### Hardware evidence and remaining scope
+
+Compared with revision `600cef5283121fe37f166423c0e11c7e8a184309`, the fix was
+tested on Apple M4 Pro, macOS 26.5.1, Kinect v2 firmware 4.0.3917.0 and libusb
+1.0.30, using the Metal pipeline. An Aukey four-port USB-A 3 hub reproduced the
+original ownership refusal; a Selore SEUC3303 reproduced the original close
+failure. Both negotiated 5 Gb/s and each passed ten full capture/stop/close/
+reopen cycles with the final fix. Selore also passed RGB plus depth capture,
+active/immediate/open-only close and injected IR submission failure cleanup.
+
+For further hardware checks, repeat these lifecycle cases, require successful
+close and immediate reopen, and record the host, hub, link speed, firmware,
+pipeline and all errors. Keep lifecycle calls serialized and outside processing
+callbacks. A processor that never finishes can still block drain and shutdown.
+
+Older macOS, other firmware, custom asynchronous pipelines, unplug during
+streaming and hub operation under concurrent HDMI/Ethernet/peripheral load are
+unverified. An Atolla hub enumerated without the sensor, so it supplies no
+result for this fix. Depth sequence gaps remain; the parser counter alone
+cannot distinguish transport loss from processing backpressure. Partial-claim
+rollback and other failed-open resource-accounting issues are outside this fix.
 
 ## 3. Release-only evidence
 
@@ -129,7 +193,7 @@ Example, from a validation run of this checklist:
 | Link | 5 Gb/s (`Speed: Up to 5 Gb/s`) |
 | Pipelines available | `cpu dump metal opengl opencl opencl_kde` |
 | Exercised | `metal` (default), `opengl`, `opencl`, `cpu` |
-| Result | Capture and registration OK; benign teardown error only |
+| Result | Capture and registration OK; teardown error recorded before the macOS lifecycle fix |
 
 ## Next steps
 

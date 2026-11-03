@@ -36,6 +36,7 @@ ADD_EXECUTABLE(unit_tests
   test_filter_backend_parity.cpp
   test_metal_cpu_parity.cpp
   test_concurrency.cpp
+  test_processing_drain.cpp
   test_protocol.cpp
   test_public_api.cpp
   test_recording.cpp
@@ -48,10 +49,24 @@ TARGET_INCLUDE_DIRECTORIES(unit_tests PRIVATE
 TARGET_COMPILE_FEATURES(unit_tests PRIVATE cxx_std_17)
 TARGET_LINK_LIBRARIES(unit_tests PRIVATE freenect2_testlib gtest gtest_main)
 
+# Compile the real USB control implementation with only its ownership query
+# and claim calls replaced. No shipping target or real USB handle is changed.
+ADD_EXECUTABLE(usb_control_tests test_usb_control.cpp "${MY_DIR}/src/usb_control.cpp")
+TARGET_COMPILE_DEFINITIONS(usb_control_tests PRIVATE
+  libusb_kernel_driver_active=test_libusb_kernel_driver_active
+  libusb_claim_interface=test_libusb_claim_interface
+)
+TARGET_LINK_LIBRARIES(usb_control_tests PRIVATE freenect2_testlib gtest gtest_main)
+
 # The quality options on freenect2_testlib are transitive, so sanitizer and
 # coverage instrumentation propagates to the test executable automatically.
 
 INCLUDE(GoogleTest)
+
+gtest_discover_tests(usb_control_tests
+  DISCOVERY_TIMEOUT 60
+  PROPERTIES LABELS "unit" TIMEOUT 10
+)
 
 # Register the tests in two disjoint groups so the Metal-vs-CPU parity cases can
 # be excluded under sanitizers (which don't mix cleanly with the Metal
