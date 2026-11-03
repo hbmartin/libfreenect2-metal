@@ -1438,6 +1438,10 @@ bool Freenect2DeviceImpl::stop()
     ir_transfer_pool_.cancel();
   }
 
+  // USB producers are stopped; drain asynchronous callbacks before any
+  // subsequent close can detach listeners or release their storage.
+  pipeline_->waitForProcessing();
+
   if (usb_control_.setIrInterfaceState(UsbControl::Disabled) != UsbControl::Success)
     success = false;
 
@@ -1490,20 +1494,8 @@ bool Freenect2DeviceImpl::close()
     success = false;
   if (!command_tx_.execute(SetModeDisabledCommand(nextCommandSeq()), result))
     success = false;
-  /* This command actually reboots the device and makes it disappear for 3 seconds.
-   * Protonect can restart instantly without it.
-   */
-#ifdef __APPLE__
-  /* Kinect will disappear on Mac OS X regardless during close().
-   * Painstaking effort could not determine the root cause.
-   * See https://github.com/OpenKinect/libfreenect2/issues/539
-   *
-   * Shut down Kinect explicitly on Mac and wait a fixed time.
-   */
-  if (!command_tx_.execute(ShutdownCommand(nextCommandSeq()), result))
-    success = false;
-  libfreenect2::this_thread::sleep_for(libfreenect2::chrono::milliseconds(4 * 1000));
-#endif
+  // Drain even after a failed start, when stop() may not have run.
+  pipeline_->waitForProcessing();
 
   if (pipeline_->getRgbPacketProcessor() != 0)
     pipeline_->getRgbPacketProcessor()->setFrameListener(0);

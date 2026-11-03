@@ -86,6 +86,9 @@ public:
   /** Whether the pipeline's depth processor is usable on this machine. */
   bool good() const;
 
+  /** Internal barrier after USB producers stop, before listeners are detached. */
+  void waitForProcessing() const;
+
   virtual PacketParser *getRgbPacketParser() const;
   virtual PacketParser *getIrPacketParser() const;
 
