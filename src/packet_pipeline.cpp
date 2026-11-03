@@ -257,6 +257,14 @@ bool PacketPipeline::good() const
   return rgb_good && depth_good;
 }
 
+void PacketPipeline::waitForProcessing() const
+{
+  if (comp_->async_rgb_processor_ != 0)
+    static_cast<AsyncPacketProcessor<RgbPacket> *>(comp_->async_rgb_processor_)->waitUntilIdle();
+  if (comp_->async_depth_processor_ != 0)
+    static_cast<AsyncPacketProcessor<DepthPacket> *>(comp_->async_depth_processor_)->waitUntilIdle();
+}
+
 PacketPipeline::PacketParser *PacketPipeline::getRgbPacketParser() const
 {
   return comp_->rgb_parser_;

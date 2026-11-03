@@ -86,6 +86,13 @@ public:
   /** Whether the pipeline's depth processor is usable on this machine. */
   bool good() const;
 
+  /** Internal barrier after USB producers stop, before listeners are detached.
+   * Blocks without a timeout until queued and active RGB/depth processing
+   * finishes and packet buffers are released. A hung processor blocks indefinitely.
+   * Must not be called from a processing callback.
+   */
+  void waitForProcessing() const;
+
   virtual PacketParser *getRgbPacketParser() const;
   virtual PacketParser *getIrPacketParser() const;
 

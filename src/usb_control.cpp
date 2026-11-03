@@ -29,6 +29,7 @@
 #include <libfreenect2/protocol/usb_control.h>
 #include <libfreenect2/logging.h>
 #include <libfreenect2/usb/error.h>
+#include <libfreenect2/threading.h>
 
 #include <stdint.h>
 
@@ -227,7 +228,23 @@ UsbControl::ResultCode UsbControl::claimInterfaces()
   for (size_t i = 0; i < sizeof(interface_ids) / sizeof(interface_ids[0]); ++i)
   {
     const int interface_id = interface_ids[i];
-    const int driver_active = libusb_kernel_driver_active(handle_, interface_id);
+    int driver_active = libusb_kernel_driver_active(handle_, interface_id);
+#ifdef __APPLE__
+    // Darwin may transiently report a service attached while re-enumeration
+    // completes. Wait briefly for readiness without detaching any driver.
+    unsigned attempts = 0;
+    for (; driver_active == 1 && attempts < 10; ++attempts)
+    {
+      libfreenect2::this_thread::sleep_for(libfreenect2::chrono::milliseconds(50));
+      driver_active = libusb_kernel_driver_active(handle_, interface_id);
+    }
+    if (attempts > 0)
+    {
+      LOG_DEBUG << "Kinect " << interface_names[i] << " interface " << interface_id
+                << ": readiness retries=" << attempts << " (50 ms each), driver_active="
+                << driver_active;
+    }
+#endif
     if (driver_active == 1)
     {
       LOG_ERROR << "cannot claim Kinect " << interface_names[i] << " interface " << interface_id

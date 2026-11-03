@@ -84,6 +84,18 @@ public:
     return locked;
   }
 
+  /** Wait until the last submitted packet is processed and its buffer released.
+   * The caller must stop packet producers before calling this barrier.
+   */
+  void waitUntilIdle()
+  {
+    libfreenect2::unique_lock l(packet_mutex_);
+    while(current_packet_available_)
+    {
+      WAIT_CONDITION(idle_condition_, packet_mutex_, l);
+    }
+  }
+
   virtual bool good()
   {
     return processor_->good();
@@ -117,6 +129,7 @@ private:
   bool shutdown_;
   libfreenect2::mutex packet_mutex_; ///< Mutex indicating a new packet can be stored in #current_packet_.
   libfreenect2::condition_variable packet_condition_; ///< Mutex indicating processing is blocked on lack of packets.
+  libfreenect2::condition_variable idle_condition_;
   libfreenect2::thread thread_; ///< Asynchronous thread.
 
   /**
@@ -160,6 +173,7 @@ private:
         releaseBuffer(current_packet_);
 
         current_packet_available_ = false;
+        idle_condition_.notify_all();
       }
     }
 
@@ -168,6 +182,7 @@ private:
     {
       releaseBuffer(current_packet_);
       current_packet_available_ = false;
+      idle_condition_.notify_all();
     }
   }
 };
